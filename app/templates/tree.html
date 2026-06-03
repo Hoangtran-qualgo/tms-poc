@@ -1,0 +1,90 @@
+{# tree.html — recursive nested-list rendering of the data root.
+
+   Consumed by:
+     - base.html via {% include "tree.html" %} for the initial server-side
+       render (so first paint is fully populated).
+     - GET /ui/tree as a stand-alone partial swapped in by HTMX on every
+       SSE `change` event.
+
+   Each folder row toggles its children via the `toggleTreeFolder` helper
+   in static/app.js. Depth-0 and depth-1 folders will additionally open the
+   corresponding folder view in the main pane once Do step 13 lands; for
+   now the click is pure toggle.
+
+   File entries (`feature` / `other`) are rendered as static rows; their
+   click handlers wire up in step 14.
+#}
+
+{% macro render_children(children) %}
+  {% if children %}
+  <ul class="space-y-0.5">
+    {% for child in children %}
+      <li>
+        {% if child.type == "folder" %}
+          <div class="tree-folder flex items-center gap-1 pr-1 py-0.5 rounded hover:bg-slate-100 select-none"
+               data-depth="{{ child.depth }}"
+               data-path="{{ child.path }}">
+            {# Caret always toggles. stopPropagation keeps the row's click intact for nav. #}
+            <button type="button"
+                    class="caret w-4 text-center text-slate-400 cursor-pointer"
+                    onclick="event.stopPropagation(); toggleTreeFolder(this.parentElement)">&#9654;</button>
+            {# Every folder (any depth) loads its folder view in the main
+               pane on name-click. Decision B4 revised — sub-folders under
+               modules now have their own view via folder_subfolder.html
+               (see IN-PROGRESS.md "Increase folder nesting depth"). The
+               caret to the left still toggles the children list. #}
+            <span class="flex-1 truncate cursor-pointer {% if child.depth == 0 %}font-semibold text-slate-800{% elif child.depth == 1 %}font-medium text-slate-700{% else %}text-slate-600{% endif %}"
+                  hx-get="/ui/folder/{{ child.path }}"
+                  hx-target="#main-pane"
+                  hx-swap="innerHTML">{{ child.name }}</span>
+          </div>
+          <div class="tree-children hidden pl-4 border-l border-slate-100 ml-2">
+            {{ render_children(child.children) }}
+          </div>
+        {% elif child.type == "feature" %}
+          <div class="tree-file flex items-center gap-1 pr-1 py-0.5 rounded hover:bg-slate-100 cursor-pointer select-none"
+               data-path="{{ child.path }}"
+               hx-get="/ui/file/{{ child.path }}"
+               hx-target="#main-pane"
+               hx-swap="innerHTML">
+            <span class="w-4 text-center text-slate-300">&middot;</span>
+            <span class="flex-1 truncate text-slate-700">{{ child.name }}</span>
+          </div>
+        {% else %}
+          <div class="tree-other flex items-center gap-1 pr-1 py-0.5 rounded hover:bg-slate-100 cursor-pointer select-none text-slate-400"
+               data-path="{{ child.path }}"
+               hx-get="/ui/file/{{ child.path }}"
+               hx-target="#main-pane"
+               hx-swap="innerHTML">
+            <span class="w-4 text-center">&middot;</span>
+            <span class="flex-1 truncate">{{ child.name }}</span>
+          </div>
+        {% endif %}
+      </li>
+    {% endfor %}
+  </ul>
+  {% endif %}
+{% endmacro %}
+
+<div class="text-sm py-2 px-2">
+  {# Small header with manual refresh button. SSE keeps the tree in sync
+     automatically, but the button is a safety net when the watcher misses
+     an event or the SSE connection drops (see IN-PROGRESS.md "Manual
+     refresh button for the directory tree"). Re-rendered with every swap
+     since this partial is the entire #tree-pane innerHTML. #}
+  <div class="flex items-center justify-between mb-1 px-1">
+    <span class="text-xs uppercase tracking-wide text-slate-400 font-medium">Tree</span>
+    <button type="button"
+            class="text-slate-400 hover:text-slate-700 hover:bg-slate-100 rounded w-6 h-6 flex items-center justify-center leading-none"
+            title="Refresh tree"
+            aria-label="Refresh tree"
+            hx-get="/ui/tree"
+            hx-target="#tree-pane"
+            hx-swap="innerHTML">&#x21bb;</button>
+  </div>
+  {% if tree.children %}
+    {{ render_children(tree.children) }}
+  {% else %}
+    <div class="px-2 py-4 text-slate-400 italic">No projects yet.</div>
+  {% endif %}
+</div>

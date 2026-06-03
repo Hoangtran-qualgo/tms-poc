@@ -1,0 +1,82 @@
+{# folder_module.html — main-pane module view.
+
+   Lists sub-folders (if any) and feature files inside the module. The
+   sub-folder section is the depth-3 entry point for the "Increase folder
+   nesting depth to 10 levels" feature (see IN-PROGRESS.md / PLAN.md B4).
+   Description column shows only the first line, truncated (R2 / G3). #}
+<div data-folder-path="{{ module_path }}">
+  <div class="flex items-center gap-3 mb-4">
+    <div>
+      <div class="text-sm text-slate-500">
+        <a class="hover:underline cursor-pointer"
+           hx-get="/ui/folder/" hx-target="#main-pane" hx-swap="innerHTML">Projects</a>
+        <span class="px-1">/</span>
+        <a class="hover:underline cursor-pointer"
+           hx-get="/ui/folder/{{ project }}" hx-target="#main-pane" hx-swap="innerHTML">{{ project }}</a>
+        <span class="px-1">/</span>
+      </div>
+      <h2 class="text-xl font-semibold text-slate-800">{{ module }}</h2>
+    </div>
+    <div class="flex-1"></div>
+    <button type="button"
+            class="px-3 py-1.5 text-sm border border-slate-300 rounded hover:bg-slate-50"
+            onclick="tmsCreateSubfolder('{{ module_path }}')">+ Sub-folder</button>
+    <button type="button"
+            class="px-3 py-1.5 text-sm bg-slate-800 text-white rounded hover:bg-slate-700"
+            onclick="tmsCreateFile('{{ module_path }}')">+ Create test case</button>
+  </div>
+
+  {% if folders %}
+  <table class="w-full text-sm border border-slate-200 rounded overflow-hidden bg-white mb-4">
+    <thead class="bg-slate-100 text-slate-600">
+      <tr><th class="text-left px-3 py-2 font-medium">Sub-folder</th></tr>
+    </thead>
+    <tbody>
+      {% for name in folders %}
+      <tr class="border-t border-slate-100 hover:bg-slate-50 cursor-pointer"
+          hx-get="/ui/folder/{{ module_path }}/{{ name }}"
+          hx-target="#main-pane"
+          hx-swap="innerHTML">
+        <td class="px-3 py-2 text-slate-700">&#128193; {{ name }}</td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+  {% endif %}
+
+  {% if features %}
+  <table class="w-full text-sm border border-slate-200 rounded overflow-hidden bg-white table-fixed">
+    <thead class="bg-slate-100 text-slate-600">
+      <tr>
+        <th class="text-left px-3 py-2 font-medium w-1/4">File name</th>
+        <th class="text-left px-3 py-2 font-medium w-1/2">Description</th>
+        <th class="text-left px-3 py-2 font-medium w-1/4">Tags</th>
+      </tr>
+    </thead>
+    <tbody>
+      {% for f in features %}
+      <tr class="border-t border-slate-100 hover:bg-slate-50 cursor-pointer"
+          hx-get="/ui/file/{{ module_path }}/{{ f.file_name }}"
+          hx-target="#main-pane"
+          hx-swap="innerHTML">
+        <td class="px-3 py-2 text-slate-800 truncate">{{ f.file_name }}</td>
+        {# First-line-only, truncated. Multiple lines never expand the row. #}
+        <td class="px-3 py-2 text-slate-700 truncate" title="{{ f.description }}">
+          {{ f.description.splitlines()[0] if f.description else '' }}
+        </td>
+        <td class="px-3 py-2 truncate">
+          {% for t in f.tags %}<span class="inline-block px-1.5 py-0.5 mr-1 mb-0.5 text-xs rounded bg-slate-200 text-slate-700">@{{ t }}</span>{% endfor %}
+        </td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+  {% elif not folders %}
+  <div class="text-center py-12 border border-dashed border-slate-200 rounded bg-white">
+    <p class="text-slate-500 mb-4">No test cases in <span class="font-medium">{{ module }}</span> yet.</p>
+    <button type="button"
+            class="px-3 py-1.5 bg-slate-800 text-white rounded hover:bg-slate-700"
+            onclick="tmsCreateFile('{{ module_path }}')">Create test case</button>
+  </div>
+  {% endif %}
+</div>

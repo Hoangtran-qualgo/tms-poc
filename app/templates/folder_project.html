@@ -1,0 +1,42 @@
+{# folder_project.html — main-pane project view (module listing). #}
+<div data-folder-path="{{ project }}">
+  <div class="flex items-center justify-between mb-4">
+    <div class="text-sm text-slate-500 mb-1">
+      <a class="hover:underline cursor-pointer"
+         hx-get="/ui/folder/" hx-target="#main-pane" hx-swap="innerHTML">Projects</a>
+      <span class="px-1">/</span>
+    </div>
+    <h2 class="text-xl font-semibold text-slate-800">{{ project }}</h2>
+    <div class="flex-1"></div>
+    <button type="button"
+            class="px-3 py-1.5 text-sm bg-slate-800 text-white rounded hover:bg-slate-700"
+            onclick="tmsCreateModule('{{ project }}')">+ New module</button>
+  </div>
+
+  {% if modules %}
+  <table class="w-full text-sm border border-slate-200 rounded overflow-hidden bg-white">
+    <thead class="bg-slate-100 text-slate-600">
+      <tr>
+        <th class="text-left px-3 py-2 font-medium">Module</th>
+      </tr>
+    </thead>
+    <tbody>
+      {% for name in modules %}
+      <tr class="border-t border-slate-100 hover:bg-slate-50 cursor-pointer"
+          hx-get="/ui/folder/{{ project }}/{{ name }}"
+          hx-target="#main-pane"
+          hx-swap="innerHTML">
+        <td class="px-3 py-2 text-slate-800">{{ name }}</td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+  {% else %}
+  <div class="text-center py-12 border border-dashed border-slate-200 rounded bg-white">
+    <p class="text-slate-500 mb-4">No modules in <span class="font-medium">{{ project }}</span> yet.</p>
+    <button type="button"
+            class="px-3 py-1.5 bg-slate-800 text-white rounded hover:bg-slate-700"
+            onclick="tmsCreateModule('{{ project }}')">Create module</button>
+  </div>
+  {% endif %}
+</div>

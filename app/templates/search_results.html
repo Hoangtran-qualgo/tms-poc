@@ -1,0 +1,59 @@
+{# search_results.html — main-pane search results partial (PLAN.md §9.6).
+
+   Three variants:
+     0 hits  → "No matches" (or initial empty-state message)
+     1 hit   → inline <script> that auto-navigates to the file editor
+     2+ hits → list view: file_path + first-line description + match badge
+#}
+
+<div data-folder-path="search">
+  {% if show_empty_state %}
+    <p class="text-slate-500 italic">Type a query in the search box above and press Enter.</p>
+
+  {% elif hits|length == 0 %}
+    <h2 class="text-xl font-semibold text-slate-800 mb-2">No matches for &ldquo;{{ query }}&rdquo;</h2>
+    <p class="text-slate-500 text-sm">Try a different query, scope, or match mode.</p>
+
+  {% elif hits|length == 1 %}
+    {# Single-hit auto-navigation. The inline script runs as soon as HTMX
+       swaps this partial into the main pane. #}
+    <p class="text-slate-500 text-sm">Opening the only match&hellip;</p>
+    <script>
+      htmx.ajax("GET", "/ui/file/{{ hits[0].file_path }}", {
+        target: "#main-pane",
+        swap: "innerHTML"
+      });
+    </script>
+
+  {% else %}
+    <h2 class="text-xl font-semibold text-slate-800 mb-3">
+      {{ hits|length }} matches for &ldquo;{{ query }}&rdquo;
+    </h2>
+    <table class="w-full text-sm border border-slate-200 rounded overflow-hidden bg-white table-fixed">
+      <thead class="bg-slate-100 text-slate-600">
+        <tr>
+          <th class="text-left px-3 py-2 font-medium w-2/5">File</th>
+          <th class="text-left px-3 py-2 font-medium w-2/5">Description</th>
+          <th class="text-left px-3 py-2 font-medium w-1/5">Matched</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for hit in hits %}
+        <tr class="border-t border-slate-100 hover:bg-slate-50 cursor-pointer"
+            hx-get="/ui/file/{{ hit.file_path }}"
+            hx-target="#main-pane"
+            hx-swap="innerHTML">
+          <td class="px-3 py-2 font-mono text-slate-800 truncate">{{ hit.file_path }}</td>
+          <td class="px-3 py-2 text-slate-700 truncate" title="{{ hit.description }}">
+            {{ hit.description.splitlines()[0] if hit.description else '' }}
+          </td>
+          <td class="px-3 py-2 truncate">
+            <span class="inline-block px-1.5 py-0.5 text-xs rounded bg-slate-200 text-slate-700 mr-1">{{ hit.matched_field }}</span>
+            <span class="text-xs text-slate-600 font-mono">{% if hit.matched_field == 'tag' %}@{% endif %}{{ hit.match_value }}</span>
+          </td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  {% endif %}
+</div>

@@ -1,0 +1,69 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>TMS &mdash; BDD Test Case Manager</title>
+  {# CDN URLs pinned per PLAN.md §3 / §9.1. #}
+  <script src="https://cdn.jsdelivr.net/npm/@tailwindcss/browser@4"></script>
+  <script src="https://unpkg.com/htmx.org@2"></script>
+  <script src="https://unpkg.com/htmx-ext-sse@2"></script>
+  <link rel="stylesheet" href="{{ url_for('static', filename='app.css') }}">
+</head>
+{#
+  Body is the SSE host for the whole app: every change event published by
+  the watcher is dispatched here as a `sse:change` DOM event, which other
+  elements (the tree, later the main pane) consume via `hx-trigger`.
+#}
+<body class="h-screen flex flex-col bg-slate-50 text-slate-900"
+      hx-ext="sse" sse-connect="/api/events">
+
+  <header class="border-b border-slate-200 bg-white shrink-0">
+    <div class="px-4 py-2 flex items-center gap-3">
+      <h1 class="text-lg font-semibold tracking-tight text-slate-800">TMS</h1>
+      <div class="flex-1"></div>
+      {#
+        Top-bar search widget per PLAN.md §9.1 / R5. Wired explicitly in
+        app.js (tmsWireSearch) rather than via HTMX trigger filters: the
+        bare-name filter syntax (e.g. `keyup[key=='Enter']`) silently fails
+        under HTMX 2.x because `key` is not in the filter eval scope.
+        See `@app/static/app.js: tmsWireSearch` for the live wiring.
+      #}
+      <form id="search-form" class="flex items-center gap-2 text-sm" onsubmit="event.preventDefault();">
+        <input id="search-q" type="search" name="q" placeholder="Search&hellip;"
+               class="border border-slate-300 rounded px-2 py-1 w-56 focus:outline-none focus:ring-2 focus:ring-slate-300">
+        <select id="search-scope" name="scope"
+                class="border border-slate-300 rounded px-2 py-1 bg-white">
+          <option value="all">All</option>
+        </select>
+        <select id="search-match" name="match"
+                class="border border-slate-300 rounded px-2 py-1 bg-white">
+          <option value="text">Text</option>
+          <option value="tag">Tag</option>
+        </select>
+        <label class="flex items-center gap-1 text-slate-700">
+          <input id="search-case" type="checkbox" name="case" value="true"
+                 class="rounded border-slate-300">
+          <span class="font-mono">Aa</span>
+        </label>
+      </form>
+    </div>
+  </header>
+
+  <div class="flex-1 flex min-h-0">
+    <aside id="tree-pane"
+           class="w-[280px] shrink-0 border-r border-slate-200 bg-white overflow-auto"
+           hx-get="/ui/tree"
+           hx-trigger="sse:change"
+           hx-swap="innerHTML">
+      {% include "tree.html" %}
+    </aside>
+    <main class="flex-1 min-w-0 overflow-auto p-6" id="main-pane"
+          hx-get="/ui/folder/" hx-trigger="load" hx-swap="innerHTML">
+      <p class="text-slate-500">Loading&hellip;</p>
+    </main>
+  </div>
+
+  <script src="{{ url_for('static', filename='app.js') }}"></script>
+</body>
+</html>

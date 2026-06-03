@@ -1,0 +1,397 @@
+"""Pure Gherkin parse + canonical serialize.
+
+This module is pure: text in / model out (:func:`parse_feature`) and model
+in / text out (:func:`serialize_feature`, implemented in Do step 4). No FS,
+no HTTP.
+
+Implementation notes for the parser (Do step 3):
+
+- Input newlines are normalized to ``\\n`` before being handed to
+  ``gherkin-official``'s :class:`~gherkin.parser.Parser`.
+- The underlying parser already unescapes ``\\|`` and similar in table cells,
+  so we take ``cell["value"]`` verbatim and do not double-unescape.
+- Feature description is built from the AST as ``name + "\\n" + body`` (body
+  omitted when empty), then every literal two-character ``\\n`` sequence in
+  the resulting string is decoded into a real newline (round-trip support
+  for files this tool itself wrote previously, see PLAN.md \u00a75.1).
+- Tags are stored stripped of their leading ``@``.
+- Step keywords are stripped of their trailing space and looked up in the
+  five canonical English keywords; non-matching steps are silently dropped
+  (documented as a data-loss risk in PLAN.md \u00a713).
+- ``Rule:`` blocks and files containing more than one scenario raise
+  :class:`~app.errors.GherkinParseError`.
+- Zero-scenario files are repaired in-flight with a placeholder
+  ``Scenario(kind="scenario")`` so the editor always has something to show.
+"""
+
+from __future__ import annotations
+
+from typing import Any
+
+from gherkin.errors import CompositeParserException
+from gherkin.parser import Parser
+
+from .errors import GherkinParseError
+from .models import (
+    CANONICAL_KEYWORDS,
+    Background,
+    ExamplesTable,
+    Feature,
+    Scenario,
+    Step,
+    validate_feature,
+)
+
+__all__ = ["parse_feature", "serialize_feature"]
+
+
+# ---------------------------------------------------------------------------
+# Public API
+# ---------------------------------------------------------------------------
+
+
+def parse_feature(source: str) -> Feature:
+    """Parse a ``.feature`` file's source text into a :class:`Feature`.
+
+    Raises :class:`~app.errors.GherkinParseError` on any parser failure, on
+    files containing a ``Rule:`` block, on files containing more than one
+    scenario / scenario outline, and on files with no ``Feature:`` header.
+    """
+
+    source = _normalize_newlines(source)
+
+    try:
+        gherkin_doc: dict[str, Any] = Parser().parse(source)
+    except CompositeParserException as e:
+        raise _wrap_parser_exception(e) from e
+
+    feature_ast = gherkin_doc.get("feature")
+    if feature_ast is None:
+        raise GherkinParseError(
+            line=1,
+            column=1,
+            message="No 'Feature:' header found in the file.",
+        )
+
+    background_ast, scenario_ast = _split_children(feature_ast.get("children") or [])
+
+    description = _assemble_description(
+        name=feature_ast.get("name") or "",
+        body=feature_ast.get("description") or "",
+    )
+    tags = [_strip_at(t) for t in (feature_ast.get("tags") or [])]
+
+    background = Background(
+        steps=_extract_steps(
+            background_ast.get("steps") if background_ast else None
+        )
+    )
+
+    if scenario_ast is None:
+        # Lenient: file has Feature but no Scenario yet. Inject placeholder.
+        scenario = Scenario(kind="scenario")
+    else:
+        scenario = _build_scenario(scenario_ast)
+
+    return Feature(
+        description=description,
+        tags=tags,
+        background=background,
+        scenario=scenario,
+    )
+
+
+# ---------------------------------------------------------------------------
+# Helpers
+# ---------------------------------------------------------------------------
+
+
+def _normalize_newlines(source: str) -> str:
+    """Convert CRLF and lone CR to LF per PLAN.md \u00a75.1."""
+    return source.replace("\r\n", "\n").replace("\r", "\n")
+
+
+def _wrap_parser_exception(exc: CompositeParserException) -> GherkinParseError:
+    """Convert a ``CompositeParserException`` into our domain error type.
+
+    Surfaces the *first* inner error's line/column so the UI can highlight
+    a single position. The remaining errors are summarized in the message.
+    """
+    inner_errors = getattr(exc, "errors", None) or []
+    if inner_errors:
+        first = inner_errors[0]
+        loc = getattr(first, "location", None) or {}
+        line = int(loc.get("line", 0) or 0)
+        column = int(loc.get("column", 0) or 0)
+        message = getattr(first, "message", None) or str(first)
+        if len(inner_errors) > 1:
+            message = f"{message} (and {len(inner_errors) - 1} more parse error(s))"
+        return GherkinParseError(line=line, column=column, message=message)
+    return GherkinParseError(line=0, column=0, message=str(exc))
+
+
+def _split_children(
+    children: list[dict[str, Any]],
+) -> tuple[dict[str, Any] | None, dict[str, Any] | None]:
+    """Walk the feature's children, returning (background, scenario).
+
+    Raises :class:`GherkinParseError` if a ``rule`` child is encountered or
+    if more than one scenario is present.
+    """
+    background_ast: dict[str, Any] | None = None
+    scenario_ast: dict[str, Any] | None = None
+
+    for child in children:
+        if "rule" in child:
+            loc = (child["rule"] or {}).get("location") or {}
+            raise GherkinParseError(
+                line=int(loc.get("line", 0) or 0),
+                column=int(loc.get("column", 0) or 0),
+                message="'Rule:' blocks are not supported (one scenario per file).",
+            )
+        if "background" in child:
+            # If multiple Backgrounds were declared (unusual), the last wins;
+            # gherkin-official already raises on this so we should not see it,
+            # but guard defensively.
+            background_ast = child["background"]
+        elif "scenario" in child:
+            if scenario_ast is not None:
+                loc = (child["scenario"] or {}).get("location") or {}
+                raise GherkinParseError(
+                    line=int(loc.get("line", 0) or 0),
+                    column=int(loc.get("column", 0) or 0),
+                    message=(
+                        "More than one scenario in the file. "
+                        "TMS requires exactly one scenario per .feature file."
+                    ),
+                )
+            scenario_ast = child["scenario"]
+
+    return background_ast, scenario_ast
+
+
+def _strip_at(tag: dict[str, Any]) -> str:
+    """Return the tag value without its leading ``@``."""
+    name = tag.get("name") or ""
+    return name[1:] if name.startswith("@") else name
+
+
+def _assemble_description(name: str, body: str) -> str:
+    """Build ``Feature.description`` per PLAN.md \u00a75.1.
+
+    Concatenates the inline name and the optional body block with a single
+    newline, then decodes any literal two-character ``\\n`` back into a
+    real newline (round-trip with files this tool serialized previously).
+    """
+    raw = name if not body else f"{name}\n{body}"
+    return raw.replace("\\n", "\n")
+
+
+def _extract_steps(steps_ast: list[dict[str, Any]] | None) -> list[Step]:
+    """Build a list of :class:`Step`, silently dropping non-canonical keywords."""
+    if not steps_ast:
+        return []
+    result: list[Step] = []
+    for s in steps_ast:
+        kw = (s.get("keyword") or "").strip()
+        if kw not in CANONICAL_KEYWORDS:
+            # Non-English keyword, '*' bullet, or anything unrecognized.
+            continue
+        result.append(
+            Step(
+                keyword=kw,
+                text=s.get("text") or "",
+                data_table=_extract_data_table(s.get("dataTable")),
+            )
+        )
+    return result
+
+
+def _extract_data_table(
+    dt_ast: dict[str, Any] | None,
+) -> list[list[str]] | None:
+    if not dt_ast:
+        return None
+    rows = dt_ast.get("rows") or []
+    if not rows:
+        return None
+    return [
+        [(cell.get("value") or "") for cell in (row.get("cells") or [])]
+        for row in rows
+    ]
+
+
+def _build_scenario(scen_ast: dict[str, Any]) -> Scenario:
+    keyword = (scen_ast.get("keyword") or "").strip()
+    examples_ast = scen_ast.get("examples") or []
+
+    # Detect outline first by keyword (most reliable: "Scenario Outline" or
+    # the "Scenarios" alias); fall back to "has examples" for forgiving input.
+    is_outline = keyword in ("Scenario Outline", "Scenarios") or bool(examples_ast)
+
+    examples: list[ExamplesTable] = (
+        [_build_examples(ex) for ex in examples_ast] if is_outline else []
+    )
+
+    return Scenario(
+        kind="outline" if is_outline else "scenario",
+        name=scen_ast.get("name") or "",
+        tags=[_strip_at(t) for t in (scen_ast.get("tags") or [])],
+        steps=_extract_steps(scen_ast.get("steps")),
+        examples=examples,
+    )
+
+
+def _build_examples(ex: dict[str, Any]) -> ExamplesTable:
+    header_cells = (ex.get("tableHeader") or {}).get("cells") or []
+    header = [(c.get("value") or "") for c in header_cells]
+    rows: list[list[str]] = [
+        [(c.get("value") or "") for c in (row.get("cells") or [])]
+        for row in (ex.get("tableBody") or [])
+    ]
+    return ExamplesTable(
+        tags=[_strip_at(t) for t in (ex.get("tags") or [])],
+        name=ex.get("name") or "",
+        header=header,
+        rows=rows,
+    )
+
+
+# ---------------------------------------------------------------------------
+# Serializer (Do step 4)
+# ---------------------------------------------------------------------------
+
+
+def serialize_feature(feature: Feature) -> str:
+    """Render a :class:`Feature` as canonical ``.feature`` source text.
+
+    Behavior per PLAN.md §5.2:
+
+    - Calls :func:`~app.models.validate_feature` first; raises
+      :class:`~app.errors.ValidationError` on any invariant violation.
+    - Tags are de-duplicated within each tag list (order preserved, first
+      occurrence kept) and prepended with ``@``.
+    - ``Feature.description`` has real newlines encoded as the literal
+      two-character sequence ``\\n`` so the ``Feature:`` line is single-line.
+    - Step text is trimmed of leading/trailing whitespace.
+    - Table cells are trimmed, then escaped (``\\`` first, then ``|``).
+      Empty cells become a single space. All cells in a table are padded
+      with trailing spaces so columns align to the widest cell.
+    - Output is UTF-8 / LF and ends with exactly one trailing newline.
+    """
+
+    validate_feature(feature)
+
+    lines: list[str] = []
+
+    # --- Feature header ---------------------------------------------------
+    feat_tags = _dedupe(feature.tags)
+    if feat_tags:
+        lines.append(" ".join(f"@{t}" for t in feat_tags))
+    lines.append(f"Feature: {_encode_description(feature.description)}")
+    lines.append("")
+
+    # --- Optional Background ---------------------------------------------
+    if feature.background.steps:
+        lines.append("  Background:")
+        _emit_steps(lines, feature.background.steps, step_indent=4)
+        lines.append("")
+
+    # --- Scenario / Scenario Outline -------------------------------------
+    scenario = feature.scenario
+    sc_tags = _dedupe(scenario.tags)
+    if sc_tags:
+        lines.append("  " + " ".join(f"@{t}" for t in sc_tags))
+
+    keyword_word = "Scenario Outline" if scenario.kind == "outline" else "Scenario"
+    header_line = f"  {keyword_word}:"
+    if scenario.name:
+        header_line += f" {scenario.name}"
+    lines.append(header_line)
+
+    _emit_steps(lines, scenario.steps, step_indent=4)
+
+    if scenario.kind == "outline":
+        for examples in scenario.examples:
+            _emit_examples(lines, examples)
+
+    return "\n".join(lines) + "\n"
+
+
+# --- Serializer helpers ----------------------------------------------------
+
+
+def _dedupe(items: list[str]) -> list[str]:
+    """Return ``items`` with duplicates removed, preserving first occurrence."""
+    seen: set[str] = set()
+    out: list[str] = []
+    for item in items:
+        if item not in seen:
+            seen.add(item)
+            out.append(item)
+    return out
+
+
+def _encode_description(description: str) -> str:
+    """Encode real newlines as the literal two-character sequence ``\\n``."""
+    return description.replace("\n", "\\n")
+
+
+def _emit_steps(lines: list[str], steps: list[Step], *, step_indent: int) -> None:
+    """Append step lines (and any data tables) to ``lines``."""
+    pad = " " * step_indent
+    for step in steps:
+        lines.append(f"{pad}{step.keyword} {step.text.strip()}")
+        if step.data_table:
+            lines.extend(_render_table(step.data_table, indent=step_indent + 2))
+
+
+def _emit_examples(lines: list[str], examples: ExamplesTable) -> None:
+    """Append an Examples block (tags, header, header row, body rows) to ``lines``."""
+    ex_tags = _dedupe(examples.tags)
+    if ex_tags:
+        lines.append("    " + " ".join(f"@{t}" for t in ex_tags))
+    header_line = "    Examples:"
+    if examples.name:
+        header_line += f" {examples.name}"
+    lines.append(header_line)
+    table_rows: list[list[str]] = [examples.header, *examples.rows]
+    lines.extend(_render_table(table_rows, indent=6))
+
+
+def _render_table(rows: list[list[str]], *, indent: int) -> list[str]:
+    """Render a rectangular table as pipe-separated, column-aligned lines.
+
+    All cells are processed by :func:`_process_cell` (trim → escape →
+    empty-as-single-space) before being padded to the widest cell in each
+    column.
+    """
+    if not rows:
+        return []
+
+    processed: list[list[str]] = [
+        [_process_cell(cell) for cell in row] for row in rows
+    ]
+    width = len(processed[0])
+    col_widths = [0] * width
+    for row in processed:
+        for i in range(width):
+            if i < len(row):
+                col_widths[i] = max(col_widths[i], len(row[i]))
+
+    pad = " " * indent
+    out: list[str] = []
+    for row in processed:
+        cells = [row[i].ljust(col_widths[i]) for i in range(width)]
+        out.append(f"{pad}| " + " | ".join(cells) + " |")
+    return out
+
+
+def _process_cell(value: str) -> str:
+    """Trim, escape backslashes then pipes; empty cells become a single space."""
+    trimmed = value.strip()
+    if not trimmed:
+        return " "
+    # Order matters: escape backslashes first so we do not double-escape the
+    # backslash we are about to introduce for the ``|`` escape.
+    return trimmed.replace("\\", "\\\\").replace("|", "\\|")

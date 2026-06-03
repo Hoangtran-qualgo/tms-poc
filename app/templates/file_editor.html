@@ -1,0 +1,189 @@
+{# file_editor.html — main-pane structured + raw editor for one .feature file.
+
+   Server renders the static shell + embeds the initial Feature dict and raw
+   text as a JSON <script> block. The client-side controller `tmsEditor`
+   (in static/app.js) reads that data and wires up all interactions.
+
+   Sections present per PLAN.md §9.4:
+     - header: breadcrumb, file_name, Rename / Save buttons, dirty indicator
+     - banner: empty placeholder, populated by editor on external changes
+     - tabs: Structured / Raw
+     - structured: description, feature tags, background card, scenario card
+       (kind toggle, name, tags, steps, examples for outline)
+     - raw: textarea + Save raw + inline parse-error region
+
+   v1 limitations (documented in PLAN.md):
+     - no drag-handle reorder for steps or examples rows
+     - no inline DataTable editor per step (the data_table field is preserved
+       in state and round-trips through Save; edit only via the raw tab)
+     - no column reorder
+#}
+
+<div id="file-editor" data-path="{{ file_path }}">
+
+  {# Initial-state payload. JSON-encoded so the JS controller can JSON.parse it.
+     `|tojson` produces JSON that is safe to embed in a <script> block as long
+     as the script type is application/json (Jinja2 escapes </script> sequences
+     within the JSON output). #}
+  <script id="editor-data" type="application/json">
+    {{ {
+        "path": file_path,
+        "file_name": file_name,
+        "feature": feature,
+        "raw": raw
+    } | tojson }}
+  </script>
+
+  <div id="editor-banner" class="hidden mb-3"></div>
+
+  <div class="flex items-center gap-3 mb-2">
+    {# Breadcrumb iterates over server-built `crumbs` so feature files at
+       any depth (2..MAX_FOLDER_DEPTH) render correctly. Each crumb has
+       `label` + `path`; cf. server `_folder_crumbs`. The trailing slash
+       (before the file name) is rendered once at the end. #}
+    <div class="text-sm text-slate-500 truncate">
+      <a class="hover:underline cursor-pointer"
+         hx-get="/ui/folder/" hx-target="#main-pane" hx-swap="innerHTML">Projects</a>
+      {% for crumb in crumbs %}
+        <span class="px-1">/</span>
+        <a class="hover:underline cursor-pointer"
+           hx-get="/ui/folder/{{ crumb.path }}" hx-target="#main-pane" hx-swap="innerHTML">{{ crumb.label }}</a>
+      {% endfor %}
+      {% if crumbs %}<span class="px-1">/</span>{% endif %}
+    </div>
+    <div class="flex-1"></div>
+    <span id="dirty-indicator" class="hidden text-xs text-amber-600">unsaved</span>
+    {# Transient "Saved" badge driven by tmsEditor.flashSaved (IN-PROGRESS.md
+       "Save success indicator"). Appears for ~1.5s after a successful PATCH
+       or raw PUT, then hides. Same badge serves the structured Save and the
+       Raw Save paths. #}
+    <span id="saved-indicator" class="hidden text-xs text-emerald-600" role="status" aria-live="polite">Saved</span>
+    <button type="button" id="btn-rename"
+            class="px-2 py-1 text-sm border border-slate-300 rounded hover:bg-slate-50">Rename&hellip;</button>
+    {# Move the file to a different folder. Opens a folder-picker modal
+       (see IN-PROGRESS.md "Move a test case to another folder from the UI").
+       Confirms when state.dirty so unsaved edits are not silently lost. #}
+    <button type="button" id="btn-move"
+            class="px-2 py-1 text-sm border border-slate-300 rounded hover:bg-slate-50"
+            title="Move to another folder"
+            aria-label="Move to another folder">Move&hellip;</button>
+    {# Manual disk-reload. Discards unsaved buffer (with a confirm). Safety
+       net when the SSE / watcher auto-reload path doesn't fire — see
+       IN-PROGRESS.md "Manual refresh button for the test-case editor". #}
+    <button type="button" id="btn-reload"
+            class="px-2 py-1 text-sm border border-slate-300 rounded hover:bg-slate-50"
+            title="Reload from disk; discards unsaved edits"
+            aria-label="Reload from disk">Reload</button>
+    <button type="button" id="btn-save"
+            class="px-3 py-1 text-sm bg-slate-800 text-white rounded hover:bg-slate-700 disabled:bg-slate-400 disabled:cursor-not-allowed">Save</button>
+  </div>
+
+  <h2 id="file-name-display" class="text-lg font-semibold text-slate-800 mb-3 font-mono">{{ file_name }}</h2>
+
+  <div class="border-b border-slate-200 flex gap-1 mb-4">
+    <button type="button" id="tab-btn-structured"
+            class="tab-btn px-3 py-1.5 text-sm border-b-2 border-slate-800 text-slate-800 font-medium">Structured</button>
+    <button type="button" id="tab-btn-raw"
+            class="tab-btn px-3 py-1.5 text-sm border-b-2 border-transparent text-slate-500 hover:text-slate-700">Raw</button>
+  </div>
+
+  {# --- Structured tab ------------------------------------------------ #}
+  <div id="tab-structured" class="space-y-4">
+
+    <div>
+      <label class="block text-xs uppercase tracking-wider text-slate-500 mb-1">Feature description</label>
+      <textarea id="feature-description" rows="3"
+                class="w-full border border-slate-300 rounded px-2 py-1 text-sm font-mono"
+                placeholder="What does this feature do?"></textarea>
+    </div>
+
+    <div>
+      <label class="block text-xs uppercase tracking-wider text-slate-500 mb-1">Feature tags</label>
+      <div id="feature-tags-chips"
+           class="flex flex-wrap items-center gap-1 border border-slate-300 rounded px-2 py-1 min-h-[2.25rem]"
+           data-prefix="feature">
+        <input id="feature-tags-input" type="text" placeholder="add tag&hellip;"
+               class="flex-1 min-w-[6rem] outline-none text-sm"
+               data-chip-input="feature">
+      </div>
+      <div id="feature-tags-error" class="text-xs text-red-700 mt-1 hidden"></div>
+    </div>
+
+    <details class="border border-slate-200 rounded bg-white" id="background-card">
+      <summary class="px-3 py-2 text-sm font-medium cursor-pointer select-none">
+        Background
+        <span id="background-count" class="text-xs text-slate-500 font-normal"></span>
+      </summary>
+      <div class="px-3 pb-3 border-t border-slate-100">
+        <div id="background-steps" class="space-y-1 mt-2" data-step-target="background"></div>
+        <button type="button" class="mt-2 text-xs text-slate-600 hover:text-slate-900"
+                onclick="tmsEditor.addStep('background')">+ Add background step</button>
+      </div>
+    </details>
+
+    <div class="border border-slate-200 rounded bg-white p-3 space-y-3">
+
+      <div class="flex items-center gap-4 text-sm">
+        <label class="flex items-center gap-1.5 cursor-pointer">
+          <input type="radio" name="scenario-kind" value="scenario" id="kind-scenario"
+                 class="rounded"> Scenario
+        </label>
+        <label class="flex items-center gap-1.5 cursor-pointer">
+          <input type="radio" name="scenario-kind" value="outline" id="kind-outline"
+                 class="rounded"> Scenario Outline
+        </label>
+      </div>
+
+      <div>
+        <label class="block text-xs uppercase tracking-wider text-slate-500 mb-1">Scenario name</label>
+        <input id="scenario-name" type="text"
+               class="w-full border border-slate-300 rounded px-2 py-1 text-sm"
+               placeholder="(optional)">
+      </div>
+
+      <div>
+        <label class="block text-xs uppercase tracking-wider text-slate-500 mb-1">Scenario tags</label>
+        <div id="scenario-tags-chips"
+             class="flex flex-wrap items-center gap-1 border border-slate-300 rounded px-2 py-1 min-h-[2.25rem]"
+             data-prefix="scenario">
+          <input id="scenario-tags-input" type="text" placeholder="add tag&hellip;"
+                 class="flex-1 min-w-[6rem] outline-none text-sm"
+                 data-chip-input="scenario">
+        </div>
+        <div id="scenario-tags-error" class="text-xs text-red-700 mt-1 hidden"></div>
+      </div>
+
+      <div>
+        <label class="block text-xs uppercase tracking-wider text-slate-500 mb-1">Steps</label>
+        <div id="scenario-steps" class="space-y-1" data-step-target="scenario"></div>
+        <button type="button" class="mt-2 text-xs text-slate-600 hover:text-slate-900"
+                onclick="tmsEditor.addStep('scenario')">+ Add step</button>
+      </div>
+
+      <div id="examples-section" class="hidden">
+        <label class="block text-xs uppercase tracking-wider text-slate-500 mb-1">Examples</label>
+        <div id="examples-tables" class="space-y-3"></div>
+        <button type="button" class="mt-2 text-xs text-slate-600 hover:text-slate-900"
+                onclick="tmsEditor.addExamplesBlock()">+ Add examples block</button>
+      </div>
+    </div>
+  </div>
+
+  {# --- Raw tab ------------------------------------------------------- #}
+  <div id="tab-raw" class="hidden">
+    <textarea id="raw-text" rows="24"
+              class="w-full border border-slate-300 rounded px-2 py-2 text-sm font-mono"
+              spellcheck="false"></textarea>
+    <div id="raw-error" class="mt-2 text-sm text-red-700 bg-red-50 border border-red-200 rounded px-3 py-2 hidden"></div>
+    <div class="mt-2">
+      <button type="button" id="btn-save-raw"
+              class="px-3 py-1 text-sm bg-slate-800 text-white rounded hover:bg-slate-700">Save raw</button>
+    </div>
+  </div>
+
+</div>
+
+<script>
+  // Boot the editor controller now that the partial is in the DOM.
+  if (typeof tmsBootEditor === "function") tmsBootEditor();
+</script>
