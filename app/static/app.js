@@ -51,6 +51,208 @@ function tmsRestoreTreeState() {
 }
 
 // -----------------------------------------------------------------------
+// Sidebar shell — Phase 2 (specs/features/10-feature-test-run-NEW.md)
+//
+// Two-tab vertical sidebar with:
+//   - tab switching (Directory tree <-> Test run);
+//   - lazy mount of the Test-run panel on first activation, then sticky
+//     SSE refresh even while the panel is hidden;
+//   - drag-to-resize the whole sidebar (bounds clamped, persisted in
+//     localStorage, double-click resets to default);
+//   - collapse the sidebar to just the tab strip (persisted).
+//
+// No expand-state persistence for the Test-run tree in v1 — see the
+// "persist expand-state for the Test run sidebar tab" backlog item.
+// -----------------------------------------------------------------------
+
+const TMS_SIDEBAR_WIDTH_KEY = "tms.sidebar.width";
+const TMS_SIDEBAR_COLLAPSED_KEY = "tms.sidebar.collapsed";
+
+/** Switch the active sidebar tab. If the sidebar is collapsed, expand it. */
+function tmsSwitchSidebarTab(target) {
+  const sidebar = document.getElementById("sidebar");
+  if (!sidebar) return;
+
+  if (sidebar.dataset.collapsed === "1") {
+    tmsSetSidebarCollapsed(false);
+  }
+
+  document.querySelectorAll("#sidebar-tabs .sidebar-tab").forEach((btn) => {
+    const isActive = btn.dataset.sidebarTab === target;
+    if (isActive) {
+      btn.classList.add(
+        "border-slate-800", "font-medium", "text-slate-800"
+      );
+      btn.classList.remove(
+        "border-transparent", "text-slate-500", "hover:text-slate-700"
+      );
+    } else {
+      btn.classList.remove(
+        "border-slate-800", "font-medium", "text-slate-800"
+      );
+      btn.classList.add(
+        "border-transparent", "text-slate-500", "hover:text-slate-700"
+      );
+    }
+  });
+
+  const treePane = document.getElementById("tree-pane");
+  const runPane = document.getElementById("test-run-pane");
+  if (treePane && runPane) {
+    treePane.classList.toggle("hidden", target !== "tree");
+    runPane.classList.toggle("hidden", target !== "test-run");
+  }
+
+  if (target === "test-run") tmsActivateTestRunPane();
+}
+
+/**
+ * Mount the Test-run panel on first activation: attach the htmx
+ * attributes and trigger the initial fetch. After this runs once, the
+ * panel re-renders on every `sse:change` even while it is hidden.
+ */
+function tmsActivateTestRunPane() {
+  const pane = document.getElementById("test-run-pane");
+  if (!pane || pane.dataset.mounted === "1") return;
+  pane.dataset.mounted = "1";
+  pane.setAttribute("hx-get", "/ui/test-run-tree");
+  pane.setAttribute("hx-trigger", "sse:change");
+  pane.setAttribute("hx-swap", "innerHTML");
+  if (window.htmx) {
+    htmx.process(pane);
+    htmx.ajax("GET", "/ui/test-run-tree", { target: "#test-run-pane", swap: "innerHTML" });
+  }
+}
+
+// ---- Sidebar resize ----------------------------------------------------
+
+let tmsSidebarResize = null; // { startX, startWidth }
+
+function tmsClampSidebarWidth(px) {
+  const sidebar = document.getElementById("sidebar");
+  if (!sidebar) return px;
+  const min = Number(sidebar.dataset.minWidth) || 240;
+  const max = Number(sidebar.dataset.maxWidth) || 600;
+  return Math.max(min, Math.min(max, px));
+}
+
+function tmsSetSidebarWidth(px, { persist } = { persist: true }) {
+  const sidebar = document.getElementById("sidebar");
+  if (!sidebar) return;
+  const clamped = tmsClampSidebarWidth(px);
+  sidebar.style.width = clamped + "px";
+  if (persist) {
+    try {
+      localStorage.setItem(TMS_SIDEBAR_WIDTH_KEY, String(clamped));
+    } catch (_) {}
+  }
+}
+
+function tmsStartSidebarResize(event) {
+  const sidebar = document.getElementById("sidebar");
+  if (!sidebar || sidebar.dataset.collapsed === "1") return;
+  event.preventDefault();
+  tmsSidebarResize = {
+    startX: event.clientX,
+    startWidth: sidebar.getBoundingClientRect().width,
+  };
+  document.body.style.cursor = "col-resize";
+  document.body.style.userSelect = "none";
+  document.addEventListener("mousemove", tmsOnSidebarResizeMove);
+  document.addEventListener("mouseup", tmsOnSidebarResizeEnd);
+}
+
+function tmsOnSidebarResizeMove(event) {
+  if (!tmsSidebarResize) return;
+  const dx = event.clientX - tmsSidebarResize.startX;
+  tmsSetSidebarWidth(tmsSidebarResize.startWidth + dx, { persist: false });
+}
+
+function tmsOnSidebarResizeEnd() {
+  if (!tmsSidebarResize) return;
+  const sidebar = document.getElementById("sidebar");
+  tmsSidebarResize = null;
+  document.body.style.cursor = "";
+  document.body.style.userSelect = "";
+  document.removeEventListener("mousemove", tmsOnSidebarResizeMove);
+  document.removeEventListener("mouseup", tmsOnSidebarResizeEnd);
+  if (sidebar) {
+    try {
+      localStorage.setItem(
+        TMS_SIDEBAR_WIDTH_KEY,
+        String(Math.round(sidebar.getBoundingClientRect().width))
+      );
+    } catch (_) {}
+  }
+}
+
+function tmsResetSidebarWidth() {
+  const sidebar = document.getElementById("sidebar");
+  if (!sidebar) return;
+  const def = Number(sidebar.dataset.defaultWidth) || 316;
+  tmsSetSidebarWidth(def);
+}
+
+// ---- Sidebar collapse --------------------------------------------------
+
+function tmsSetSidebarCollapsed(collapsed) {
+  const sidebar = document.getElementById("sidebar");
+  if (!sidebar) return;
+  const icon = document.getElementById("sidebar-collapse-icon");
+  const handle = document.getElementById("sidebar-resize-handle");
+  const panels = document.getElementById("sidebar-panels");
+  if (collapsed) {
+    sidebar.dataset.collapsed = "1";
+    // Remember the expanded width so toggle-back restores it.
+    sidebar.dataset.expandedWidth = String(
+      Math.round(sidebar.getBoundingClientRect().width)
+    );
+    sidebar.style.width = "36px";
+    if (panels) panels.classList.add("hidden");
+    if (handle) handle.classList.add("hidden");
+    if (icon) icon.innerHTML = "&raquo;";
+  } else {
+    sidebar.dataset.collapsed = "0";
+    const restore =
+      Number(sidebar.dataset.expandedWidth) ||
+      Number(localStorage.getItem(TMS_SIDEBAR_WIDTH_KEY)) ||
+      Number(sidebar.dataset.defaultWidth) ||
+      316;
+    sidebar.style.width = tmsClampSidebarWidth(restore) + "px";
+    if (panels) panels.classList.remove("hidden");
+    if (handle) handle.classList.remove("hidden");
+    if (icon) icon.innerHTML = "&laquo;";
+  }
+  try {
+    localStorage.setItem(TMS_SIDEBAR_COLLAPSED_KEY, collapsed ? "1" : "0");
+  } catch (_) {}
+}
+
+function tmsToggleSidebarCollapse() {
+  const sidebar = document.getElementById("sidebar");
+  if (!sidebar) return;
+  tmsSetSidebarCollapsed(sidebar.dataset.collapsed !== "1");
+}
+
+/** Apply persisted width + collapsed state on initial page load. */
+function tmsInitSidebar() {
+  const sidebar = document.getElementById("sidebar");
+  if (!sidebar) return;
+  let stored = NaN;
+  try {
+    stored = Number(localStorage.getItem(TMS_SIDEBAR_WIDTH_KEY));
+  } catch (_) {}
+  if (Number.isFinite(stored) && stored > 0) {
+    tmsSetSidebarWidth(stored, { persist: false });
+  }
+  let collapsed = false;
+  try {
+    collapsed = localStorage.getItem(TMS_SIDEBAR_COLLAPSED_KEY) === "1";
+  } catch (_) {}
+  if (collapsed) tmsSetSidebarCollapsed(true);
+}
+
+// -----------------------------------------------------------------------
 // Folder-view actions (prompt-based for v1; modal polish in step 14)
 // -----------------------------------------------------------------------
 
@@ -87,6 +289,9 @@ function tmsRefreshFolder(folderPath) {
  * @param {string|Node} opts.body       Body content; string is text, Node is appended as-is.
  * @param {string} [opts.confirmLabel]  Confirm button label. Default "Confirm".
  * @param {boolean}[opts.confirmDisabled] Initial disabled state.
+ * @param {"md"|"lg"|"xl"} [opts.size]  Modal max width. Default "md".
+ *   md = max-w-md (small forms), lg = max-w-2xl (case picker),
+ *   xl = max-w-4xl (large pickers / future).
  * @param {(ctx:{close:()=>void})=>any} [opts.onConfirm]
  *   Called when Confirm is clicked. The caller decides when to close (so a
  *   failed request can keep the modal open). Awaited if it returns a promise.
@@ -98,6 +303,7 @@ function tmsOpenModal({
   body,
   confirmLabel = "Confirm",
   confirmDisabled = false,
+  size = "md",
   onConfirm,
 }) {
   const overlay = document.createElement("div");
@@ -106,8 +312,10 @@ function tmsOpenModal({
   overlay.setAttribute("role", "dialog");
   overlay.setAttribute("aria-modal", "true");
 
+  const sizeClass =
+    size === "xl" ? "max-w-4xl" : size === "lg" ? "max-w-2xl" : "max-w-md";
   const card = document.createElement("div");
-  card.className = "bg-white rounded shadow-lg w-full max-w-md mx-4 p-4";
+  card.className = `bg-white rounded shadow-lg w-full ${sizeClass} mx-4 p-4`;
   card.innerHTML =
     '<h3 class="text-lg font-semibold mb-3 text-slate-800"></h3>' +
     '<div class="mb-4" data-role="body"></div>' +
@@ -276,6 +484,726 @@ function tmsCreateFile(parent) {
 
   // Defer focus to after the overlay is in the DOM.
   setTimeout(() => nameInput.focus(), 0);
+}
+
+// -----------------------------------------------------------------------
+// Test-run create flow — Phase 3.B of `10-feature-test-run-NEW.md`.
+//
+// `tmsCreateRun(project, group)` opens a single modal containing:
+//   - run name (text)
+//   - description (textarea, optional)
+//   - case picker: flat checkbox table of every .feature file under the
+//     given project, sorted by folder path then file name, with a search
+//     filter on top.
+//
+// On confirm the run's file_name is derived from the name via a small
+// slugifier; POST hits /api/runs and on success the main pane is
+// navigated to /ui/run/<project>/<group>/<file_name>.yaml (the route
+// itself lands in Phase 3.C — clicks before then 404 with a clean
+// envelope, the modal closes either way).
+//
+// The case-picker helper is factored out so Phase 3.E's "+ Add test
+// case" modal in the run editor reuses it verbatim with the editor's
+// current case_paths excluded.
+// -----------------------------------------------------------------------
+
+/**
+ * Derive a YAML filename stem from a human run name.
+ *
+ * Rules (kept deliberately simple — the server's `_validate_segment` is
+ * the source of truth; this is only a UX convenience):
+ *   - Lowercase.
+ *   - Whitespace collapses to single hyphens.
+ *   - Strip anything that isn't [a-z0-9_-].
+ *   - Trim leading / trailing hyphens.
+ * The server appends `.yaml` automatically (see `_normalize_run_filename`).
+ */
+function tmsSlugifyForFilename(name) {
+  return String(name || "")
+    .toLowerCase()
+    .replace(/\s+/g, "-")
+    .replace(/[^a-z0-9_-]+/g, "")
+    .replace(/^-+|-+$/g, "");
+}
+
+/**
+ * Fetch the full directory tree from /api/tree and return a flat array
+ * of {path, file_name, folder_path} for every .feature file under the
+ * given project, sorted by folder_path ASC then file_name ASC.
+ */
+async function tmsFetchProjectFeaturePaths(project) {
+  const r = await fetch("/api/tree", { headers: { Accept: "application/json" } });
+  if (!r.ok) throw new Error("Could not load tree: " + r.statusText);
+  const tree = await r.json();
+  const projectNode = (tree.children || []).find(
+    (c) => c.type === "folder" && c.name === project
+  );
+  if (!projectNode) return [];
+  const out = [];
+  const walk = (node) => {
+    if (!node) return;
+    if (node.type === "feature") {
+      const path = node.path;
+      const slash = path.lastIndexOf("/");
+      out.push({
+        path,
+        file_name: slash === -1 ? path : path.slice(slash + 1),
+        folder_path: slash === -1 ? "" : path.slice(0, slash),
+      });
+    } else if (Array.isArray(node.children)) {
+      for (const c of node.children) walk(c);
+    }
+  };
+  walk(projectNode);
+  out.sort((a, b) => {
+    if (a.folder_path !== b.folder_path) {
+      return a.folder_path < b.folder_path ? -1 : 1;
+    }
+    return a.file_name < b.file_name ? -1 : a.file_name > b.file_name ? 1 : 0;
+  });
+  return out;
+}
+
+/**
+ * Build a flat checkbox table picker for .feature files.
+ *
+ * @param {{path: string, file_name: string, folder_path: string}[]} features
+ * @param {object} [opts]
+ * @param {Set<string>} [opts.exclude] Paths to filter OUT (already-included).
+ * @param {() => void} [opts.onChange] Called after every selection change.
+ *
+ * @returns {{
+ *   node: HTMLElement,
+ *   getSelected: () => string[],
+ *   countVisible: () => number,
+ * }}
+ */
+function tmsBuildCasePicker(features, opts = {}) {
+  const exclude = opts.exclude instanceof Set ? opts.exclude : new Set();
+  const visible = features.filter((f) => !exclude.has(f.path));
+
+  const wrap = document.createElement("div");
+  wrap.className = "border border-slate-200 rounded bg-white";
+
+  const head = document.createElement("div");
+  head.className = "px-2 py-2 border-b border-slate-200 flex items-center gap-2";
+  head.innerHTML =
+    '<input type="search" data-role="case-filter" placeholder="Filter cases\u2026" autocomplete="off"' +
+    ' class="flex-1 border border-slate-300 rounded px-2 py-1 text-sm" />' +
+    '<span data-role="case-count" class="text-xs text-slate-500"></span>';
+  wrap.appendChild(head);
+
+  const scroll = document.createElement("div");
+  scroll.className = "max-h-72 overflow-auto";
+  wrap.appendChild(scroll);
+
+  const table = document.createElement("table");
+  table.className = "w-full text-sm";
+  table.innerHTML =
+    '<thead class="bg-slate-50 text-slate-600 sticky top-0">' +
+    "  <tr>" +
+    '    <th class="text-left px-2 py-1.5 font-medium w-8"></th>' +
+    '    <th class="text-left px-2 py-1.5 font-medium">Folder</th>' +
+    '    <th class="text-left px-2 py-1.5 font-medium">File</th>' +
+    "  </tr>" +
+    "</thead>";
+  const tbody = document.createElement("tbody");
+  table.appendChild(tbody);
+  scroll.appendChild(table);
+
+  // Empty-state row when nothing is available (project has no features,
+  // or all features are already in the run).
+  if (visible.length === 0) {
+    const empty = document.createElement("div");
+    empty.className = "px-3 py-6 text-center text-slate-400 italic text-sm";
+    empty.textContent =
+      features.length === 0
+        ? "No .feature files in this project yet."
+        : "All test cases are already in this run.";
+    scroll.innerHTML = "";
+    scroll.appendChild(empty);
+  } else {
+    for (const f of visible) {
+      const tr = document.createElement("tr");
+      tr.className = "border-t border-slate-100 hover:bg-slate-50";
+      tr.dataset.path = f.path;
+      tr.dataset.folder = (f.folder_path || "").toLowerCase();
+      tr.dataset.file = f.file_name.toLowerCase();
+      tr.innerHTML =
+        '<td class="px-2 py-1.5 align-top">' +
+        '  <input type="checkbox" class="rounded border-slate-300" />' +
+        "</td>" +
+        '<td class="px-2 py-1.5 text-slate-500"></td>' +
+        '<td class="px-2 py-1.5 text-slate-800"></td>';
+      tr.children[1].textContent = f.folder_path;
+      tr.children[2].textContent = f.file_name;
+      tbody.appendChild(tr);
+    }
+  }
+
+  const countSpan = head.querySelector('[data-role="case-count"]');
+  const filterInput = head.querySelector('[data-role="case-filter"]');
+
+  const updateCount = () => {
+    const checked = tbody.querySelectorAll('input[type="checkbox"]:checked').length;
+    countSpan.textContent =
+      checked === 0
+        ? `${visible.length} cases`
+        : `${checked} of ${visible.length} selected`;
+  };
+  updateCount();
+
+  tbody.addEventListener("change", (e) => {
+    if (e.target.matches('input[type="checkbox"]')) {
+      updateCount();
+      opts.onChange?.();
+    }
+  });
+
+  // Click anywhere on the row to toggle (cheaper than clicking the box).
+  tbody.addEventListener("click", (e) => {
+    if (e.target.tagName === "INPUT") return;
+    const tr = e.target.closest("tr");
+    if (!tr) return;
+    const box = tr.querySelector('input[type="checkbox"]');
+    if (!box) return;
+    box.checked = !box.checked;
+    updateCount();
+    opts.onChange?.();
+  });
+
+  filterInput.addEventListener("input", () => {
+    const q = filterInput.value.trim().toLowerCase();
+    let shown = 0;
+    for (const tr of tbody.children) {
+      const hit =
+        !q || tr.dataset.folder.includes(q) || tr.dataset.file.includes(q);
+      tr.classList.toggle("hidden", !hit);
+      if (hit) shown += 1;
+    }
+    // Update the count to reflect the filter without changing selection.
+    const checked = tbody.querySelectorAll('input[type="checkbox"]:checked').length;
+    countSpan.textContent =
+      q && shown !== visible.length
+        ? `${shown} shown · ${checked} selected`
+        : checked === 0
+        ? `${visible.length} cases`
+        : `${checked} of ${visible.length} selected`;
+  });
+
+  return {
+    node: wrap,
+    getSelected: () =>
+      Array.from(tbody.querySelectorAll('input[type="checkbox"]:checked'))
+        .map((box) => box.closest("tr").dataset.path),
+    countVisible: () => visible.length,
+  };
+}
+
+/**
+ * Open the "+ New run" modal for the given (project, group).
+ *
+ * Called by folder_test_run_group.html's toolbar button and empty-state
+ * CTA. Field-level validation is purely "non-empty after trim" on the
+ * client; server-side errors (name conflict, depth violation, etc.)
+ * propagate from /api/runs and are surfaced inline in the modal so the
+ * user can correct and retry without losing their selection.
+ */
+async function tmsCreateRun(project, group) {
+  let features;
+  try {
+    features = await tmsFetchProjectFeaturePaths(project);
+  } catch (e) {
+    alert("Could not load test cases: " + e.message);
+    return;
+  }
+
+  const body = document.createElement("div");
+  body.innerHTML =
+    '<label class="block text-sm text-slate-600 mb-1" for="tms-cr-name">Run name</label>' +
+    '<input id="tms-cr-name" type="text" autocomplete="off"' +
+    ' class="w-full border border-slate-300 rounded px-2 py-1.5 text-sm bg-white" />' +
+    '<label class="block text-sm text-slate-600 mt-3 mb-1" for="tms-cr-desc">Description <span class="text-slate-400 font-normal">(optional)</span></label>' +
+    '<textarea id="tms-cr-desc" rows="2"' +
+    ' class="w-full border border-slate-300 rounded px-2 py-1.5 text-sm bg-white resize-y"></textarea>' +
+    '<label class="block text-sm text-slate-600 mt-3 mb-1">Test cases</label>' +
+    '<div data-role="picker-host"></div>' +
+    '<p data-role="error" class="hidden mt-2 text-sm text-red-600"></p>';
+  const nameInput = body.querySelector("#tms-cr-name");
+  const descInput = body.querySelector("#tms-cr-desc");
+  const pickerHost = body.querySelector('[data-role="picker-host"]');
+  const error = body.querySelector('[data-role="error"]');
+
+  let modalRef = null;
+  const refreshGate = () => {
+    if (!modalRef) return;
+    const ok =
+      nameInput.value.trim().length > 0 && picker.getSelected().length > 0;
+    modalRef.setConfirmDisabled(!ok);
+  };
+  const picker = tmsBuildCasePicker(features, { onChange: refreshGate });
+  pickerHost.appendChild(picker.node);
+
+  modalRef = tmsOpenModal({
+    title: `Create run in ${project} / ${group}`,
+    body,
+    size: "lg",
+    confirmLabel: "Create run",
+    confirmDisabled: true,
+    onConfirm: async ({ close }) => {
+      const name = nameInput.value.trim();
+      const description = descInput.value.trim();
+      const case_paths = picker.getSelected();
+      if (!name || case_paths.length === 0) return;
+      const file_name = tmsSlugifyForFilename(name);
+      if (!file_name) {
+        error.textContent =
+          "Run name produces an empty file name; use letters or digits.";
+        error.classList.remove("hidden");
+        return;
+      }
+      error.classList.add("hidden");
+      try {
+        await tmsApiPost("/api/runs", {
+          project,
+          group,
+          name,
+          file_name,
+          description,
+          case_paths,
+        });
+        close();
+        // Navigate the main pane to the new run editor. The route lands
+        // in Phase 3.C; until then this swap will 404 cleanly via the
+        // blueprint's error handler.
+        htmx.ajax(
+          "GET",
+          `/ui/run/${project}/${group}/${file_name}.yaml`,
+          { target: "#main-pane", swap: "innerHTML" }
+        );
+      } catch (e) {
+        error.textContent = e.message;
+        error.classList.remove("hidden");
+      }
+    },
+  });
+
+  nameInput.addEventListener("input", refreshGate);
+  setTimeout(() => nameInput.focus(), 0);
+}
+
+// -----------------------------------------------------------------------
+// Run editor controller — Phase 3.D of `10-feature-test-run-NEW.md`.
+//
+// Singleton mirroring `tmsEditor`: bootstrapped by run_editor.html's
+// tail <script> on every htmx swap. Owns dirty tracking, Save (PATCH),
+// Reload (re-fetch the partial), and the transient Saved badge. Add /
+// remove case rows + tombstone styling + SSE listener land in 3.E–3.G.
+//
+// Dirty is computed by comparing a JSON snapshot of {name, description,
+// results[]} against the live DOM read; this gives us a single
+// source-of-truth check that costs ~one stringify per keystroke (cheap
+// for v1; revisit if runs grow past ~200 rows).
+// -----------------------------------------------------------------------
+
+const tmsRunEditor = {
+  state: null,
+  // Banner message deferred across an htmx.ajax re-mount; consumed by
+  // the next boot() so the announcement survives the swap.
+  _pendingBanner: null,
+
+  /** Boot from the rendered #run-editor partial. */
+  boot() {
+    const root = document.getElementById("run-editor");
+    if (!root) {
+      this.state = null;
+      return;
+    }
+    this.state = {
+      project: root.dataset.project,
+      group: root.dataset.group,
+      file_name: root.dataset.fileName,
+      created_at: root.dataset.createdAt,
+      dirty: false,
+      baselineJson: "",
+      _savedTimer: null,
+    };
+    this.state.baselineJson = JSON.stringify(this._readCurrent());
+    this._wireInputs();
+    this._wireHeaderButtons();
+    this._refreshDirty();
+    // Surface any banner queued by a prior instance's external-change
+    // / discard-mine flow.
+    if (this._pendingBanner) {
+      const b = this._pendingBanner;
+      this._pendingBanner = null;
+      this._showBanner({
+        kind: b.kind,
+        message: b.message,
+        actions: [{ label: "Dismiss", action: () => this._hideBanner() }],
+      });
+    }
+  },
+
+  /** Snapshot the live DOM into the shape patch_run expects. */
+  _readCurrent() {
+    const nameEl = document.getElementById("run-name");
+    const descEl = document.getElementById("run-description");
+    const rows = document.querySelectorAll("#run-results tbody tr");
+    const results = [];
+    rows.forEach((tr) => {
+      results.push({
+        file_path: tr.dataset.filePath,
+        result: tr.querySelector(".run-result-select").value,
+        remark: tr.querySelector(".run-remark").value,
+      });
+    });
+    return {
+      name: nameEl ? nameEl.value : "",
+      description: descEl ? descEl.value : "",
+      results,
+    };
+  },
+
+  _wireInputs() {
+    const onChange = () => this._refreshDirty();
+    document.getElementById("run-name").addEventListener("input", onChange);
+    document.getElementById("run-description").addEventListener("input", onChange);
+    // Delegated handlers on the tbody so rows added by "+ Add test case"
+    // (Phase 3.E) participate without per-row re-wiring.
+    const tbody = document.querySelector("#run-results tbody");
+    if (tbody) {
+      tbody.addEventListener("input", (e) => {
+        if (e.target.matches(".run-remark")) onChange();
+      });
+      tbody.addEventListener("change", (e) => {
+        if (e.target.matches(".run-result-select")) onChange();
+      });
+      tbody.addEventListener("click", (e) => {
+        if (e.target.matches(".run-row-remove")) {
+          e.target.closest("tr").remove();
+          this._afterRowsChanged();
+        }
+      });
+    }
+  },
+
+  _wireHeaderButtons() {
+    document
+      .getElementById("btn-run-save")
+      .addEventListener("click", () => this.save());
+    document
+      .getElementById("btn-run-reload")
+      .addEventListener("click", () => this.reload());
+    document
+      .getElementById("btn-run-add-case")
+      .addEventListener("click", () => this._onAddCaseClicked());
+  },
+
+  /** Clone a fresh row from the server-rendered <template> prototype. */
+  _createResultRow(file_path) {
+    const tpl = document.getElementById("run-result-row-template");
+    const tr = tpl.content.firstElementChild.cloneNode(true);
+    tr.dataset.filePath = file_path;
+    const linkCell = tr.children[0];
+    linkCell.setAttribute("title", file_path);
+    const link = linkCell.querySelector(".run-row-link");
+    link.textContent = file_path;
+    link.setAttribute("hx-get", `/ui/file/${file_path}`);
+    // Result defaults to PENDING (spec: "newly-checked row is appended
+    // as a fresh PENDING row with empty remark").
+    tr.querySelector(".run-result-select").value = "PENDING";
+    tr.querySelector(".run-remark").value = "";
+    return tr;
+  },
+
+  /** Toggle table / empty-state visibility + refresh dirty. */
+  _afterRowsChanged() {
+    const tbody = document.querySelector("#run-results tbody");
+    const hasRows = !!(tbody && tbody.children.length > 0);
+    const table = document.getElementById("run-results");
+    const empty = document.getElementById("run-results-empty");
+    if (table) table.classList.toggle("hidden", !hasRows);
+    if (empty) empty.classList.toggle("hidden", hasRows);
+    this._refreshDirty();
+  },
+
+  async _onAddCaseClicked() {
+    if (!this.state) return;
+    const { project } = this.state;
+    let features;
+    try {
+      features = await tmsFetchProjectFeaturePaths(project);
+    } catch (e) {
+      alert("Could not load test cases: " + e.message);
+      return;
+    }
+    // Exclude cases that are already in the run (spec: "filtered to
+    // exclude cases already in `results`").
+    const existing = new Set();
+    document
+      .querySelectorAll("#run-results tbody tr")
+      .forEach((tr) => existing.add(tr.dataset.filePath));
+
+    const body = document.createElement("div");
+    let modalRef = null;
+    const picker = tmsBuildCasePicker(features, {
+      exclude: existing,
+      onChange: () => {
+        if (!modalRef) return;
+        modalRef.setConfirmDisabled(picker.getSelected().length === 0);
+      },
+    });
+    body.appendChild(picker.node);
+
+    modalRef = tmsOpenModal({
+      title: "Add test cases",
+      body,
+      size: "lg",
+      confirmLabel: "Add cases",
+      confirmDisabled: true,
+      onConfirm: ({ close }) => {
+        const paths = picker.getSelected();
+        if (paths.length === 0) return;
+        const tbody = document.querySelector("#run-results tbody");
+        for (const p of paths) {
+          tbody.appendChild(this._createResultRow(p));
+        }
+        // Tell htmx to process the new hx-get attributes on the cloned
+        // file-path links so clicks behave like the server-rendered
+        // rows.
+        if (window.htmx && tbody) htmx.process(tbody);
+        close();
+        this._afterRowsChanged();
+      },
+    });
+  },
+
+  _refreshDirty() {
+    if (!this.state) return;
+    const liveJson = JSON.stringify(this._readCurrent());
+    const dirty = liveJson !== this.state.baselineJson;
+    this._setDirty(dirty);
+  },
+
+  _setDirty(d) {
+    this.state.dirty = !!d;
+    const dirtyEl = document.getElementById("run-dirty-indicator");
+    const saveBtn = document.getElementById("btn-run-save");
+    if (dirtyEl) dirtyEl.classList.toggle("hidden", !this.state.dirty);
+    if (saveBtn) saveBtn.disabled = !this.state.dirty;
+    if (this.state.dirty) this._hideSavedBadge();
+  },
+
+  flashSaved() {
+    const el = document.getElementById("run-saved-indicator");
+    if (!el) return;
+    el.classList.remove("hidden");
+    if (this.state._savedTimer) clearTimeout(this.state._savedTimer);
+    this.state._savedTimer = setTimeout(() => {
+      el.classList.add("hidden");
+      this.state._savedTimer = null;
+    }, 1500);
+  },
+
+  _hideSavedBadge() {
+    const el = document.getElementById("run-saved-indicator");
+    if (el) el.classList.add("hidden");
+    if (this.state && this.state._savedTimer) {
+      clearTimeout(this.state._savedTimer);
+      this.state._savedTimer = null;
+    }
+  },
+
+  async save() {
+    if (!this.state || !this.state.dirty) return;
+    const { project, group, file_name, created_at } = this.state;
+    const current = this._readCurrent();
+    const payload = {
+      name: current.name,
+      created_at,
+      description: current.description,
+      results: current.results,
+    };
+    const saveBtn = document.getElementById("btn-run-save");
+    saveBtn.disabled = true;
+    try {
+      const r = await fetch(
+        `/api/runs/${project}/${group}/${file_name}`,
+        {
+          method: "PATCH",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(payload),
+        }
+      );
+      if (!r.ok) {
+        let msg = r.statusText;
+        try {
+          const j = await r.json();
+          if (j && j.error && j.error.message) msg = j.error.message;
+        } catch (_) {}
+        throw new Error(msg);
+      }
+      this.state.baselineJson = JSON.stringify(current);
+      this._setDirty(false);
+      this.flashSaved();
+    } catch (e) {
+      alert("Could not save run: " + e.message);
+      this._refreshDirty();
+    }
+  },
+
+  async reload() {
+    if (!this.state) return;
+    if (this.state.dirty) {
+      const ok = window.confirm(
+        "Reload from disk? Your unsaved changes will be discarded."
+      );
+      if (!ok) return;
+    }
+    const { project, group, file_name } = this.state;
+    // Re-render the whole partial; the tail <script> calls tmsBootRunEditor
+    // again, which captures a fresh baseline and clears the dirty flag.
+    htmx.ajax("GET", `/ui/run/${project}/${group}/${file_name}`, {
+      target: "#main-pane",
+      swap: "innerHTML",
+    });
+  },
+
+  // ---- External-change handling — Phase 3.G (mirrors tmsEditor) -----
+
+  /**
+   * Called by the body-level `sse:change` handler. Same state machine
+   * as the file editor's `onExternalChange`:
+   *   - run YAML removed on disk → "removed" banner with Discard
+   *   - run changed and we're not dirty → silent reload + info banner
+   *   - run changed and we're dirty → "external change" banner with
+   *     Reload (discard mine) / Keep editing
+   *
+   * The reload path goes through `/ui/run/...` (not the JSON API) so
+   * the server re-renders the partial with fresh tombstone flags;
+   * tombstone state is therefore always live with respect to the
+   * filesystem.
+   */
+  async onExternalChange() {
+    if (!this.state) return;
+    const { project, group, file_name } = this.state;
+    let diskJson;
+    let removed = false;
+    try {
+      const r = await fetch(`/api/runs/${project}/${group}/${file_name}`);
+      if (r.status === 404) {
+        removed = true;
+      } else if (r.ok) {
+        const data = await r.json();
+        // Project into the same shape baselineJson uses so the
+        // comparison is apples-to-apples (no created_at, no missing).
+        diskJson = JSON.stringify({
+          name: data.name,
+          description: data.description,
+          results: (data.results || []).map((rr) => ({
+            file_path: rr.file_path,
+            result: rr.result,
+            remark: rr.remark,
+          })),
+        });
+      } else {
+        return;
+      }
+    } catch (_e) {
+      return;
+    }
+    if (removed) {
+      this._showBanner({
+        kind: "error",
+        message: "This run was removed on disk.",
+        actions: [
+          { label: "Discard", action: () => this._navigateToGroup() },
+        ],
+      });
+      return;
+    }
+    if (diskJson === this.state.baselineJson) return;
+    if (!this.state.dirty) {
+      this._reloadAndAnnounce(
+        "info",
+        "Run was updated externally; the editor reloaded."
+      );
+      return;
+    }
+    this._showBanner({
+      kind: "warn",
+      message: "Run changed externally while you have unsaved changes.",
+      actions: [
+        {
+          label: "Reload (discard mine)",
+          action: () => {
+            this._setDirty(false);
+            this._reloadAndAnnounce(
+              "info",
+              "Run reloaded from disk; your edits were discarded."
+            );
+          },
+        },
+        { label: "Keep editing", action: () => this._hideBanner() },
+      ],
+    });
+  },
+
+  _reloadAndAnnounce(kind, message) {
+    if (!this.state) return;
+    this._pendingBanner = { kind, message };
+    const { project, group, file_name } = this.state;
+    htmx.ajax("GET", `/ui/run/${project}/${group}/${file_name}`, {
+      target: "#main-pane",
+      swap: "innerHTML",
+    });
+  },
+
+  _navigateToGroup() {
+    if (!this.state) return;
+    const { project, group } = this.state;
+    htmx.ajax("GET", `/ui/folder/${project}/test-run/${group}`, {
+      target: "#main-pane",
+      swap: "innerHTML",
+    });
+  },
+
+  _showBanner({ kind, message, actions }) {
+    const el = document.getElementById("run-editor-banner");
+    if (!el) return;
+    const colors =
+      {
+        info: "bg-blue-50 border-blue-200 text-blue-800",
+        warn: "bg-amber-50 border-amber-200 text-amber-800",
+        error: "bg-red-50 border-red-200 text-red-800",
+      }[kind] || "bg-slate-50 border-slate-200 text-slate-800";
+    el.className =
+      "mb-3 px-3 py-2 rounded border flex items-center gap-3 " + colors;
+    el.innerHTML = `<span class="flex-1">${tmsEscape(message)}</span>`;
+    actions.forEach((a) => {
+      const btn = document.createElement("button");
+      btn.type = "button";
+      btn.className =
+        "px-2 py-1 text-xs border border-current rounded hover:bg-white/50";
+      btn.textContent = a.label;
+      btn.addEventListener("click", a.action);
+      el.appendChild(btn);
+    });
+  },
+
+  _hideBanner() {
+    const el = document.getElementById("run-editor-banner");
+    if (el) {
+      el.className = "hidden mb-3";
+      el.innerHTML = "";
+    }
+  },
+};
+
+/** Called by run_editor.html's tail <script> on every htmx swap. */
+function tmsBootRunEditor() {
+  tmsRunEditor.boot();
 }
 
 // -----------------------------------------------------------------------
@@ -1515,25 +2443,44 @@ document.body.addEventListener("htmx:afterSwap", (e) => {
     if (!document.getElementById("file-editor")) {
       tmsEditor.state = null;
     }
+    // Same housekeeping for the run editor: when the main pane no
+    // longer hosts it, drop the in-memory state so SSE / beforeunload
+    // stop guarding a run that is no longer on screen.
+    if (!document.getElementById("run-editor")) {
+      tmsRunEditor.state = null;
+    }
   }
 });
 
-// SSE-driven external-change detection for the open editor (PLAN.md §9.5).
+// SSE-driven external-change detection. PLAN.md §9.5 covers the file
+// editor; Phase 3.G of 10-feature-test-run-NEW.md extends it to the
+// run editor with the same state machine.
 document.body.addEventListener("sse:change", () => {
   if (tmsEditor.state) tmsEditor.onExternalChange();
+  if (tmsRunEditor.state) tmsRunEditor.onExternalChange();
 });
 
-// Wire the persistent top-bar search input once the DOM is ready.
-// (The form lives in base.html so it's available immediately on first paint.)
-if (document.readyState === "loading") {
-  document.addEventListener("DOMContentLoaded", tmsWireSearch);
-} else {
+// Wire the persistent top-bar search input + sidebar shell once the DOM
+// is ready. Both live in base.html so they're available immediately on
+// first paint.
+function tmsBootShell() {
   tmsWireSearch();
+  tmsInitSidebar();
+}
+
+if (document.readyState === "loading") {
+  document.addEventListener("DOMContentLoaded", tmsBootShell);
+} else {
+  tmsBootShell();
 }
 
 // Guard against losing unsaved editor state on tab close / refresh.
+// Either the file editor or the run editor can hold a dirty buffer.
 window.addEventListener("beforeunload", (e) => {
-  if (tmsEditor.state && tmsEditor.state.dirty) {
+  const dirty =
+    (tmsEditor.state && tmsEditor.state.dirty) ||
+    (tmsRunEditor.state && tmsRunEditor.state.dirty);
+  if (dirty) {
     e.preventDefault();
     e.returnValue = "";
     return "";

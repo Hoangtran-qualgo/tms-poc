@@ -189,3 +189,86 @@ Items fixed during v1 manual verification.
     `folder_subfolder.html` breadcrumb + lists, depth-4 file editor
     breadcrumb anchors, JSON state cleanup), and 4 E2E micro-tests
     (integrated module / sub-folder / file-editor / tree flow).
+
+- **New feature: test run (typed area, run editor, tombstone
+  render, external-change banner).** _Investigate signed off
+  Jun 5, 2026; Do phase shipped Jun 5, 2026 in three slices._
+  - **Spec**: `root/specs/features/10-feature-test-run-NEW.md`
+    (retroactive as-shipped style — superseded the original
+    forward-looking Investigate spec). Aggregated summary entry
+    in `root/specs/features/00-summary.md` § 10 +
+    workflows W10 / W11 / W12.
+  - **Phase 1 — Backend** (storage + HTTP API, zero UI churn).
+    New on-disk schema `<project>/test-run/<group>/<run>.yaml`.
+    `TestRun` / `RunResult` dataclasses + `RUN_RESULTS` +
+    `validate_run` in `root/app/models.py`. `RunParseError`
+    (HTTP 422) in `root/app/errors.py`. Storage gained
+    `RESERVED_DEPTH2_NAMES = frozenset({"test-run"})`,
+    `_normalize_run_filename`, and ten run methods
+    (`create_run_group`, `delete_run_group`, `list_run_groups`,
+    `list_runs`, `create_run`, `read_run`, `write_run`,
+    `delete_run`, `add_run_case`, `remove_run_case`,
+    `update_run_result`) in `root/app/storage.py`. HTTP routes
+    (`POST /api/runs`, four GET / PATCH / DELETE on
+    `/api/runs/<project>/<group>/<file_name>`, three case-level
+    routes, plus `POST` / `DELETE` for groups) in
+    `root/app/server.py`. `pyyaml` pinned in
+    `root/requirements.txt`. Depth-2 reservation + no-`.feature`-
+    under-`test-run/` rules surface as 409 via
+    `NameConflictError`.
+  - **Phase 2 — UI shell** (sidebar restructure, Test run tab).
+    Vertical-tab sidebar with Directory tree + Test run tabs in
+    `root/app/templates/base.html`; drag-to-resize handle
+    (240..600 px, double-click resets to 316 px), localStorage
+    width + collapsed persistence. `Storage.list_tree` filters
+    `test-run` at depth 1; `Storage.list_folder` filters it from
+    project-view module tables; new `Storage.list_test_run_tree`
+    aggregates the typed area across projects. New UI route
+    `GET /ui/test-run-tree` renders
+    `root/app/templates/test_run_sidebar.html`. JS:
+    `tmsSwitchSidebarTab`, `tmsActivateTestRunPane`,
+    `tmsInitSidebar` (+ resize / collapse) in
+    `root/app/static/app.js`. The Test run pane is lazy-mounted
+    on first activation; once mounted it subscribes to
+    `sse:change` and re-renders even while hidden.
+  - **Phase 3 — UI integration** (run editor + create flow).
+    Dispatcher branch on `segments[1] == "test-run"` in
+    `ui_folder` → `folder_test_run_area.html` /
+    `folder_test_run_group.html` (groups landing + runs list
+    with status-breakdown badges and `+ New run` toolbar). New
+    route `GET /ui/run/<project>/<group>/<file_name>` renders
+    `root/app/templates/run_editor.html` (header buttons + run
+    fields + results table + `<template>` row prototype + banner
+    placeholder). JS controller `tmsRunEditor` in
+    `root/app/static/app.js`: dirty tracking via
+    JSON-stringify compare, whole-doc PATCH save, manual
+    Reload, `Saved` 1.5 s badge, `beforeunload` guard, event-
+    delegated per-row remove + remark + select listeners, `+
+    Add test case` modal reusing a new `tmsBuildCasePicker`
+    primitive (flat checkbox table with live filter +
+    exclude-set support), tombstone rendering via server-
+    computed `missing: bool` per row (strike-through + "test
+    case was removed" override with the hidden-but-preserved
+    remark textarea so Save round-trips the stored note),
+    `onExternalChange()` state machine mirroring the file
+    editor's (removed / changed-clean / changed-dirty) with a
+    deferred-banner sentinel that survives the
+    `htmx.ajax` re-mount. `tmsCreateRun(project, group)` opens
+    an `lg` modal hosting the picker; `tmsOpenModal` gained a
+    `size: "md" | "lg" | "xl"` parameter; `tmsSlugifyForFilename`
+    derives the run's `file_name` from the human label.
+  - **Side fixes**: `folder_test_run_group.html`'s status
+    badge for `BLOCKED` was corrected to `SKIPPED` (the actual
+    `RUN_RESULTS` enum value) before the new badge could ever
+    render incorrectly.
+  - **Verified** via 27 standalone smoke scripts in
+    `.smoke-scratch/` (13 `p2_*` + 14 `p3_*` files, one per
+    scenario), totalling 52 PASS assertions across Phases 2
+    and 3. Phase 1 was verified by hand with curl as documented
+    in the original Investigate spec. Browser-level smokes
+    (3.a–3.f from the spec) covered via manual gestures
+    documented in the spec's *Acceptance criteria*. Same-process
+    SSE suppression (writer's own Save silences both tabs) is a
+    shared caveat with the file editor; end-to-end "two tabs"
+    demos require out-of-band edits (`git restore`, terminal
+    `vim`, second Flask process).

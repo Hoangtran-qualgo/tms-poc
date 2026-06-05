@@ -13,18 +13,25 @@ Exception → HTTP code mapping (PLAN.md §8.5):
 - :class:`~app.errors.NameConflictError` → ``409 name_conflict``
 - :class:`~app.errors.ValidationError`   → ``422 validation_error``
 - :class:`~app.errors.GherkinParseError` → ``422 parse_error``
+- :class:`~app.errors.RunParseError`     → ``422 run_parse_error``
 - anything else                        → ``500 internal_error``
 """
 
 from __future__ import annotations
 
+from urllib.parse import unquote
 from typing import Any
 
 from flask import Blueprint, Response, current_app, jsonify, render_template, request
 from werkzeug.exceptions import HTTPException
 
-from .errors import GherkinParseError, NameConflictError, ValidationError
-from .models import Feature
+from .errors import (
+    GherkinParseError,
+    NameConflictError,
+    RunParseError,
+    ValidationError,
+)
+from .models import RUN_RESULTS, Feature, TestRun
 from .sse import sse_response
 from .storage import MAX_FOLDER_DEPTH, Storage
 from .watcher import EventBus
@@ -269,6 +276,132 @@ def put_file_raw(p: str):
 
 
 # ---------------------------------------------------------------------------
+# Test runs (typed area under <project>/test-run/)
+# ---------------------------------------------------------------------------
+#
+# See specs/features/10-feature-test-run-NEW.md for the design. All routes
+# below sit alongside the existing /api/* surface and return the same
+# {error: {code, message, details}} envelope on failure.
+
+
+def _require_list_of_str(value: Any, field: str) -> list[str]:
+    if not isinstance(value, list) or not all(
+        isinstance(x, str) for x in value
+    ):
+        raise ValueError(
+            f"Body field {field!r} must be a list of strings."
+        )
+    return list(value)
+
+
+def _require_optional_str(value: Any, field: str) -> str:
+    if value is None:
+        return ""
+    if not isinstance(value, str):
+        raise ValueError(f"Body field {field!r} must be a string if present.")
+    return value
+
+
+@api.post("/runs/<project>/groups")
+def post_run_group(project: str):
+    body = _require_json_object()
+    name = _require_non_empty_string(body.get("name"), "name")
+    _storage().create_run_group(project, name)
+    return jsonify({"ok": True}), 201
+
+
+@api.delete("/runs/<project>/groups/<group>")
+def delete_run_group(project: str, group: str):
+    _storage().delete_run_group(project, group)
+    return "", 204
+
+
+@api.post("/runs")
+def post_run():
+    body = _require_json_object()
+    project = _require_non_empty_string(body.get("project"), "project")
+    group = _require_non_empty_string(body.get("group"), "group")
+    name = _require_non_empty_string(body.get("name"), "name")
+    file_name = _require_non_empty_string(body.get("file_name"), "file_name")
+    case_paths = _require_list_of_str(body.get("case_paths", []), "case_paths")
+    description = _require_optional_str(body.get("description"), "description")
+    _storage().create_run(
+        project=project,
+        group=group,
+        name=name,
+        file_name=file_name,
+        case_paths=case_paths,
+        description=description,
+    )
+    return jsonify({"ok": True}), 201
+
+
+@api.get("/runs/<project>/<group>")
+def get_run_list(project: str, group: str):
+    return jsonify({"runs": _storage().list_runs(project, group)})
+
+
+@api.get("/runs/<project>/<group>/<file_name>")
+def get_run(project: str, group: str, file_name: str):
+    run = _storage().read_run(project, group, file_name)
+    return jsonify(run.to_dict())
+
+
+@api.patch("/runs/<project>/<group>/<file_name>")
+def patch_run(project: str, group: str, file_name: str):
+    body = _require_json_object()
+    run = TestRun.from_dict(body)
+    _storage().write_run(project, group, file_name, run)
+    return jsonify({"ok": True})
+
+
+@api.delete("/runs/<project>/<group>/<file_name>")
+def delete_run(project: str, group: str, file_name: str):
+    _storage().delete_run(project, group, file_name)
+    return "", 204
+
+
+@api.post("/runs/<project>/<group>/<file_name>/cases")
+def post_run_case(project: str, group: str, file_name: str):
+    body = _require_json_object()
+    case_path = _require_non_empty_string(body.get("file_path"), "file_path")
+    _storage().add_run_case(project, group, file_name, case_path)
+    return jsonify({"ok": True}), 201
+
+
+@api.delete("/runs/<project>/<group>/<file_name>/cases/<path:case_path>")
+def delete_run_case(
+    project: str, group: str, file_name: str, case_path: str
+):
+    _storage().remove_run_case(
+        project, group, file_name, unquote(case_path)
+    )
+    return "", 204
+
+
+@api.patch("/runs/<project>/<group>/<file_name>/cases/<path:case_path>")
+def patch_run_case(
+    project: str, group: str, file_name: str, case_path: str
+):
+    body = _require_json_object()
+    result = body.get("result")
+    remark = body.get("remark")
+    if result is not None and not isinstance(result, str):
+        raise ValueError("Body field 'result' must be a string if present.")
+    if remark is not None and not isinstance(remark, str):
+        raise ValueError("Body field 'remark' must be a string if present.")
+    _storage().update_run_result(
+        project,
+        group,
+        file_name,
+        unquote(case_path),
+        result=result,
+        remark=remark,
+    )
+    return jsonify({"ok": True})
+
+
+# ---------------------------------------------------------------------------
 # Search
 # ---------------------------------------------------------------------------
 
@@ -324,6 +457,16 @@ def _handle_parse(e: GherkinParseError):
     )
 
 
+@api.errorhandler(RunParseError)
+def _handle_run_parse(e: RunParseError):
+    return _error(
+        "run_parse_error",
+        e.message,
+        422,
+        details={"line": e.line, "column": e.column},
+    )
+
+
 @api.errorhandler(Exception)
 def _handle_unexpected(e: Exception):
     # Let Werkzeug HTTPExceptions (404, 405, etc.) flow through the default
@@ -347,6 +490,19 @@ def ui_tree() -> str:
     ``sse:change`` event so the tree stays in sync with disk.
     """
     return render_template("tree.html", tree=_storage().list_tree())
+
+
+@ui.get("/test-run-tree")
+def ui_test_run_tree() -> str:
+    """Render the Test-run sidebar tab as a fresh HTML partial.
+
+    Aggregates the ``test-run/`` subtree of every project that has one.
+    Lazily fetched the first time the user clicks the Test-run tab; once
+    mounted the panel listens to ``sse:change`` like the Directory tree.
+    """
+    return render_template(
+        "test_run_sidebar.html", tree=_storage().list_test_run_tree()
+    )
 
 
 @ui.get("/folder/")
@@ -381,6 +537,39 @@ def ui_folder(p: str = ""):
             "folder_project.html",
             project=segments[0],
             modules=listing["modules"],
+        )
+
+    # Typed area: <project>/test-run/[<group>]. The generic list_folder
+    # would reject paths through the reserved name, so we never call it
+    # here. See `specs/features/10-feature-test-run-NEW.md` § "UI flows".
+    if len(segments) >= 2 and segments[1] == "test-run":
+        project = segments[0]
+        if len(segments) == 2:
+            groups = s.list_run_groups(project)
+            return render_template(
+                "folder_test_run_area.html",
+                project=project,
+                groups=groups,
+            )
+        if len(segments) == 3:
+            group = segments[2]
+            # Sort newest first (created_at DESC), tie-break by file_name
+            # ASC. Two-pass stable sort: secondary key first, then primary.
+            # Unparseable runs sink to the bottom (their created_at is "").
+            runs = s.list_runs(project, group)
+            runs.sort(key=lambda r: r["file_name"])
+            runs.sort(key=lambda r: r["created_at"] or "", reverse=True)
+            return render_template(
+                "folder_test_run_group.html",
+                project=project,
+                group=group,
+                runs=runs,
+            )
+        # Deeper paths under test-run/ are not valid; the typed area is
+        # exactly two levels (group + run file). Fall through to 404 by
+        # raising FileNotFoundError so the blueprint handler responds.
+        raise FileNotFoundError(
+            f"Folder not found: {'/'.join(segments)}"
         )
 
     listing = s.list_folder(segments)
@@ -454,6 +643,42 @@ def ui_file(p: str):
         file_name=file_name,
         feature=feature.to_dict(),
         raw=raw,
+    )
+
+
+@ui.get("/run/<project>/<group>/<file_name>")
+def ui_run(project: str, group: str, file_name: str):
+    """Render the run editor for one run YAML file.
+
+    Phase 3.C ships a read-only render: full breadcrumb, header buttons,
+    name / description / results table. The interactive controller
+    (dirty tracking, Save, Reload, Add case, SSE listener) is wired in
+    Phases 3.D\u20133.G; in the meantime the buttons render but do
+    nothing on click.
+
+    Raises :class:`FileNotFoundError` if the run does not exist (a
+    404 envelope is produced by the blueprint handler); raises
+    :class:`~app.errors.RunParseError` on malformed YAML, surfacing as
+    a 422 envelope.
+    """
+    s = _storage()
+    run = s.read_run(project, group, file_name)
+    # Tombstone-on-render (spec § "Tombstone rendering"): a row whose
+    # file_path no longer resolves to a .feature on disk is flagged so
+    # the template can strike it through and show the "test case was
+    # removed" override. Recomputed every render; storage doesn't
+    # auto-mutate runs when their underlying cases vanish.
+    run_dict = run.to_dict()
+    root = s.root
+    for r in run_dict["results"]:
+        r["missing"] = not (root / r["file_path"]).is_file()
+    return render_template(
+        "run_editor.html",
+        project=project,
+        group=group,
+        file_name=file_name,
+        run=run_dict,
+        results_options=list(RUN_RESULTS),
     )
 
 

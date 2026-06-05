@@ -50,14 +50,82 @@
     </div>
   </header>
 
+  {#
+    Sidebar shell — Phase 2 (specs/features/10-feature-test-run-NEW.md):
+
+    - Vertical tab strip on the left edge with a collapse icon + one
+      button per tab (Directory tree, Test run). Default-active tab is
+      Directory tree on every page load (no persistence).
+    - Two panels live to the right of the strip. Only one is visible at
+      a time; the inactive panel keeps its HTMX bindings so SSE events
+      keep it fresh in the background.
+    - The Test-run panel is lazy-mounted on first tab activation
+      (`tmsActivateTestRunPane` in app.js) so the initial page load
+      does not pay for a tree the user may never open. Once mounted it
+      subscribes to `sse:change` like the Directory tree.
+    - A 4 px drag handle on the sidebar's right edge resizes the whole
+      sidebar; double-click resets to default. Width persists across
+      sessions in localStorage.
+    - Collapse hides both panels and shrinks the sidebar to just the
+      tab strip; persistence is also localStorage.
+  #}
   <div class="flex-1 flex min-h-0">
-    <aside id="tree-pane"
-           class="w-[280px] shrink-0 border-r border-slate-200 bg-white overflow-auto"
-           hx-get="/ui/tree"
-           hx-trigger="sse:change"
-           hx-swap="innerHTML">
-      {% include "tree.html" %}
-    </aside>
+    <div id="sidebar"
+         class="shrink-0 flex bg-white border-r border-slate-200 relative"
+         data-default-width="316"
+         data-min-width="240"
+         data-max-width="600"
+         style="width: 316px">
+      <nav id="sidebar-tabs"
+           class="w-9 shrink-0 flex flex-col items-stretch border-r border-slate-200 bg-slate-50">
+        <button type="button" id="sidebar-collapse-btn"
+                class="h-9 flex items-center justify-center text-slate-500 hover:text-slate-800 hover:bg-slate-100 select-none"
+                onclick="tmsToggleSidebarCollapse()"
+                title="Collapse sidebar"
+                aria-label="Collapse sidebar">
+          <span id="sidebar-collapse-icon" class="leading-none text-base">&laquo;</span>
+        </button>
+        <button type="button" data-sidebar-tab="tree"
+                class="sidebar-tab flex-1 px-2 py-3 text-xs uppercase tracking-wide select-none border-l-2 border-slate-800 font-medium text-slate-800 hover:bg-slate-100"
+                onclick="tmsSwitchSidebarTab('tree')"
+                title="Directory tree"
+                style="writing-mode: vertical-rl">
+          Directory
+        </button>
+        <button type="button" data-sidebar-tab="test-run"
+                class="sidebar-tab flex-1 px-2 py-3 text-xs uppercase tracking-wide select-none border-l-2 border-transparent text-slate-500 hover:text-slate-700 hover:bg-slate-100"
+                onclick="tmsSwitchSidebarTab('test-run')"
+                title="Test runs"
+                style="writing-mode: vertical-rl">
+          Test run
+        </button>
+      </nav>
+
+      <div id="sidebar-panels" class="flex-1 min-w-0 relative">
+        <aside id="tree-pane"
+               class="absolute inset-0 overflow-auto bg-white"
+               hx-get="/ui/tree"
+               hx-trigger="sse:change"
+               hx-swap="innerHTML">
+          {% include "tree.html" %}
+        </aside>
+        <aside id="test-run-pane"
+               class="absolute inset-0 overflow-auto bg-white hidden">
+          {# Placeholder. First click on the Test-run tab calls
+             tmsActivateTestRunPane which attaches hx-get + hx-trigger
+             and triggers the initial load; later sse:change events
+             keep the panel fresh even while it is hidden. #}
+          <div class="text-sm py-2 px-2 text-slate-400 italic">Loading test runs&hellip;</div>
+        </aside>
+      </div>
+
+      <div id="sidebar-resize-handle"
+           class="absolute right-0 top-0 bottom-0 w-1 cursor-col-resize hover:bg-slate-300"
+           onmousedown="tmsStartSidebarResize(event)"
+           ondblclick="tmsResetSidebarWidth()"
+           title="Drag to resize, double-click to reset"></div>
+    </div>
+
     <main class="flex-1 min-w-0 overflow-auto p-6" id="main-pane"
           hx-get="/ui/folder/" hx-trigger="load" hx-swap="innerHTML">
       <p class="text-slate-500">Loading&hellip;</p>

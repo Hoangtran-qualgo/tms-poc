@@ -9,6 +9,9 @@ Currently defined:
   parser failure or domain-level rejection (Rule blocks, multi-scenario).
 - ``NameConflictError`` — raised by ``storage`` create / rename / duplicate
   operations when the target name already exists in its parent folder.
+- ``RunParseError`` — raised by ``storage.read_run`` when a run file's YAML
+  is malformed. Mirrors :class:`GherkinParseError`'s shape; maps to HTTP
+  ``422``.
 """
 
 from __future__ import annotations
@@ -58,4 +61,22 @@ class NameConflictError(Exception):
     def __init__(self, *, path: str, message: str) -> None:
         super().__init__(f"{path}: {message}")
         self.path = path
+        self.message = message
+
+
+class RunParseError(Exception):
+    """A run file's YAML cannot be parsed.
+
+    Raised by ``storage.read_run`` when the on-disk YAML is malformed.
+    ``line`` / ``column`` are 1-indexed when known and ``0`` when not
+    available (PyYAML reports them on most syntax errors). Maps to HTTP
+    ``422`` at the API layer.
+    """
+
+    __slots__ = ("line", "column", "message")
+
+    def __init__(self, *, line: int, column: int, message: str) -> None:
+        super().__init__(f"{line}:{column}: {message}")
+        self.line = line
+        self.column = column
         self.message = message

@@ -1,0 +1,49 @@
+{# folder_test_run_area.html — main-pane landing for <project>/test-run/.
+
+   Reached from a run-editor breadcrumb (the `test-run` segment); not
+   linked from the directory tree (the typed area is hidden there).
+   Lists the run groups under this project; clicking a group opens
+   `folder_test_run_group.html` in the main pane.
+
+   Per spec `10-feature-test-run-NEW.md` § "UI flows": the New-run /
+   New-group flows live in the group view, NOT here. This page is a
+   navigation breadcrumb landing only. #}
+<div data-folder-path="{{ project }}/test-run">
+  <div class="flex items-center gap-3 mb-4">
+    <div>
+      <div class="text-sm text-slate-500">
+        <a class="hover:underline cursor-pointer"
+           hx-get="/ui/folder/" hx-target="#main-pane" hx-swap="innerHTML">Projects</a>
+        <span class="px-1">/</span>
+        <a class="hover:underline cursor-pointer"
+           hx-get="/ui/folder/{{ project }}" hx-target="#main-pane" hx-swap="innerHTML">{{ project }}</a>
+        <span class="px-1">/</span>
+      </div>
+      <h2 class="text-xl font-semibold text-slate-800">test-run</h2>
+    </div>
+    <div class="flex-1"></div>
+  </div>
+
+  {% if groups %}
+  <table class="w-full text-sm border border-slate-200 rounded overflow-hidden bg-white">
+    <thead class="bg-slate-100 text-slate-600">
+      <tr><th class="text-left px-3 py-2 font-medium">Group</th></tr>
+    </thead>
+    <tbody>
+      {% for name in groups %}
+      <tr class="border-t border-slate-100 hover:bg-slate-50 cursor-pointer"
+          hx-get="/ui/folder/{{ project }}/test-run/{{ name }}"
+          hx-target="#main-pane"
+          hx-swap="innerHTML">
+        <td class="px-3 py-2 text-slate-700">&#128193; {{ name }}</td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+  {% else %}
+  <div class="text-center py-12 border border-dashed border-slate-200 rounded bg-white">
+    <p class="text-slate-500">No run groups yet in <span class="font-medium">{{ project }}</span>.</p>
+    <p class="text-slate-400 text-xs mt-1">Groups are created automatically when you create your first run.</p>
+  </div>
+  {% endif %}
+</div>
