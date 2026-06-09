@@ -471,6 +471,19 @@ Items fixed during v1 manual verification.
     § Invariants & rules / Create flow, § Surface for follow-up;
     `root/specs/features/00-summary.md` § W10 workflow rewritten.
 
+- **Restructure and extend the `.smoke-scratch/` smoke suite.**
+  - Restructured every standalone smoke into
+    `root/.smoke-scratch/feature-01..11/` as `F<N>_<MM>_<slug>.py` in
+    spec-section order, with a `run.py` runner (`--filter` / `--list` /
+    `--verbose`), a single `README.md` pattern doc, and a per-feature
+    `COVERAGE.md`. Audited every spec rule per feature (PDCA: audit →
+    restructure → refine → gap-fill) to zero `missing` rows. No `pytest`
+    / harness introduced; UI / browser (Playwright) smokes stay manual.
+  - Verification: `python root/.smoke-scratch/run.py` →
+    **219/219 PASS / 0 FAIL**.
+  - Three spec-vs-shipped drifts pinned (not fixed) by smokes: SC2
+    (`F10_47`), SM5/FL6 (`F10_57`), VS3 (`F11_12`).
+
 ## Could have
 
 - **Increase folder nesting depth up to 10 levels.**
