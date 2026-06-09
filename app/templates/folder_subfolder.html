@@ -2,9 +2,7 @@
 
    Mirrors folder_module.html's two-section layout (sub-folders, then
    features) but renders an N-level breadcrumb from server-built `crumbs`
-   so it works at any nesting depth. This is the entry point for the
-   "Increase folder nesting depth to 10 levels" feature (IN-PROGRESS.md /
-   PLAN.md B4 revision). #}
+   so it works at any nesting depth (depths 3..MAX_FOLDER_DEPTH). #}
 <div data-folder-path="{{ folder_path }}">
   <div class="flex items-center gap-3 mb-4">
     <div>

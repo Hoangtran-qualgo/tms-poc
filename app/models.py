@@ -19,6 +19,7 @@ This module is pure (no FS, no HTTP). The serializer in ``gherkin_io`` calls
 
 from __future__ import annotations
 
+import re
 from dataclasses import dataclass, field
 from typing import Any
 
@@ -34,15 +35,41 @@ CANONICAL_KEYWORDS: tuple[str, ...] = ("Given", "When", "Then", "And", "But")
 #: Valid values for :attr:`Scenario.kind`.
 SCENARIO_KINDS: tuple[str, ...] = ("scenario", "outline")
 
+#: Identifier regex for project-level enum kind names and keys per
+#: ``specs/features/11-feature-testcase-component-NEW.md`` (Q1 / Q5).
+#: Lowercase ``snake_case`` is conventional; this regex is the wire-level
+#: validator (letters, digits, underscores; must start with a letter or
+#: underscore). The ``# enum.<kind>: <key>`` on-disk directive parser in
+#: ``gherkin_io`` and the project-level ``enums.yaml`` schema validator in
+#: ``storage`` both reuse this constant.
+ENUM_IDENTIFIER_RE: re.Pattern[str] = re.compile(r"^[A-Za-z_][A-Za-z0-9_]*$")
+
+#: Valid values for :attr:`RunResult.result`. Order is meaningful only to
+#: the UI (rendered left-to-right in the result `<select>`); on disk any
+#: of these strings is accepted. Default for a newly-added case is
+#: ``"PENDING"``.
+RUN_RESULTS: tuple[str, ...] = (
+    "PENDING",
+    "EXECUTING",
+    "PASSED",
+    "FAILED",
+    "SKIPPED",
+)
+
 __all__ = [
     "Step",
     "ExamplesTable",
     "Scenario",
     "Background",
     "Feature",
+    "RunResult",
+    "TestRun",
     "CANONICAL_KEYWORDS",
     "SCENARIO_KINDS",
+    "RUN_RESULTS",
+    "ENUM_IDENTIFIER_RE",
     "validate_feature",
+    "validate_run",
 ]
 
 
@@ -177,12 +204,20 @@ class Feature:
     ``description`` may contain real newlines in-memory; the serializer
     encodes them as the literal sequence ``\\n`` on disk so the
     ``Feature:`` line stays single-line (see PLAN.md §4).
+
+    ``enums`` is a generic map of project-level enum kind → selected
+    key (snake-case identifier). Keys (values of this dict) are the only
+    thing stored on disk; display labels live in ``<project>/enums.yaml``
+    and are resolved at render time. An empty-string value is the legal
+    "unset" marker for that kind. See
+    ``specs/features/11-feature-testcase-component-NEW.md``.
     """
 
     description: str = ""
     tags: list[str] = field(default_factory=list)
     background: Background = field(default_factory=Background)
     scenario: Scenario = field(default_factory=Scenario)
+    enums: dict[str, str] = field(default_factory=dict)
 
     def to_dict(self) -> dict[str, Any]:
         return {
@@ -190,15 +225,18 @@ class Feature:
             "tags": list(self.tags),
             "background": self.background.to_dict(),
             "scenario": self.scenario.to_dict(),
+            "enums": dict(self.enums),
         }
 
     @classmethod
     def from_dict(cls, payload: dict[str, Any]) -> "Feature":
+        raw_enums = payload.get("enums") or {}
         return cls(
             description=str(payload.get("description", "")),
             tags=[str(t) for t in payload.get("tags", [])],
             background=Background.from_dict(payload.get("background", {})),
             scenario=Scenario.from_dict(payload.get("scenario", {})),
+            enums={str(k): str(v) for k, v in raw_enums.items()},
         )
 
 
@@ -308,6 +346,35 @@ def _validate_examples(ex: ExamplesTable, field_prefix: str) -> None:
             )
 
 
+def _validate_enums(enums: dict[str, str]) -> None:
+    """Pure-model validation for :attr:`Feature.enums`.
+
+    Per ``specs/features/11-feature-testcase-component-NEW.md`` Q1: kind
+    names (outer keys) must match :data:`ENUM_IDENTIFIER_RE`; selected
+    keys (values) must either be the empty string (= unset) or match the
+    same identifier regex. Project-aware cross-checking against
+    ``<project>/enums.yaml`` happens in storage, not here — the model
+    has no project context.
+    """
+    for kind, key in enums.items():
+        if not ENUM_IDENTIFIER_RE.fullmatch(kind):
+            raise ValidationError(
+                field="enums",
+                message=(
+                    f"Invalid enum kind name: {kind!r}. Kinds must match "
+                    f"{ENUM_IDENTIFIER_RE.pattern}."
+                ),
+            )
+        if key != "" and not ENUM_IDENTIFIER_RE.fullmatch(key):
+            raise ValidationError(
+                field=f"enums[{kind}]",
+                message=(
+                    f"Invalid enum key: {key!r}. Keys must match "
+                    f"{ENUM_IDENTIFIER_RE.pattern} or be empty (= unset)."
+                ),
+            )
+
+
 def validate_feature(feature: Feature) -> None:
     """Raise :class:`ValidationError` if ``feature`` violates write-time invariants.
 
@@ -324,6 +391,7 @@ def validate_feature(feature: Feature) -> None:
         )
 
     _validate_tags(feature.tags, "tags")
+    _validate_enums(feature.enums)
 
     # Background steps share the same step rules as the scenario.
     _validate_steps(feature.background.steps, "background.steps")
@@ -362,3 +430,138 @@ def validate_feature(feature: Feature) -> None:
             )
         for i, ex in enumerate(scenario.examples):
             _validate_examples(ex, f"scenario.examples[{i}]")
+
+
+# ---------------------------------------------------------------------------
+# Test run dataclasses (Phase 1 of the test-run feature, see
+# specs/features/10-feature-test-run-NEW.md)
+# ---------------------------------------------------------------------------
+
+
+@dataclass(slots=True)
+class RunResult:
+    """A single test case's recorded outcome inside a :class:`TestRun`.
+
+    ``file_path`` is a data-root-relative POSIX path to a ``.feature`` file.
+    The path is **not** validated against disk at write time — tombstone
+    rendering is a UI concern. ``result`` must be one of :data:`RUN_RESULTS`.
+    ``remark`` is freeform; may be empty.
+    """
+
+    file_path: str
+    result: str = "PENDING"
+    remark: str = ""
+
+    def to_dict(self) -> dict[str, Any]:
+        return {
+            "file_path": self.file_path,
+            "result": self.result,
+            "remark": self.remark,
+        }
+
+    @classmethod
+    def from_dict(cls, payload: dict[str, Any]) -> "RunResult":
+        return cls(
+            file_path=str(payload.get("file_path", "")),
+            result=str(payload.get("result", "PENDING")),
+            remark=str(payload.get("remark", "")),
+        )
+
+
+@dataclass(slots=True)
+class TestRun:
+    """One test run.
+
+    Persisted as a single YAML file at
+    ``<project>/test-run/<group>/<file_name>.yaml``. ``name`` is the human
+    label (not the file name). ``created_at`` is an ISO-8601 string set at
+    create time and never edited. ``results`` preserves insertion order;
+    duplicate ``file_path`` values are rejected at write.
+    """
+
+    name: str = ""
+    created_at: str = ""
+    description: str = ""
+    results: list[RunResult] = field(default_factory=list)
+
+    def to_dict(self) -> dict[str, Any]:
+        return {
+            "name": self.name,
+            "created_at": self.created_at,
+            "description": self.description,
+            "results": [r.to_dict() for r in self.results],
+        }
+
+    @classmethod
+    def from_dict(cls, payload: dict[str, Any]) -> "TestRun":
+        return cls(
+            name=str(payload.get("name", "")),
+            created_at=str(payload.get("created_at", "")),
+            description=str(payload.get("description", "")),
+            results=[
+                RunResult.from_dict(r) for r in payload.get("results", [])
+            ],
+        )
+
+
+def validate_run(run: TestRun) -> None:
+    """Raise :class:`ValidationError` if ``run`` violates write-time invariants.
+
+    Checks:
+
+    - ``name`` is non-empty after strip and single-line.
+    - ``created_at`` is non-empty and single-line.
+    - Every ``result`` is one of :data:`RUN_RESULTS`.
+    - No duplicate ``file_path`` across :attr:`TestRun.results`.
+    - Every ``file_path`` is non-empty.
+
+    Disk presence of each ``file_path`` is **not** checked here — tombstone
+    state is a UI render-time concern, not a storage invariant.
+    """
+
+    if not run.name.strip():
+        raise ValidationError(
+            field="name",
+            message="Run name must not be empty.",
+        )
+    if not _is_single_line(run.name):
+        raise ValidationError(
+            field="name",
+            message="Run name must be single-line.",
+        )
+
+    if not run.created_at.strip():
+        raise ValidationError(
+            field="created_at",
+            message="created_at must not be empty.",
+        )
+    if not _is_single_line(run.created_at):
+        raise ValidationError(
+            field="created_at",
+            message="created_at must be single-line.",
+        )
+
+    seen: set[str] = set()
+    for i, r in enumerate(run.results):
+        loc = f"results[{i}]"
+        if not r.file_path:
+            raise ValidationError(
+                field=f"{loc}.file_path",
+                message="file_path must not be empty.",
+            )
+        if r.file_path in seen:
+            raise ValidationError(
+                field=f"{loc}.file_path",
+                message=(
+                    f"Duplicate file_path in run results: {r.file_path!r}."
+                ),
+            )
+        seen.add(r.file_path)
+        if r.result not in RUN_RESULTS:
+            raise ValidationError(
+                field=f"{loc}.result",
+                message=(
+                    f"Invalid result value: {r.result!r}. "
+                    f"Must be one of {list(RUN_RESULTS)}."
+                ),
+            )

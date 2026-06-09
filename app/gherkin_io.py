@@ -26,6 +26,7 @@ Implementation notes for the parser (Do step 3):
 
 from __future__ import annotations
 
+import re
 from typing import Any
 
 from gherkin.errors import CompositeParserException
@@ -34,12 +35,24 @@ from gherkin.parser import Parser
 from .errors import GherkinParseError
 from .models import (
     CANONICAL_KEYWORDS,
+    ENUM_IDENTIFIER_RE,
     Background,
     ExamplesTable,
     Feature,
     Scenario,
     Step,
     validate_feature,
+)
+
+# Loose matcher for an ``# enum.<kind>: <key>`` directive. Anything matching
+# the ``# enum.<…>:`` prefix is treated as a directive intent and then
+# strict-validated against :data:`ENUM_IDENTIFIER_RE` for both ``<kind>`` and
+# ``<key>``; failures surface as :class:`GherkinParseError`. Non-matching
+# comments (e.g. ``# todo: refactor``, ``# note: see PR_47``) flow through
+# unchanged and are discarded by the existing comments-are-dropped
+# invariant. See ``specs/features/11-feature-testcase-component-NEW.md``.
+_ENUM_DIRECTIVE_RE: re.Pattern[str] = re.compile(
+    r"^#\s*enum\.([^:\s]+)\s*:\s*(.*?)\s*$"
 )
 
 __all__ = ["parse_feature", "serialize_feature"]
@@ -73,6 +86,11 @@ def parse_feature(source: str) -> Feature:
             message="No 'Feature:' header found in the file.",
         )
 
+    enums = _extract_enum_directives(
+        gherkin_doc.get("comments") or [],
+        feature_ast,
+    )
+
     background_ast, scenario_ast = _split_children(feature_ast.get("children") or [])
 
     description = _assemble_description(
@@ -98,6 +116,7 @@ def parse_feature(source: str) -> Feature:
         tags=tags,
         background=background,
         scenario=scenario,
+        enums=enums,
     )
 
 
@@ -109,6 +128,74 @@ def parse_feature(source: str) -> Feature:
 def _normalize_newlines(source: str) -> str:
     """Convert CRLF and lone CR to LF per PLAN.md \u00a75.1."""
     return source.replace("\r\n", "\n").replace("\r", "\n")
+
+
+def _extract_enum_directives(
+    comments: list[dict[str, Any]], feature_ast: dict[str, Any]
+) -> dict[str, str]:
+    """Walk leading ``# enum.<kind>: <key>`` directives into a key-only map.
+
+    Cutoff line = ``min(feature.location.line, first_tag.location.line)``
+    when the feature has tags, else ``feature.location.line``. Only
+    comments with ``location.line < cutoff`` are considered \u2014 directives
+    must precede both the feature-level tags and the ``Feature:`` keyword,
+    mirroring the placement of the built-in ``# language:`` directive.
+
+    Any comment whose text matches :data:`_ENUM_DIRECTIVE_RE` is treated
+    as an enum directive (regardless of whether ``<kind>`` and ``<key>``
+    are valid identifiers \u2014 a malformed directive is a hard parse error,
+    not a silently-ignored comment). Duplicate ``<kind>`` in the leading
+    block is rejected.
+    """
+    feature_line = int((feature_ast.get("location") or {}).get("line") or 0)
+    tags = feature_ast.get("tags") or []
+    first_tag_line = (
+        int((tags[0].get("location") or {}).get("line") or feature_line)
+        if tags
+        else feature_line
+    )
+    cutoff = min(feature_line, first_tag_line) if feature_line else 0
+
+    enums: dict[str, str] = {}
+    for comment in comments:
+        loc = comment.get("location") or {}
+        line = int(loc.get("line") or 0)
+        column = int(loc.get("column") or 0)
+        if cutoff and line >= cutoff:
+            continue
+        text = (comment.get("text") or "").strip()
+        match = _ENUM_DIRECTIVE_RE.match(text)
+        if not match:
+            continue
+        kind, key = match.group(1), match.group(2)
+        if not ENUM_IDENTIFIER_RE.fullmatch(kind):
+            raise GherkinParseError(
+                line=line,
+                column=column,
+                message=(
+                    f"Invalid enum directive: kind {kind!r} must match "
+                    f"{ENUM_IDENTIFIER_RE.pattern}."
+                ),
+            )
+        if not ENUM_IDENTIFIER_RE.fullmatch(key):
+            raise GherkinParseError(
+                line=line,
+                column=column,
+                message=(
+                    f"Invalid enum directive: key {key!r} for kind "
+                    f"{kind!r} must match {ENUM_IDENTIFIER_RE.pattern}."
+                ),
+            )
+        if kind in enums:
+            raise GherkinParseError(
+                line=line,
+                column=column,
+                message=(
+                    f"Duplicate enum directive for kind {kind!r}."
+                ),
+            )
+        enums[kind] = key
+    return enums
 
 
 def _wrap_parser_exception(exc: CompositeParserException) -> GherkinParseError:
@@ -283,6 +370,16 @@ def serialize_feature(feature: Feature) -> str:
     validate_feature(feature)
 
     lines: list[str] = []
+
+    # --- Enum directives --------------------------------------------------
+    # One ``# enum.<kind>: <key>`` line per non-empty entry, alphabetical by
+    # kind for canonical formatting. Empty values are skipped so files that
+    # never set a given kind round-trip byte-identically even when the
+    # project's ``enums.yaml`` later adds that kind.
+    for kind in sorted(feature.enums):
+        key = feature.enums[kind]
+        if key:
+            lines.append(f"# enum.{kind}: {key}")
 
     # --- Feature header ---------------------------------------------------
     feat_tags = _dedupe(feature.tags)
