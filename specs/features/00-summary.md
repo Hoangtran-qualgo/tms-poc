@@ -25,6 +25,7 @@ here are summaries, not duplications.
 | 08 | `08-feature-file-editor-NEW.md` | Structured tab + raw tab + save flow + dirty tracking + banner + reload. | Spec'd |
 | 09 | `09-feature-search-NEW.md` | Search input + scope + match mode + 0 / 1 / ≥2 result UX. | Spec'd |
 | 10 | `10-feature-test-run-NEW.md` | Typed-area test runs (`<project>/test-run/<group>/<run>.yaml`) with run editor, tombstone rendering, and external-change banner. | Spec'd |
+| 11 | `11-feature-testcase-component-NEW.md` | Test-case project-level enums — generic `Feature.enums` map driven by `enums.yaml` (`<kind>: [- <key>: <label>]` schema; key stored on disk, label is display-only); component is the seeded kind; new kinds ship with zero code change; `# enum.<kind>: <key>` namespaced header-comment encoding (collision-free with regular comments); read-tolerant / write-strict orphan handling. | Spec'd |
 
 ---
 
@@ -233,6 +234,54 @@ Populated as each batch lands.
   navigation are obvious next steps; same-process SSE
   suppression silences both tabs on the writer's own save
   (shared caveat with `08-file-editor`).
+
+### 11 · testcase-component
+
+_Spec'd Jun 8, 2026 — forward-looking Investigate spec.
+Q1–Q5 all resolved; scope broadened same day from
+single-`component` field to **generic enum map** driven by
+`enums.yaml`. Plan/Do shipped Jun 8, 2026 in three slices
+(S1 model, S2 storage, S3 HTTP + editor); see `DONE.md`
+for the full as-shipped breakdown._
+
+- **Affects**: `01-gherkin-io` / `app/models.py` (new
+  `Feature.enums: dict[str, str]` field, stores selected
+  **keys** only; parser pre-parse scan for
+  `# enum.<kind>: <key>` namespaced directives; serializer
+  emits one alphabetically-ordered line per non-empty entry);
+  `02-storage-core` (new `read_project_enums: dict[str,
+  dict[str, str]]` and `init_project_enums`
+  — `write_project_enums` is deferred to the CRUD-UI
+  follow-up; `create_folder` depth-1 branch
+  auto-writes the default `enums.yaml`; `write_feature`
+  per-kind cross-check on **keys** only — labels are display-
+  only); `04-folder-crud` (project create auto-init side
+  effect; `enums.yaml` reserved at the project root);
+  `05-testcase-crud` (422 on unknown kinds / keys, full
+  `enums` map surfaced in `GET /api/files/<p>`); `06-tree-pane`
+  / `07-folder-views` (`list_tree` / `list_folder` filter
+  `enums.yaml` out of project-root listings — no UI surface
+  for the file in v1 beyond the editor's init action);
+  `08-file-editor` (structured-tab `Enums` section with one
+  `<select>` per kind dynamically generated from the project's
+  `enums.yaml`, fetched once per (project, session) and cached
+  client-side, rendering `<option value="<key>">{label}` pairs;
+  orphan warning badges; `Initialize enums file` legacy-project
+  action); `09-search` (future filter-by-`<kind>`,
+  follow-up).
+- **Depends on**: `pyyaml` (already pinned); `02-storage-core`
+  atomic-write + per-path lock primitives; `gherkin-official`
+  continuing to tolerate leading `# enum.<kind>:` comments
+  (same shape as the existing `# language:` directive).
+- **Surface for follow-up**: unblocks the `quality-report`
+  Investigate item (bucketing dimension =
+  `Feature.enums["components"]`); a CRUD UI for `enums.yaml`
+  is the obvious next step once hand-editing the YAML proves
+  insufficient; a second enum kind (e.g. `priorities`) ships
+  with **zero code change** — only product behaviour layered
+  on a specific kind is new work; bulk-edit across N test cases
+  is the obvious next ergonomic step once teams adopt a new
+  kind retroactively.
 
 ---
 
@@ -484,35 +533,52 @@ swap._
 
 ### W10 · Create a test run
 
-1. User clicks `+ New run` in `folder_test_run_group.html` (or
-   the empty-state CTA inside it). The button's `onclick` calls
-   `tmsCreateRun(project, group)`.
-2. `tmsCreateRun` fetches `/api/tree` via
-   `tmsFetchProjectFeaturePaths(project)`, flattens it to the
-   project's `.feature` files sorted by folder path / file name.
-3. Opens an `lg` `tmsOpenModal` with: run-name input
-   (autofocused), description textarea, and a
-   `tmsBuildCasePicker` (flat checkbox table with live filter).
-   Confirm is gated on `(name non-empty) AND
-   (picker.getSelected().length > 0)`.
-4. On Confirm, JS slugifies the name via
-   `tmsSlugifyForFilename` (lowercase, whitespace → `-`, strip
-   non-`[a-z0-9_-]`, trim hyphens) and POSTs `/api/runs` with
-   `{project, group, name, file_name, description, case_paths}`.
-5. `server.post_run` delegates to `Storage.create_run`, which
-   stamps `created_at` (UTC ISO-8601, seconds precision),
-   constructs the `TestRun` with each `case_path` as a
-   `RunResult{result: "PENDING", remark: ""}`, calls
-   `validate_run`, then `_atomic_write_bytes` +
-   `_mark_write(target)`. Auto-creates
-   `<project>/test-run/<group>/` via `create_run_group` if
-   missing.
-6. On 2xx, JS closes the modal and `htmx.ajax`-navigates the
-   main pane to `/ui/run/<project>/<group>/<file_name>.yaml`.
-   On 4xx (e.g. duplicate name → 409 `NameConflictError`),
-   error renders inline; modal stays open; picker selection is
-   preserved.
-7. Watcher emits `"change"` after debounce; other tabs' Test
+1. User clicks `+ New run` in the Test-run sidebar tab header
+   (the single, always-visible entry point). The button's
+   `onclick` calls `tmsCreateRun()` with no arguments — the
+   modal lives outside any project context.
+2. `tmsCreateRun` fetches `GET /api/run-groups`, which returns
+   `{projects: [...], groups: [{project, group}, ...]}`. If
+   `projects.length === 0`, opens an info-only modal ("No
+   projects yet — create one first.") with no Confirm button
+   (`tmsOpenModal({confirmLabel: null})`) and stops here.
+3. Otherwise, opens an `md` `tmsOpenModal` with two fields:
+   - **Where** — `<select>` whose existing rows are emitted as
+     `<optgroup label="<project>"><option value="proj|grp"
+     >grp</option></optgroup>`, with a trailing non-grouped
+     `+ Create new group...` option (`value="__new__"`).
+     Selecting `__new__` reveals an inline sub-form with a
+     project `<select>` (every existing project, including
+     bare ones with no `test-run/` folder) and a free-text
+     group-name `<input>`.
+   - **Run name** — text `<input>`; the slug from
+     `tmsSlugifyForFilename` renders live underneath as
+     "will save as `<slug>.yaml`".
+   Confirm is gated on `(slug non-empty) AND (path resolved)`.
+4. On Confirm:
+   - If the user picked `__new__`, JS POSTs
+     `/api/runs/<project>/groups` with `{name: <group>}` first.
+     `server.post_run_group` delegates to
+     `Storage.create_run_group`, which auto-creates
+     `<project>/test-run/` if missing. On 409 (`NameConflictError`)
+     the message "Group already exists in this project."
+     renders under the group-name input and submit aborts.
+   - Then JS POSTs `/api/runs` with `{project, group, name,
+     file_name, case_paths: [], description: ""}`.
+     `server.post_run` delegates to `Storage.create_run`,
+     which stamps `created_at` (UTC ISO-8601, seconds
+     precision), constructs the `TestRun` with empty
+     `results`, calls `validate_run`, then
+     `_atomic_write_bytes` + `_mark_write(target)`. On 409,
+     "A run with this name already exists in this group."
+     renders under the run-name input.
+5. On 201, JS closes the modal and
+   `htmx.ajax`-navigates the main pane to
+   `/ui/run/<project>/<group>/<file_name>.yaml`. The user
+   fills in description, adds cases (via the run editor's
+   `+ Add test case` flow, which reuses
+   `tmsBuildCasePicker`), and sets results there.
+6. Watcher emits `"change"` after debounce; other tabs' Test
    run sidebars refresh. Writing tab sees no SSE event
    (`_mark_write` suppression).
 

@@ -47,8 +47,15 @@ Route:
 - `GET /ui/file/<path:p>` (`ui_file`) — for `.feature` files
   renders `file_editor.html` with `file_path`, `crumbs`,
   `file_name`, `feature = Feature.to_dict()`, `raw = read_raw()`.
-  Non-`.feature` paths render `unsupported.html`. Parse errors
-  propagate as 422 envelope via the UI blueprint error handler.
+  Non-`.feature` paths render `unsupported.html`. If the on-disk
+  `.feature` fails to parse, `read_feature` raises
+  `GherkinParseError`; the UI blueprint registers dedicated
+  handlers only for `ValueError` (400) and `FileNotFoundError`
+  (404), so a parse error falls through to the catch-all
+  `Exception` handler and surfaces as a generic **500** error
+  page (no editor scaffold). The 422 `parse_error` envelope is
+  produced by the JSON API surface (`PUT /api/files/<p>/raw`), not
+  this HTML route.
 
 Template (`file_editor.html`):
 

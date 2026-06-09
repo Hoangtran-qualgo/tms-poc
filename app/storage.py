@@ -23,9 +23,22 @@ from weakref import WeakValueDictionary
 
 import yaml
 
-from .errors import GherkinParseError, NameConflictError, RunParseError
+from .errors import (
+    EnumsParseError,
+    GherkinParseError,
+    NameConflictError,
+    RunParseError,
+    ValidationError,
+)
 from .gherkin_io import parse_feature, serialize_feature
-from .models import Feature, RunResult, Scenario, TestRun, validate_run
+from .models import (
+    ENUM_IDENTIFIER_RE,
+    Feature,
+    RunResult,
+    Scenario,
+    TestRun,
+    validate_run,
+)
 
 # Atomic-write temp file naming convention (see PLAN.md §6.3): every temp file
 # is created as ``<target>.tmp.<pid>.<uuid_hex>`` in the same directory as the
@@ -69,6 +82,18 @@ MAX_FOLDER_DEPTH: int = 10
 #:
 #: See ``specs/features/10-feature-test-run-NEW.md`` § "Reservation rules".
 RESERVED_DEPTH2_NAMES: frozenset[str] = frozenset({"test-run"})
+
+#: Project-level enums file name (lives at the project root, alongside
+#: module folders and the typed-area folder). See
+#: ``specs/features/11-feature-testcase-component-NEW.md``.
+_ENUMS_FILE_NAME: str = "enums.yaml"
+
+#: Default bytes written by ``init_project_enums`` and by the depth-1
+#: branch of :meth:`Storage.create_folder`. The file starts with a single
+#: declared kind (``components``) whose value is empty; PyYAML parses this
+#: to ``{"components": None}`` which :meth:`Storage.read_project_enums`
+#: normalises to ``{"components": {}}`` per the empty-value rule.
+_ENUMS_DEFAULT_BYTES: bytes = b"components:\n"
 
 
 def cleanup_orphan_temp_files(root: Path) -> int:
@@ -193,6 +218,11 @@ class Storage:
         # Self-write suppression bookkeeping: absolute-path string -> wall time.
         self._recent_writes: dict[str, float] = {}
         self._recent_writes_lock: threading.Lock = threading.Lock()
+        # Project-level enums.yaml cache: project name -> (mtime_ns, parsed).
+        # Invalidated by an mtime mismatch on read or by an internal write.
+        # See specs/features/11-feature-testcase-component-NEW.md (Caching).
+        self._enums_cache: dict[str, tuple[int, dict[str, dict[str, str]]]] = {}
+        self._enums_cache_lock: threading.Lock = threading.Lock()
 
     # -- Self-write suppression ------------------------------------------
 
@@ -345,6 +375,12 @@ class Storage:
             # `list_test_run_tree`.
             if depth == 1 and name in RESERVED_DEPTH2_NAMES:
                 continue
+            # Hide the project-level enums.yaml file from the directory
+            # tree per spec 11. v1 has no in-app surface for editing it
+            # beyond the `Initialize enums file` action; teams hand-edit
+            # the file on disk.
+            if depth == 1 and name == _ENUMS_FILE_NAME and entry.is_file():
+                continue
             rel = entry.relative_to(self.root).as_posix()
             if entry.is_dir():
                 children.append(
@@ -440,6 +476,25 @@ class Storage:
             )
         return {"name": "", "children": children}
 
+    def list_projects(self) -> list[str]:
+        """Return all project (depth-0) directory names, sorted.
+
+        Backs the ``GET /api/run-groups`` endpoint's ``projects`` field
+        so the "+ New run" modal's "Create new group..." sub-form can
+        offer existing projects as a target. Temp-suffixed directories
+        are excluded; ordering is case-insensitive ascending for stable
+        UI between requests.
+        """
+        if not self.root.exists():
+            return []
+        out: list[str] = []
+        for entry in self.root.iterdir():
+            if not entry.is_dir() or TEMP_FILE_RE.match(entry.name):
+                continue
+            out.append(entry.name)
+        out.sort(key=str.lower)
+        return out
+
     def list_folder(self, parts: PartsLike) -> dict[str, Any]:
         """Return one folder's contents per PLAN.md §6.2 / §16.7.
 
@@ -451,8 +506,7 @@ class Storage:
         - 3..MAX_FOLDER_DEPTH → ``{kind: "subfolder", folders: [...], features: [...]}``
 
         At depths 2 and beyond a folder may contain BOTH `.feature` files
-        and sub-folders. This is the bullet "Increase folder nesting depth
-        up to 10 levels" — see IN-PROGRESS.md.
+        and sub-folders.
 
         Raises :class:`ValueError` for depth > MAX_FOLDER_DEPTH;
         :class:`FileNotFoundError` if the resolved path does not exist or
@@ -619,6 +673,10 @@ class Storage:
                 description=description,
                 scenario=Scenario(kind="scenario", name=""),
             )
+            # Cross-check (no-op for the default empty enums dict; kept for
+            # symmetry with write_feature / write_raw so future create-time
+            # enum assignment goes through the same gate).
+            self._cross_check_enums(final_segments[0], feature)
             text = serialize_feature(feature)
             self._atomic_write_bytes(target, text.encode("utf-8"))
             self._mark_write(target)
@@ -629,7 +687,10 @@ class Storage:
         Raises :class:`FileNotFoundError` if the target file does not exist
         (use :meth:`create_file` instead). The serialiser performs all
         write-time validation; raises :class:`~app.errors.ValidationError`
-        on any invariant violation.
+        on any invariant violation. Also cross-checks any non-empty
+        ``feature.enums`` entries against the project's ``enums.yaml`` per
+        spec 11; raises :class:`~app.errors.ValidationError` (422) on
+        unknown kind / key or a missing enums.yaml.
         """
         segments = self._split(parts)
         target = self._resolve(segments)
@@ -639,6 +700,7 @@ class Storage:
                 raise FileNotFoundError(
                     f"Cannot update missing file: {target}"
                 )
+            self._cross_check_enums(segments[0], feature)
             text = serialize_feature(feature)
             self._atomic_write_bytes(target, text.encode("utf-8"))
             self._mark_write(target)
@@ -649,9 +711,11 @@ class Storage:
         Parses ``text`` first to enforce Gherkin validity (raises
         :class:`~app.errors.GherkinParseError` on bad input). Newlines are
         normalised to LF before being persisted so the file format stays
-        consistent regardless of the editor's input encoding.
+        consistent regardless of the editor's input encoding. Cross-checks
+        the parsed feature's ``enums`` against the project's ``enums.yaml``
+        per spec 11.
         """
-        parse_feature(text)  # raises GherkinParseError on bad input
+        parsed = parse_feature(text)  # raises GherkinParseError on bad input
         normalized = text.replace("\r\n", "\n").replace("\r", "\n")
 
         segments = self._split(parts)
@@ -662,6 +726,7 @@ class Storage:
                 raise FileNotFoundError(
                     f"Cannot update missing file: {target}"
                 )
+            self._cross_check_enums(segments[0], parsed)
             self._atomic_write_bytes(target, normalized.encode("utf-8"))
             self._mark_write(target)
 
@@ -721,6 +786,264 @@ class Storage:
             os.replace(source, target)
             self._mark_write(source)
             self._mark_write(target)
+
+    # -- Project-level enums --------------------------------------------
+    #
+    # See specs/features/11-feature-testcase-component-NEW.md. Each project
+    # carries one ``enums.yaml`` at its root listing the canonical
+    # ``<kind>: [- <key>: <label>]`` vocabulary used by ``Feature.enums``.
+    # Reads are mtime-cached per project so the cross-check on every
+    # test-case save costs one ``os.stat`` plus a dict lookup on the hot
+    # path. Hand-edits to the file take effect on the next access.
+
+    def read_project_enums(self, project: str) -> dict[str, dict[str, str]]:
+        """Read + parse + schema-validate ``<project>/enums.yaml``.
+
+        Returns the outer-kind → inner ``{key: label}`` map (insertion
+        order preserved). An empty file, a comment-only file, or a YAML
+        document whose top-level is ``None`` normalises to ``{}``; a kind
+        whose value is ``None`` or ``[]`` normalises to an empty inner map.
+
+        Raises :class:`FileNotFoundError` if the file is missing,
+        :class:`~app.errors.EnumsParseError` on malformed YAML or any
+        schema violation (rules (a)–(d) in the spec).
+
+        Cached per project keyed on ``os.stat().st_mtime_ns``; the cache
+        is refreshed transparently on every mtime mismatch and on
+        internal writes (``init_project_enums``).
+        """
+        target = self._resolve([project]) / _ENUMS_FILE_NAME
+        try:
+            st = target.stat()
+        except FileNotFoundError:
+            self._invalidate_enums_cache(project)
+            raise
+        mtime_ns = st.st_mtime_ns
+        with self._enums_cache_lock:
+            cached = self._enums_cache.get(project)
+            if cached is not None and cached[0] == mtime_ns:
+                return cached[1]
+        try:
+            raw = target.read_bytes()
+        except FileNotFoundError:
+            self._invalidate_enums_cache(project)
+            raise
+        parsed = self._parse_project_enums(raw)
+        with self._enums_cache_lock:
+            self._enums_cache[project] = (mtime_ns, parsed)
+        return parsed
+
+    def init_project_enums(self, project: str) -> dict[str, dict[str, str]]:
+        """Write the default ``components:\\n`` file for ``project``.
+
+        Returns the parsed enums dict (``{"components": {}}``) on success
+        so the caller can update an in-memory cache without an extra
+        round-trip. Raises :class:`~app.errors.NameConflictError` if the
+        file already exists (no overwrite), :class:`FileNotFoundError` if
+        the project folder is missing.
+
+        Used both by the manual ``POST /api/enums/<project>`` action and
+        by callers who want to reconcile a legacy project. The project-
+        create auto-init in :meth:`create_folder` inlines the same bytes
+        write so it can stay inside the project-folder lock region; this
+        method takes its own per-path lock.
+        """
+        project_dir = self._resolve([project])
+        if not project_dir.is_dir():
+            raise FileNotFoundError(
+                f"Project folder does not exist: {project!r}"
+            )
+        target = project_dir / _ENUMS_FILE_NAME
+        key = f"{project}/{_ENUMS_FILE_NAME}"
+        with self._lock_for(key):
+            if target.exists():
+                raise NameConflictError(
+                    path=key,
+                    message=(
+                        f"A file named {_ENUMS_FILE_NAME!r} already "
+                        f"exists under project {project!r}."
+                    ),
+                )
+            self._atomic_write_bytes(target, _ENUMS_DEFAULT_BYTES)
+            self._mark_write(target)
+        self._invalidate_enums_cache(project)
+        return self.read_project_enums(project)
+
+    def _invalidate_enums_cache(self, project: str) -> None:
+        with self._enums_cache_lock:
+            self._enums_cache.pop(project, None)
+
+    @staticmethod
+    def _parse_project_enums(raw: bytes) -> dict[str, dict[str, str]]:
+        """Parse + schema-validate the bytes of ``<project>/enums.yaml``.
+
+        Wraps :class:`yaml.YAMLError` into :class:`EnumsParseError` with a
+        location when PyYAML reports one; enforces:
+
+        (a) every inner list element is a single-key mapping;
+        (b) every key matches :data:`ENUM_IDENTIFIER_RE`;
+        (c) every label is a non-empty string with no embedded newline;
+        (d) keys are unique within a kind.
+        """
+        try:
+            payload = yaml.safe_load(raw)
+        except yaml.YAMLError as e:
+            mark = getattr(e, "problem_mark", None) or getattr(
+                e, "context_mark", None
+            )
+            line = (mark.line + 1) if mark is not None else 0
+            column = (mark.column + 1) if mark is not None else 0
+            message = getattr(e, "problem", None) or str(e)
+            raise EnumsParseError(
+                line=line, column=column, message=message
+            ) from e
+
+        if payload is None:
+            return {}
+        if not isinstance(payload, dict):
+            raise EnumsParseError(
+                line=0,
+                column=0,
+                message=(
+                    f"enums.yaml root must be a YAML mapping; "
+                    f"got {type(payload).__name__}."
+                ),
+            )
+
+        out: dict[str, dict[str, str]] = {}
+        for kind, value in payload.items():
+            if not isinstance(kind, str) or not ENUM_IDENTIFIER_RE.fullmatch(
+                kind
+            ):
+                raise EnumsParseError(
+                    line=0,
+                    column=0,
+                    message=(
+                        f"Invalid enum kind name {kind!r}; kinds must "
+                        f"match {ENUM_IDENTIFIER_RE.pattern}."
+                    ),
+                )
+            if value is None:
+                out[kind] = {}
+                continue
+            if not isinstance(value, list):
+                raise EnumsParseError(
+                    line=0,
+                    column=0,
+                    message=(
+                        f"Value under kind {kind!r} must be a list of "
+                        f"single-key mappings (- <key>: <label>); got "
+                        f"{type(value).__name__}."
+                    ),
+                )
+            inner: dict[str, str] = {}
+            for i, item in enumerate(value):
+                if not isinstance(item, dict) or len(item) != 1:
+                    raise EnumsParseError(
+                        line=0,
+                        column=0,
+                        message=(
+                            f"Element {i} under kind {kind!r} must be a "
+                            f"single-key mapping (- <key>: <label>)."
+                        ),
+                    )
+                ((key, label),) = item.items()
+                if not isinstance(key, str) or not ENUM_IDENTIFIER_RE.fullmatch(
+                    key
+                ):
+                    raise EnumsParseError(
+                        line=0,
+                        column=0,
+                        message=(
+                            f"Invalid enum key {key!r} under kind "
+                            f"{kind!r}; keys must match "
+                            f"{ENUM_IDENTIFIER_RE.pattern}."
+                        ),
+                    )
+                if key in inner:
+                    raise EnumsParseError(
+                        line=0,
+                        column=0,
+                        message=(
+                            f"Duplicate enum key {key!r} under kind "
+                            f"{kind!r}."
+                        ),
+                    )
+                if not isinstance(label, str):
+                    raise EnumsParseError(
+                        line=0,
+                        column=0,
+                        message=(
+                            f"Label for key {key!r} under kind {kind!r} "
+                            f"must be a string; got "
+                            f"{type(label).__name__}."
+                        ),
+                    )
+                if not label:
+                    raise EnumsParseError(
+                        line=0,
+                        column=0,
+                        message=(
+                            f"Label for key {key!r} under kind {kind!r} "
+                            f"must be non-empty."
+                        ),
+                    )
+                if "\n" in label:
+                    raise EnumsParseError(
+                        line=0,
+                        column=0,
+                        message=(
+                            f"Label for key {key!r} under kind {kind!r} "
+                            f"must be single-line."
+                        ),
+                    )
+                inner[key] = label
+            out[kind] = inner
+        return out
+
+    def _cross_check_enums(self, project: str, feature: Feature) -> None:
+        """Reject saves whose enums don't resolve in ``<project>/enums.yaml``.
+
+        Skips entirely when ``feature.enums`` has no non-empty entries
+        (storage never forces a value to be set; *unset* is always
+        legal). Missing-file rule: when there ARE non-empty entries but
+        the YAML is absent, every entry is treated as orphan and the
+        save is rejected with a hint pointing at the `Initialize enums
+        file` action. ``EnumsParseError`` from a malformed YAML
+        propagates to the API layer as a 422 envelope.
+        """
+        nonempty = {k: v for k, v in feature.enums.items() if v}
+        if not nonempty:
+            return
+        try:
+            vocab = self.read_project_enums(project)
+        except FileNotFoundError:
+            raise ValidationError(
+                field="enums",
+                message=(
+                    f"Cannot save enum values: project {project!r} has no "
+                    f"{_ENUMS_FILE_NAME}. Run the 'Initialize enums file' "
+                    f"action to create one before assigning enum values."
+                ),
+            )
+        for kind, key in nonempty.items():
+            kind_entries = vocab.get(kind)
+            if kind_entries is None:
+                raise ValidationError(
+                    field=f"enums[{kind}]",
+                    message=(
+                        f"Unknown enum kind {kind!r}; not defined in "
+                        f"{project}/{_ENUMS_FILE_NAME}."
+                    ),
+                )
+            if key not in kind_entries:
+                raise ValidationError(
+                    field=f"enums[{kind}]",
+                    message=(
+                        f"Unknown enum key {key!r} for kind {kind!r}; "
+                        f"not defined in {project}/{_ENUMS_FILE_NAME}."
+                    ),
+                )
 
     # -- Search ----------------------------------------------------------
 
@@ -884,6 +1207,15 @@ class Storage:
                 )
             target.mkdir(parents=False, exist_ok=False)
             self._mark_write(target)
+            # Project-create auto-init: write the default `enums.yaml` next
+            # to the newly-created project folder per spec 11. The two
+            # writes are sequential, not atomic; a crash between them
+            # leaves a legacy-shaped project (no enums file) that the user
+            # reconciles via `Initialize enums file`. Same code path.
+            if len(segments) == 1:
+                enums_target = target / _ENUMS_FILE_NAME
+                self._atomic_write_bytes(enums_target, _ENUMS_DEFAULT_BYTES)
+                self._mark_write(enums_target)
 
     def rename_folder(self, parts: PartsLike, new_name: str) -> None:
         """Rename a folder within its existing parent. Any depth allowed.

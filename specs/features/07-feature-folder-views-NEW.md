@@ -80,7 +80,7 @@ Server helper:
 - `File name`: shown as-is. Click → `/ui/file/<path>`.
 - `Description`: **first line only**, truncated; full description
   in the `title=` attribute for hover. Multi-line descriptions
-  never expand the row (R2 / G3 per PLAN.md).
+  never expand the row.
 - `Tags`: chips rendered with `@` prefix, single line, truncated.
 
 **Sub-folder-table column contract**

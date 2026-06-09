@@ -280,14 +280,17 @@ function tmsRefreshFolder(folderPath) {
 
 /**
  * Open a small modal dialog. First in-app modal primitive (introduced for
- * the "Move test case to another folder" feature; see IN-PROGRESS.md).
+ * the "Move test case to another folder" feature; see DONE.md § Must have).
  * Designed to be reused by future pickers — caller passes a generic body
  * Element so any form / list / picker can live inside.
  *
  * @param {object}  opts
  * @param {string}  opts.title          Heading text.
  * @param {string|Node} opts.body       Body content; string is text, Node is appended as-is.
- * @param {string} [opts.confirmLabel]  Confirm button label. Default "Confirm".
+ * @param {string|null} [opts.confirmLabel]  Confirm button label. Default
+ *   "Confirm". Pass `null` to render no Confirm button at all (used by
+ *   information-only modals such as the zero-projects branch of
+ *   `tmsCreateRun`, which has nothing actionable to confirm).
  * @param {boolean}[opts.confirmDisabled] Initial disabled state.
  * @param {"md"|"lg"|"xl"} [opts.size]  Modal max width. Default "md".
  *   md = max-w-md (small forms), lg = max-w-2xl (case picker),
@@ -328,8 +331,14 @@ function tmsOpenModal({
   if (typeof body === "string") bodyHost.textContent = body;
   else if (body instanceof Node) bodyHost.appendChild(body);
   const confirmBtn = card.querySelector('[data-action="confirm"]');
-  confirmBtn.textContent = confirmLabel;
-  confirmBtn.disabled = !!confirmDisabled;
+  if (confirmLabel === null) {
+    // Information-only modal: drop the Confirm button entirely so the
+    // footer only shows Cancel. Caller's `onConfirm` is never invoked.
+    confirmBtn.remove();
+  } else {
+    confirmBtn.textContent = confirmLabel;
+    confirmBtn.disabled = !!confirmDisabled;
+  }
   overlay.appendChild(card);
 
   const close = () => {
@@ -344,21 +353,28 @@ function tmsOpenModal({
     if (e.target === overlay) close();
   });
   card.querySelector('[data-action="cancel"]').addEventListener("click", close);
-  confirmBtn.addEventListener("click", async () => {
-    if (confirmBtn.disabled) return;
-    try {
-      await onConfirm?.({ close });
-    } catch (_) {
-      /* caller is expected to surface its own errors */
-    }
-  });
+  // The confirm button may have been removed for information-only modals;
+  // attach listeners and expose setConfirmDisabled only when it still lives
+  // in the card. `parentNode` flips to null after `.remove()`; `isConnected`
+  // is unreliable here because the card itself isn't in the document yet.
+  const hasConfirm = confirmBtn.parentNode !== null;
+  if (hasConfirm) {
+    confirmBtn.addEventListener("click", async () => {
+      if (confirmBtn.disabled) return;
+      try {
+        await onConfirm?.({ close });
+      } catch (_) {
+        /* caller is expected to surface its own errors */
+      }
+    });
+  }
 
   document.addEventListener("keydown", onKey);
   document.body.appendChild(overlay);
   return {
     close,
     setConfirmDisabled: (v) => {
-      confirmBtn.disabled = !!v;
+      if (hasConfirm) confirmBtn.disabled = !!v;
     },
   };
 }
@@ -402,8 +418,8 @@ async function tmsCreateSubfolder(parent) {
 
 /**
  * Open the single-form create-test-case modal. Replaces the previous
- * two-prompt flow (see IN-PROGRESS.md "Single-form create-test-case flow").
- * Both fields are required client-side as a "non-empty after trim" check;
+ * two-prompt flow. Both fields are required client-side as a "non-empty
+ * after trim" check;
  * all other validation (regex, name conflicts, etc.) is delegated to the
  * server response so the client never drifts from `_validate_segment` /
  * `NameConflictError`.
@@ -487,24 +503,41 @@ function tmsCreateFile(parent) {
 }
 
 // -----------------------------------------------------------------------
-// Test-run create flow — Phase 3.B of `10-feature-test-run-NEW.md`.
+// Test-run create flow — relocated to the Test-run sidebar tab as part
+// of the "Relocate + simplify the + New run flow" change (see
+// DONE.md § Should have).
 //
-// `tmsCreateRun(project, group)` opens a single modal containing:
-//   - run name (text)
-//   - description (textarea, optional)
-//   - case picker: flat checkbox table of every .feature file under the
-//     given project, sorted by folder path then file name, with a search
-//     filter on top.
+// `tmsCreateRun()` (no args) is wired to the sidebar header button. It
+// is always callable: it fetches /api/run-groups, then opens a modal
+// in one of two shapes.
 //
-// On confirm the run's file_name is derived from the name via a small
-// slugifier; POST hits /api/runs and on success the main pane is
-// navigated to /ui/run/<project>/<group>/<file_name>.yaml (the route
-// itself lands in Phase 3.C — clicks before then 404 with a clean
-// envelope, the modal closes either way).
+//   - Zero-projects branch (projects: []): a single info message
+//     "No projects yet — create one first." and a Cancel-only footer
+//     (Confirm button suppressed via tmsOpenModal({ confirmLabel: null })).
 //
-// The case-picker helper is factored out so Phase 3.E's "+ Add test
-// case" modal in the run editor reuses it verbatim with the editor's
-// current case_paths excluded.
+//   - Base shape: two visible fields.
+//       * Where — <select> with one <optgroup label="proj"> per project
+//         that has groups, listing each group as an <option value="proj|grp">.
+//         A trailing non-grouped <option value="__new__"> reveals an
+//         inline sub-form (project <select> of all existing projects +
+//         free-text group name input).
+//       * Run name — <input>, plus a live slug preview "will save as
+//         <slug>.yaml" so silent slug collisions surface before submit.
+//
+// On confirm:
+//   1. If a new group was chosen, POST /api/runs/<project>/groups first;
+//      a 409 surfaces inline under the group-name input (uniqueness
+//      within project is enforced by Storage.create_run_group).
+//   2. POST /api/runs with case_paths=[] and description=""; a 409
+//      surfaces inline under the run-name input (uniqueness within
+//      group is enforced by Storage.create_run).
+//   3. On success, the modal closes and the main pane is navigated to
+//      /ui/run/<project>/<group>/<file_name>.yaml so the user can fill
+//      in description / add cases / set results in the editor.
+//
+// The case-picker helpers (tmsSlugifyForFilename, tmsFetchProjectFeaturePaths,
+// tmsBuildCasePicker) are kept because the run editor's "+ Add test case"
+// modal still uses them; only `tmsCreateRun` itself was rewritten.
 // -----------------------------------------------------------------------
 
 /**
@@ -602,7 +635,9 @@ function tmsBuildCasePicker(features, opts = {}) {
   table.innerHTML =
     '<thead class="bg-slate-50 text-slate-600 sticky top-0">' +
     "  <tr>" +
-    '    <th class="text-left px-2 py-1.5 font-medium w-8"></th>' +
+    '    <th class="text-left px-2 py-1.5 font-medium w-8">' +
+    '      <input type="checkbox" data-role="select-all" aria-label="Select all visible" class="rounded border-slate-300" />' +
+    '    </th>' +
     '    <th class="text-left px-2 py-1.5 font-medium">Folder</th>' +
     '    <th class="text-left px-2 py-1.5 font-medium">File</th>' +
     "  </tr>" +
@@ -612,7 +647,10 @@ function tmsBuildCasePicker(features, opts = {}) {
   scroll.appendChild(table);
 
   // Empty-state row when nothing is available (project has no features,
-  // or all features are already in the run).
+  // or all features are already in the run). When the table is replaced
+  // by the empty-state div, `headerBox` stays null so every header-state
+  // helper short-circuits via its early-return guard.
+  let headerBox = null;
   if (visible.length === 0) {
     const empty = document.createElement("div");
     empty.className = "px-3 py-6 text-center text-slate-400 italic text-sm";
@@ -639,6 +677,7 @@ function tmsBuildCasePicker(features, opts = {}) {
       tr.children[2].textContent = f.file_name;
       tbody.appendChild(tr);
     }
+    headerBox = table.querySelector('[data-role="select-all"]');
   }
 
   const countSpan = head.querySelector('[data-role="case-count"]');
@@ -651,12 +690,29 @@ function tmsBuildCasePicker(features, opts = {}) {
         ? `${visible.length} cases`
         : `${checked} of ${visible.length} selected`;
   };
+
+  // Refresh the header's tri-state to reflect the currently-visible rows.
+  // Hidden-but-checked rows are intentionally excluded so the header always
+  // describes what "select all" would act on. When no rows are visible
+  // (filter matched nothing, or empty-state) the header resets to a plain
+  // unchecked state; clicking it then is a self-correcting no-op.
+  const _refreshHeaderState = () => {
+    if (!headerBox) return;
+    const total = tbody.querySelectorAll('tr:not(.hidden)').length;
+    const sel = tbody.querySelectorAll(
+      'tr:not(.hidden) input[type="checkbox"]:checked'
+    ).length;
+    headerBox.checked = total > 0 && sel === total;
+    headerBox.indeterminate = total > 0 && sel > 0 && sel < total;
+  };
   updateCount();
+  _refreshHeaderState();
 
   tbody.addEventListener("change", (e) => {
     if (e.target.matches('input[type="checkbox"]')) {
       updateCount();
       opts.onChange?.();
+      _refreshHeaderState();
     }
   });
 
@@ -670,6 +726,7 @@ function tmsBuildCasePicker(features, opts = {}) {
     box.checked = !box.checked;
     updateCount();
     opts.onChange?.();
+    _refreshHeaderState();
   });
 
   filterInput.addEventListener("input", () => {
@@ -689,7 +746,26 @@ function tmsBuildCasePicker(features, opts = {}) {
         : checked === 0
         ? `${visible.length} cases`
         : `${checked} of ${visible.length} selected`;
+    _refreshHeaderState();
   });
+
+  // Header select-all: bulk-toggles every currently-visible row to match
+  // the header's new checked state, then recomputes header state. Hidden
+  // selections are preserved across this operation by design (see spec
+  // 10 § Case picker). Listener is attached only when the header exists
+  // (i.e. the non-empty-state path).
+  if (headerBox) {
+    headerBox.addEventListener("change", () => {
+      const target = headerBox.checked;
+      for (const tr of tbody.querySelectorAll('tr:not(.hidden)')) {
+        const box = tr.querySelector('input[type="checkbox"]');
+        if (box) box.checked = target;
+      }
+      updateCount();
+      opts.onChange?.();
+      _refreshHeaderState();
+    });
+  }
 
   return {
     node: wrap,
@@ -701,95 +777,235 @@ function tmsBuildCasePicker(features, opts = {}) {
 }
 
 /**
- * Open the "+ New run" modal for the given (project, group).
+ * Open the "+ New run" modal (no arguments).
  *
- * Called by folder_test_run_group.html's toolbar button and empty-state
- * CTA. Field-level validation is purely "non-empty after trim" on the
- * client; server-side errors (name conflict, depth violation, etc.)
- * propagate from /api/runs and are surfaced inline in the modal so the
- * user can correct and retry without losing their selection.
+ * Wired to the sidebar header button. Fetches /api/run-groups, then
+ * renders one of two modal shapes. See the section header above for
+ * the full state machine + payload contract.
  */
-async function tmsCreateRun(project, group) {
-  let features;
+async function tmsCreateRun() {
+  // 1. Fetch projects + existing groups in one round trip.
+  let projects, groups;
   try {
-    features = await tmsFetchProjectFeaturePaths(project);
+    const r = await fetch("/api/run-groups", {
+      headers: { Accept: "application/json" },
+    });
+    if (!r.ok) throw new Error("HTTP " + r.status);
+    ({ projects, groups } = await r.json());
   } catch (e) {
-    alert("Could not load test cases: " + e.message);
+    alert("Could not load run groups: " + e.message);
     return;
   }
 
+  // 2. Zero-projects branch — information-only modal.
+  if (!projects || projects.length === 0) {
+    const body = document.createElement("div");
+    body.innerHTML =
+      '<p class="text-sm text-slate-700">No projects yet — create one first.</p>';
+    tmsOpenModal({
+      title: "Create test run",
+      body,
+      confirmLabel: null,
+    });
+    return;
+  }
+
+  // 3. Base modal body.
   const body = document.createElement("div");
   body.innerHTML =
-    '<label class="block text-sm text-slate-600 mb-1" for="tms-cr-name">Run name</label>' +
+    '<label class="block text-sm text-slate-600 mb-1" for="tms-cr-where">Where</label>' +
+    '<select id="tms-cr-where"' +
+    ' class="w-full border border-slate-300 rounded px-2 py-1.5 text-sm bg-white"></select>' +
+    '<p data-role="where-error" class="hidden mt-1 text-xs text-rose-600"></p>' +
+    '<div id="tms-cr-newgroup" class="hidden mt-3 space-y-2 pl-3 border-l-2 border-slate-100">' +
+    '  <div>' +
+    '    <label class="block text-sm text-slate-600 mb-1" for="tms-cr-newproj">Project</label>' +
+    '    <select id="tms-cr-newproj"' +
+    '      class="w-full border border-slate-300 rounded px-2 py-1.5 text-sm bg-white"></select>' +
+    '  </div>' +
+    '  <div>' +
+    '    <label class="block text-sm text-slate-600 mb-1" for="tms-cr-newgrp">Group name</label>' +
+    '    <input id="tms-cr-newgrp" type="text" autocomplete="off"' +
+    '      class="w-full border border-slate-300 rounded px-2 py-1.5 text-sm bg-white" />' +
+    '    <p data-role="group-error" class="hidden mt-1 text-xs text-rose-600"></p>' +
+    '  </div>' +
+    '</div>' +
+    '<label class="block text-sm text-slate-600 mt-3 mb-1" for="tms-cr-name">Run name</label>' +
     '<input id="tms-cr-name" type="text" autocomplete="off"' +
     ' class="w-full border border-slate-300 rounded px-2 py-1.5 text-sm bg-white" />' +
-    '<label class="block text-sm text-slate-600 mt-3 mb-1" for="tms-cr-desc">Description <span class="text-slate-400 font-normal">(optional)</span></label>' +
-    '<textarea id="tms-cr-desc" rows="2"' +
-    ' class="w-full border border-slate-300 rounded px-2 py-1.5 text-sm bg-white resize-y"></textarea>' +
-    '<label class="block text-sm text-slate-600 mt-3 mb-1">Test cases</label>' +
-    '<div data-role="picker-host"></div>' +
-    '<p data-role="error" class="hidden mt-2 text-sm text-red-600"></p>';
-  const nameInput = body.querySelector("#tms-cr-name");
-  const descInput = body.querySelector("#tms-cr-desc");
-  const pickerHost = body.querySelector('[data-role="picker-host"]');
-  const error = body.querySelector('[data-role="error"]');
+    '<p data-role="slug-preview" class="mt-1 text-xs text-slate-500"></p>' +
+    '<p data-role="name-error" class="hidden mt-1 text-xs text-rose-600"></p>';
 
+  const whereSel = body.querySelector("#tms-cr-where");
+  const newGroupBlock = body.querySelector("#tms-cr-newgroup");
+  const newProjSel = body.querySelector("#tms-cr-newproj");
+  const newGrpInput = body.querySelector("#tms-cr-newgrp");
+  const nameInput = body.querySelector("#tms-cr-name");
+  const slugPreview = body.querySelector('[data-role="slug-preview"]');
+  const whereError = body.querySelector('[data-role="where-error"]');
+  const groupError = body.querySelector('[data-role="group-error"]');
+  const nameError = body.querySelector('[data-role="name-error"]');
+
+  // 4. Populate the "Where" <select> with one <optgroup> per project
+  //    that has groups; bare projects are reachable via the new-group
+  //    sub-select so they don't need an empty <optgroup> here.
+  const byProj = new Map();
+  for (const g of groups || []) {
+    if (!byProj.has(g.project)) byProj.set(g.project, []);
+    byProj.get(g.project).push(g.group);
+  }
+  let firstExistingVal = "";
+  for (const [proj, gs] of byProj) {
+    const og = document.createElement("optgroup");
+    og.label = proj;
+    for (const grp of gs) {
+      const opt = document.createElement("option");
+      opt.value = proj + "|" + grp;
+      opt.textContent = grp;
+      og.appendChild(opt);
+      if (!firstExistingVal) firstExistingVal = opt.value;
+    }
+    whereSel.appendChild(og);
+  }
+  const newOpt = document.createElement("option");
+  newOpt.value = "__new__";
+  newOpt.textContent = "+ Create new group\u2026";
+  whereSel.appendChild(newOpt);
+  whereSel.value = firstExistingVal || "__new__";
+
+  // 5. Populate the new-group project sub-select with every project
+  //    (including those that have no test-run/ folder yet — storage
+  //    lazy-creates the area on the first POST).
+  for (const p of projects) {
+    const opt = document.createElement("option");
+    opt.value = p;
+    opt.textContent = p;
+    newProjSel.appendChild(opt);
+  }
+
+  // 6. Confirm-button gating helper. Forward-declared so the listeners
+  //    below can call it before modalRef is wired.
   let modalRef = null;
   const refreshGate = () => {
     if (!modalRef) return;
-    const ok =
-      nameInput.value.trim().length > 0 && picker.getSelected().length > 0;
-    modalRef.setConfirmDisabled(!ok);
+    const nameOk = tmsSlugifyForFilename(nameInput.value).length > 0;
+    let pathOk;
+    if (whereSel.value === "__new__") {
+      pathOk =
+        newProjSel.value.length > 0 && newGrpInput.value.trim().length > 0;
+    } else {
+      pathOk = whereSel.value.length > 0 && whereSel.value !== "__new__";
+    }
+    modalRef.setConfirmDisabled(!(nameOk && pathOk));
   };
-  const picker = tmsBuildCasePicker(features, { onChange: refreshGate });
-  pickerHost.appendChild(picker.node);
 
+  // 7. Reveal-on-select toggling for the new-group sub-form.
+  const updateNewGroupVisibility = () => {
+    const isNew = whereSel.value === "__new__";
+    newGroupBlock.classList.toggle("hidden", !isNew);
+    if (isNew) groupError.classList.add("hidden");
+    refreshGate();
+  };
+
+  // 8. Live slug preview under the run-name input.
+  const updateSlugPreview = () => {
+    nameError.classList.add("hidden");
+    const slug = tmsSlugifyForFilename(nameInput.value);
+    slugPreview.textContent = slug
+      ? `will save as ${slug}.yaml`
+      : "(enter a name to see the file name)";
+    refreshGate();
+  };
+
+  whereSel.addEventListener("change", updateNewGroupVisibility);
+  newProjSel.addEventListener("change", refreshGate);
+  newGrpInput.addEventListener("input", () => {
+    groupError.classList.add("hidden");
+    refreshGate();
+  });
+  nameInput.addEventListener("input", updateSlugPreview);
+
+  // 9. Open the modal. Submit handler issues a conditional group POST
+  //    then the run POST, surfacing 409s inline next to the offending
+  //    input. On success, the run editor opens in the main pane.
   modalRef = tmsOpenModal({
-    title: `Create run in ${project} / ${group}`,
+    title: "Create test run",
     body,
-    size: "lg",
-    confirmLabel: "Create run",
+    confirmLabel: "Create",
     confirmDisabled: true,
     onConfirm: async ({ close }) => {
-      const name = nameInput.value.trim();
-      const description = descInput.value.trim();
-      const case_paths = picker.getSelected();
-      if (!name || case_paths.length === 0) return;
-      const file_name = tmsSlugifyForFilename(name);
-      if (!file_name) {
-        error.textContent =
-          "Run name produces an empty file name; use letters or digits.";
-        error.classList.remove("hidden");
-        return;
+      whereError.classList.add("hidden");
+      groupError.classList.add("hidden");
+      nameError.classList.add("hidden");
+
+      const isNew = whereSel.value === "__new__";
+      let project, group;
+      if (isNew) {
+        project = newProjSel.value;
+        group = newGrpInput.value.trim();
+      } else {
+        [project, group] = whereSel.value.split("|");
       }
-      error.classList.add("hidden");
+      const name = nameInput.value.trim();
+      const file_name = tmsSlugifyForFilename(name);
+      if (!project || !group || !name || !file_name) return;
+
+      // 9a. Create the group first when needed; preserve the user's
+      //     other inputs on failure so they can correct just the name.
+      if (isNew) {
+        try {
+          await tmsApiPost(
+            `/api/runs/${encodeURIComponent(project)}/groups`,
+            { name: group }
+          );
+        } catch (e) {
+          groupError.textContent =
+            /already exists/i.test(e.message)
+              ? "Group already exists in this project."
+              : e.message;
+          groupError.classList.remove("hidden");
+          return;
+        }
+      }
+
+      // 9b. Create the run. case_paths starts empty; the user adds
+      //     cases in the run editor afterwards.
       try {
         await tmsApiPost("/api/runs", {
           project,
           group,
           name,
           file_name,
-          description,
-          case_paths,
+          case_paths: [],
+          description: "",
         });
-        close();
-        // Navigate the main pane to the new run editor. The route lands
-        // in Phase 3.C; until then this swap will 404 cleanly via the
-        // blueprint's error handler.
-        htmx.ajax(
-          "GET",
-          `/ui/run/${project}/${group}/${file_name}.yaml`,
-          { target: "#main-pane", swap: "innerHTML" }
-        );
       } catch (e) {
-        error.textContent = e.message;
-        error.classList.remove("hidden");
+        nameError.textContent =
+          /already exists/i.test(e.message)
+            ? "A run with this name already exists in this group."
+            : e.message;
+        nameError.classList.remove("hidden");
+        return;
       }
+
+      // 9c. Success: close and open the run editor.
+      close();
+      htmx.ajax(
+        "GET",
+        `/ui/run/${project}/${group}/${file_name}.yaml`,
+        { target: "#main-pane", swap: "innerHTML" }
+      );
     },
   });
 
-  nameInput.addEventListener("input", refreshGate);
-  setTimeout(() => nameInput.focus(), 0);
+  // 10. Initial render: sync reveal-on-select state, render slug hint,
+  //     and focus the most useful input.
+  updateNewGroupVisibility();
+  updateSlugPreview();
+  setTimeout(() => {
+    if (whereSel.value === "__new__") newGrpInput.focus();
+    else nameInput.focus();
+  }, 0);
 }
 
 // -----------------------------------------------------------------------
@@ -908,7 +1124,15 @@ const tmsRunEditor = {
     const linkCell = tr.children[0];
     linkCell.setAttribute("title", file_path);
     const link = linkCell.querySelector(".run-row-link");
-    link.textContent = file_path;
+    // Mask the path: folder (muted) before filename (emphasized).
+    // Defensive split via lastIndexOf so zero-slash paths render with
+    // an empty folder span and the full string in filename — mirrors
+    // the Jinja `rsplit('/', 1)` branch in run_editor.html.
+    const idx = file_path.lastIndexOf("/");
+    const folder = idx >= 0 ? file_path.slice(0, idx + 1) : "";
+    const name = idx >= 0 ? file_path.slice(idx + 1) : file_path;
+    link.querySelector('[data-role="folder"]').textContent = folder;
+    link.querySelector('[data-role="filename"]').textContent = name;
     link.setAttribute("hx-get", `/ui/file/${file_path}`);
     // Result defaults to PENDING (spec: "newly-checked row is appended
     // as a fresh PENDING row with empty remark").
@@ -1310,6 +1534,13 @@ function tmsIsValidTag(t) {
 const tmsEditor = {
   state: null,
 
+  // Module-level session cache for project-level enums vocabularies.
+  // Keyed by project name; value is a Promise resolving to
+  // `{ status: 'ok'|'missing'|'error', vocab?, message? }`. Persists across
+  // editor mounts so navigating between files in the same project does
+  // not re-fetch. See specs/features/11-feature-testcase-component-NEW.md.
+  _vocabCache: Object.create(null),
+
   /** Initial bootstrap from the embedded JSON payload. */
   boot() {
     const dataEl = document.getElementById("editor-data");
@@ -1328,6 +1559,13 @@ const tmsEditor = {
       snapshotRaw: data.raw,
       dirty: false,
       tab: "structured",
+      // Project-level enums plumbing (spec 11). Loaded async from
+      // GET /api/enums/<project>; render is a no-op until status flips
+      // off 'loading'. The vocab is normalised to {kind: {key: label}}.
+      enumsProject: (data.path || "").split("/")[0] || null,
+      enumsStatus: "loading",
+      enumsVocab: undefined,
+      enumsMessage: "",
     };
     this.renderStructured();
     this.renderRaw();
@@ -1335,7 +1573,10 @@ const tmsEditor = {
     this.wireStructuredInputs();
     this.wireRawInputs();
     this.wireTabButtons();
+    this.wireEnumsInit();
     this.updateSaveButton();
+    // Fire-and-forget enums fetch; renderEnums runs again on resolve.
+    this._loadEnums();
   },
 
   // ---- Tab management ------------------------------------------------
@@ -1393,8 +1634,7 @@ const tmsEditor = {
 
   /**
    * Show the topbar "Saved" badge for ~1.5s. Called from the success
-   * branches of both `save` (structured) and `saveRaw` (raw tab); see
-   * IN-PROGRESS.md "Save success indicator" entry.
+   * branches of both `save` (structured) and `saveRaw` (raw tab).
    */
   flashSaved() {
     const el = document.getElementById("saved-indicator");
@@ -1437,6 +1677,7 @@ const tmsEditor = {
     this.renderSteps("scenario", f.scenario.steps);
     this.renderExamplesSection();
     this.updateBackgroundCount();
+    this.renderEnums();
   },
 
   renderRaw() {
@@ -1668,8 +1909,7 @@ const tmsEditor = {
   // ---- Shared grid cell helpers -------------------------------------
   //
   // Both the per-step `data_table` grid and the outline `Examples` grid
-  // share three requirements (IN-PROGRESS.md "Inline data table & Examples
-  // table sizing"):
+  // share three requirements:
   //   1. The grid renders at ~1/2 of the viewport width (50vw), capped to
   //      the editor pane (`max-width: 100%`). Columns split the available
   //      width evenly via `table-layout: fixed`.
@@ -2036,7 +2276,6 @@ const tmsEditor = {
    * Manual reload from disk. Discards any unsaved structured + raw edits
    * (with a confirm when dirty). Symmetric to the tree-refresh button — a
    * safety net when the SSE / watcher path doesn't auto-reload the editor.
-   * See IN-PROGRESS.md "Manual refresh button for the test-case editor".
    */
   async reload() {
     if (
@@ -2169,6 +2408,261 @@ const tmsEditor = {
     select.addEventListener("change", () => {
       modal.setConfirmDisabled(!select.value);
     });
+  },
+
+  // ---- Project-level enums (spec 11) --------------------------------
+
+  /**
+   * Resolve the project's enums.yaml vocabulary via GET /api/enums/<project>.
+   * Idempotent and session-cached on `tmsEditor._vocabCache[project]` so
+   * navigating across files within the same project reuses the same
+   * Promise. Triggers `renderEnums()` once resolved. Status branches:
+   *   - 'ok'      : `state.enumsVocab = {kind: {key: label}}`
+   *   - 'missing' : project has no enums.yaml (legacy / pre-init)
+   *   - 'error'   : network or other failure; `state.enumsMessage` set
+   * Manual hand-edits to the file take effect on the next page reload;
+   * v1 deliberately has no SSE-driven live refresh (spec Operational notes).
+   */
+  async _loadEnums() {
+    const project = this.state.enumsProject;
+    if (!project) {
+      this.state.enumsStatus = "missing";
+      this.renderEnums();
+      return;
+    }
+    let entry = tmsEditor._vocabCache[project];
+    if (!entry) {
+      entry = (async () => {
+        const r = await fetch("/api/enums/" + encodeURIComponent(project));
+        if (r.status === 404) return { status: "missing" };
+        if (!r.ok) {
+          const j = await r.json().catch(() => null);
+          return {
+            status: "error",
+            message: (j && j.error && j.error.message) || r.statusText,
+          };
+        }
+        const vocab = await r.json();
+        return { status: "ok", vocab };
+      })();
+      tmsEditor._vocabCache[project] = entry;
+    }
+    let resolved;
+    try {
+      resolved = await entry;
+    } catch (e) {
+      resolved = { status: "error", message: e.message };
+    }
+    // Only apply if the editor is still mounted on this same file.
+    // (Late-resolving fetches across rapid file swaps would otherwise
+    // overwrite state belonging to a newly-opened file.)
+    if (!this.state || this.state.enumsProject !== project) return;
+    this.state.enumsStatus = resolved.status;
+    this.state.enumsVocab = resolved.vocab;
+    this.state.enumsMessage = resolved.message || "";
+    this.renderEnums();
+  },
+
+  /** Render the Enums section per current vocab + feature.enums. */
+  renderEnums() {
+    if (!this.state) return;
+    const missingEl = document.getElementById("feature-enums-missing");
+    const emptyEl = document.getElementById("feature-enums-empty");
+    const pickersEl = document.getElementById("feature-enums-pickers");
+    const orphansEl = document.getElementById("feature-enums-orphans");
+    if (!pickersEl || !orphansEl || !missingEl || !emptyEl) return;
+    pickersEl.innerHTML = "";
+    orphansEl.innerHTML = "";
+    missingEl.classList.add("hidden");
+    emptyEl.classList.add("hidden");
+
+    const status = this.state.enumsStatus;
+    const vocab = this.state.enumsVocab || {};
+
+    if (status === "loading") {
+      // Wait for _loadEnums() to resolve; orphans are not meaningful yet
+      // because we don't know which keys are defined.
+      return;
+    }
+    if (status === "missing") {
+      missingEl.classList.remove("hidden");
+      // Skip orphan rendering — there's no vocab to compare against, and
+      // the Initialize button is the only meaningful action.
+      return;
+    }
+    if (status === "error") {
+      const err = document.createElement("div");
+      err.className = "text-xs text-red-700";
+      err.textContent = "Failed to load enums: " +
+        (this.state.enumsMessage || "unknown error");
+      pickersEl.appendChild(err);
+      return;
+    }
+    // status === 'ok'
+    if (Object.keys(vocab).length === 0) {
+      emptyEl.classList.remove("hidden");
+    } else {
+      for (const kind of Object.keys(vocab)) {
+        pickersEl.appendChild(this._buildEnumPicker(kind, vocab[kind] || {}));
+      }
+    }
+    this._renderEnumOrphans();
+  },
+
+  _buildEnumPicker(kind, entries) {
+    const row = document.createElement("div");
+    row.className = "flex items-center gap-2 text-sm";
+    row.dataset.kind = kind;
+
+    const label = document.createElement("label");
+    label.className = "w-32 text-xs text-slate-600 truncate";
+    label.textContent = kind;
+    label.setAttribute("for", "feature-enum-" + kind);
+    row.appendChild(label);
+
+    const select = document.createElement("select");
+    select.id = "feature-enum-" + kind;
+    select.className = "border border-slate-300 rounded px-2 py-0.5 text-sm bg-white";
+    select.dataset.kind = kind;
+    select.dataset.field = "enum";
+
+    const enumsMap = this.state.feature.enums || {};
+    const selectedKey = enumsMap[kind] || "";
+    const keys = Object.keys(entries);
+
+    const noneOpt = document.createElement("option");
+    noneOpt.value = "";
+    noneOpt.textContent = "\u2014 not set \u2014";
+    if (!selectedKey) noneOpt.selected = true;
+    select.appendChild(noneOpt);
+    for (const key of keys) {
+      const opt = document.createElement("option");
+      opt.value = key;
+      opt.textContent = entries[key];
+      if (key === selectedKey) opt.selected = true;
+      select.appendChild(opt);
+    }
+
+    if (keys.length === 0) {
+      select.disabled = true;
+      row.appendChild(select);
+      const hint = document.createElement("span");
+      hint.className = "text-xs text-slate-500";
+      hint.textContent =
+        "No " + kind + " entries defined yet \u2014 edit enums.yaml to add some.";
+      row.appendChild(hint);
+    } else {
+      row.appendChild(select);
+    }
+
+    select.addEventListener("change", (e) => {
+      if (!this.state.feature.enums) this.state.feature.enums = {};
+      this.state.feature.enums[kind] = e.target.value;
+      this.markDirty(true);
+      // Picker change can never CREATE an orphan (we only offer known
+      // keys + "unset"), but clearing a kind back to unset may remove an
+      // orphan banner if it had been there from a previous YAML edit.
+      this._renderEnumOrphans();
+    });
+
+    return row;
+  },
+
+  /**
+   * Render orphan rows for (kind, key) pairs in feature.enums whose
+   * kind/key are not in the current vocab. Per spec error-handling
+   * subsection: the data is preserved on read so transient YAML edits
+   * don't silently drop it, but the save is blocked until the user
+   * clears or re-adds the kind. The actual save-time block is enforced
+   * by Storage._cross_check_enums; here we surface the warning UI.
+   */
+  _renderEnumOrphans() {
+    const orphansEl = document.getElementById("feature-enums-orphans");
+    if (!orphansEl) return;
+    orphansEl.innerHTML = "";
+    if (this.state.enumsStatus !== "ok") return;
+    const vocab = this.state.enumsVocab || {};
+    const enumsMap = this.state.feature.enums || {};
+    for (const kind of Object.keys(enumsMap)) {
+      const key = enumsMap[kind];
+      if (!key) continue;  // unset is never orphan
+      const kindEntries = vocab[kind];
+      const isOrphan = kindEntries === undefined || !(key in kindEntries);
+      if (!isOrphan) continue;
+      const row = document.createElement("div");
+      row.className = "flex items-center gap-2 text-sm";
+      row.dataset.kind = kind;
+      row.dataset.orphan = "1";
+      const badge = document.createElement("span");
+      badge.className =
+        "inline-flex items-center gap-1 px-1.5 py-0.5 text-xs rounded bg-amber-100 text-amber-900";
+      badge.title =
+        "Not defined in enums.yaml \u2014 clear or re-add the kind to save";
+      badge.innerHTML =
+        '<span>' + tmsEscape(kind) + ": " + tmsEscape(key) + "</span>";
+      row.appendChild(badge);
+      const clearBtn = document.createElement("button");
+      clearBtn.type = "button";
+      clearBtn.className =
+        "text-xs text-slate-600 hover:text-slate-900 underline";
+      clearBtn.dataset.action = "clear-orphan";
+      clearBtn.textContent = "Clear";
+      clearBtn.addEventListener("click", () => {
+        this.state.feature.enums[kind] = "";
+        this.markDirty(true);
+        this._renderEnumOrphans();
+      });
+      row.appendChild(clearBtn);
+      orphansEl.appendChild(row);
+    }
+  },
+
+  wireEnumsInit() {
+    const btn = document.getElementById("feature-enums-init-btn");
+    if (!btn) return;
+    btn.addEventListener("click", () => this._initEnumsFile());
+  },
+
+  /** POST /api/enums/<project> → hydrate cache + re-render on 201. */
+  async _initEnumsFile() {
+    const project = this.state.enumsProject;
+    if (!project) return;
+    const errEl = document.getElementById("feature-enums-init-error");
+    if (errEl) {
+      errEl.classList.add("hidden");
+      errEl.textContent = "";
+    }
+    try {
+      const r = await fetch(
+        "/api/enums/" + encodeURIComponent(project),
+        { method: "POST" }
+      );
+      if (!r.ok) {
+        const j = await r.json().catch(() => null);
+        const msg = (j && j.error && j.error.message) || r.statusText;
+        if (errEl) {
+          errEl.textContent = msg;
+          errEl.classList.remove("hidden");
+        }
+        return;
+      }
+      const vocab = await r.json();
+      // Hydrate the session cache so a subsequent file open in this
+      // project does not refetch.
+      tmsEditor._vocabCache[project] = Promise.resolve({
+        status: "ok",
+        vocab,
+      });
+      this.state.enumsStatus = "ok";
+      this.state.enumsVocab = vocab;
+      this.state.enumsMessage = "";
+      this.renderEnums();
+    } catch (e) {
+      if (errEl) {
+        errEl.textContent = e.message;
+        errEl.classList.remove("hidden");
+      }
+    }
   },
 
   // ---- Save flow ----------------------------------------------------

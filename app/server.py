@@ -14,6 +14,7 @@ Exception → HTTP code mapping (PLAN.md §8.5):
 - :class:`~app.errors.ValidationError`   → ``422 validation_error``
 - :class:`~app.errors.GherkinParseError` → ``422 parse_error``
 - :class:`~app.errors.RunParseError`     → ``422 run_parse_error``
+- :class:`~app.errors.EnumsParseError`   → ``422 enums_parse_error``
 - anything else                        → ``500 internal_error``
 """
 
@@ -26,6 +27,7 @@ from flask import Blueprint, Response, current_app, jsonify, render_template, re
 from werkzeug.exceptions import HTTPException
 
 from .errors import (
+    EnumsParseError,
     GherkinParseError,
     NameConflictError,
     RunParseError,
@@ -302,6 +304,48 @@ def _require_optional_str(value: Any, field: str) -> str:
     return value
 
 
+@api.get("/run-groups")
+def get_run_groups():
+    """Return all projects + the flat list of existing run groups.
+
+    Used by the sidebar's "+ New run" modal (``tmsCreateRun`` in
+    ``app/static/app.js``) to populate two surfaces from a single
+    fetch:
+
+    - the path ``<select>`` with one ``<optgroup label="proj">`` per
+      project that already has groups, plus the trailing
+      ``+ Create new group...`` row;
+    - the project ``<select>`` shown only when the user picks
+      ``+ Create new group...``, which lists every existing project
+      (regardless of whether it has a ``test-run/`` folder yet).
+
+    Shape::
+
+        {
+          "projects": ["proj-a", "proj-b", ...],
+          "groups":   [
+            {"project": "proj-a", "group": "smoke"},
+            {"project": "proj-a", "group": "regression"},
+            ...
+          ]
+        }
+
+    Projects without a ``test-run/`` folder appear in ``projects``
+    but contribute zero rows to ``groups`` (the area is lazy-created
+    by :meth:`Storage.create_run_group` on the next POST).
+    ``projects`` is sorted case-insensitively; ``groups`` follows the
+    project-then-group order returned by :meth:`Storage.list_test_run_tree`.
+    """
+    s = _storage()
+    groups: list[dict[str, str]] = []
+    tree = s.list_test_run_tree()
+    for project_node in tree.get("children", []):
+        project = project_node["name"]
+        for group_node in project_node.get("children", []):
+            groups.append({"project": project, "group": group_node["name"]})
+    return jsonify({"projects": s.list_projects(), "groups": groups})
+
+
 @api.post("/runs/<project>/groups")
 def post_run_group(project: str):
     body = _require_json_object()
@@ -423,6 +467,37 @@ def search():
 
 
 # ---------------------------------------------------------------------------
+# Project-level enums (<project>/enums.yaml)
+# ---------------------------------------------------------------------------
+#
+# See specs/features/11-feature-testcase-component-NEW.md. Routes are
+# named under /api/enums/<project> to match the project-scoped convention
+# established by /api/runs/<project>/groups.
+
+
+@api.get("/enums/<project>")
+def get_project_enums(project: str):
+    """Return the parsed ``<project>/enums.yaml`` as ``{kind: {key: label}}``.
+
+    404 if the file is missing (legacy project); 422 ``enums_parse_error``
+    if the file is malformed or schema-invalid (mapped from
+    :class:`~app.errors.EnumsParseError`).
+    """
+    return jsonify(_storage().read_project_enums(project))
+
+
+@api.post("/enums/<project>")
+def post_project_enums_init(project: str):
+    """Initialise ``<project>/enums.yaml`` with the default ``components:`` seed.
+
+    201 with the freshly-parsed dict body on success; 409 ``name_conflict``
+    if the file already exists (no overwrite); 404 if the project folder
+    is missing.
+    """
+    return jsonify(_storage().init_project_enums(project)), 201
+
+
+# ---------------------------------------------------------------------------
 # Blueprint-wide error handlers
 # ---------------------------------------------------------------------------
 
@@ -461,6 +536,16 @@ def _handle_parse(e: GherkinParseError):
 def _handle_run_parse(e: RunParseError):
     return _error(
         "run_parse_error",
+        e.message,
+        422,
+        details={"line": e.line, "column": e.column},
+    )
+
+
+@api.errorhandler(EnumsParseError)
+def _handle_enums_parse(e: EnumsParseError):
+    return _error(
+        "enums_parse_error",
         e.message,
         422,
         details={"line": e.line, "column": e.column},
@@ -516,8 +601,7 @@ def ui_folder(p: str = ""):
     - Depth-1 (project) → ``folder_project.html``: module table.
     - Depth-2 (module) → ``folder_module.html``: features + sub-folders.
     - Depth-3..MAX (sub-folder) → ``folder_subfolder.html``: sub-folders
-      + features; the entry point for arbitrarily nested test cases (see
-      IN-PROGRESS.md "Increase folder nesting depth to 10 levels").
+      + features; the entry point for arbitrarily nested test cases.
 
     Beyond MAX_FOLDER_DEPTH a 400 ``bad_request`` surfaces via the
     blueprint-wide ``ValueError`` handler (raised from `list_folder`).

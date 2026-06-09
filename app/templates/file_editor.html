@@ -53,23 +53,20 @@
     </div>
     <div class="flex-1"></div>
     <span id="dirty-indicator" class="hidden text-xs text-amber-600">unsaved</span>
-    {# Transient "Saved" badge driven by tmsEditor.flashSaved (IN-PROGRESS.md
-       "Save success indicator"). Appears for ~1.5s after a successful PATCH
-       or raw PUT, then hides. Same badge serves the structured Save and the
-       Raw Save paths. #}
+    {# Transient "Saved" badge driven by tmsEditor.flashSaved. Appears for
+       ~1.5s after a successful PATCH or raw PUT, then hides. Same badge
+       serves the structured Save and the Raw Save paths. #}
     <span id="saved-indicator" class="hidden text-xs text-emerald-600" role="status" aria-live="polite">Saved</span>
     <button type="button" id="btn-rename"
             class="px-2 py-1 text-sm border border-slate-300 rounded hover:bg-slate-50">Rename&hellip;</button>
-    {# Move the file to a different folder. Opens a folder-picker modal
-       (see IN-PROGRESS.md "Move a test case to another folder from the UI").
+    {# Move the file to a different folder. Opens a folder-picker modal.
        Confirms when state.dirty so unsaved edits are not silently lost. #}
     <button type="button" id="btn-move"
             class="px-2 py-1 text-sm border border-slate-300 rounded hover:bg-slate-50"
             title="Move to another folder"
             aria-label="Move to another folder">Move&hellip;</button>
     {# Manual disk-reload. Discards unsaved buffer (with a confirm). Safety
-       net when the SSE / watcher auto-reload path doesn't fire — see
-       IN-PROGRESS.md "Manual refresh button for the test-case editor". #}
+       net when the SSE / watcher auto-reload path doesn't fire. #}
     <button type="button" id="btn-reload"
             class="px-2 py-1 text-sm border border-slate-300 rounded hover:bg-slate-50"
             title="Reload from disk; discards unsaved edits"
@@ -107,6 +104,27 @@
                data-chip-input="feature">
       </div>
       <div id="feature-tags-error" class="text-xs text-red-700 mt-1 hidden"></div>
+    </div>
+
+    {# Project-level enums section. One <select> per top-level kind in
+       <project>/enums.yaml is generated dynamically by tmsEditor.renderEnums
+       from GET /api/enums/<project>; orphan rows (kind/key not in vocab)
+       render after the pickers with a warning badge. Legacy projects
+       (no enums.yaml) collapse to the inline Initialize button. See
+       specs/features/11-feature-testcase-component-NEW.md. #}
+    <div id="feature-enums" data-section="enums">
+      <label class="block text-xs uppercase tracking-wider text-slate-500 mb-1">Enums</label>
+      <div id="feature-enums-missing" class="hidden text-xs text-slate-600">
+        <span class="mr-2">This project has no <code>enums.yaml</code> yet.</span>
+        <button type="button" id="feature-enums-init-btn"
+                class="px-2 py-0.5 text-xs border border-slate-300 rounded hover:bg-slate-50">Initialize enums file</button>
+        <div id="feature-enums-init-error" class="text-xs text-red-700 mt-1 hidden"></div>
+      </div>
+      <div id="feature-enums-empty" class="hidden text-xs text-slate-500">
+        No enum kinds defined yet &mdash; edit <code>enums.yaml</code> to add some.
+      </div>
+      <div id="feature-enums-pickers" class="space-y-1"></div>
+      <div id="feature-enums-orphans" class="space-y-1 mt-1"></div>
     </div>
 
     <details class="border border-slate-200 rounded bg-white" id="background-card">

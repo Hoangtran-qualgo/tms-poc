@@ -52,22 +52,31 @@
 {% endmacro %}
 
 <div class="text-sm py-2 px-2">
-  {# Header matches tree.html: small label + manual refresh button.
-     SSE keeps the panel current automatically after the first mount; the
-     button is a safety net mirroring the Directory-tree behaviour. #}
-  <div class="flex items-center justify-between mb-1 px-1">
+  {# Header: small label + "+ New run" + manual refresh button.
+     The "+ New run" button is the **sole** entry point for run
+     creation in the UI; it is always visible and always enabled,
+     regardless of how many projects / groups / runs exist (the
+     modal handles the zero-projects state internally). #}
+  <div class="flex items-center justify-between mb-1 px-1 gap-1">
     <span class="text-xs uppercase tracking-wide text-slate-400 font-medium">Test runs</span>
-    <button type="button"
-            class="text-slate-400 hover:text-slate-700 hover:bg-slate-100 rounded w-6 h-6 flex items-center justify-center leading-none"
-            title="Refresh test runs"
-            aria-label="Refresh test runs"
-            hx-get="/ui/test-run-tree"
-            hx-target="#test-run-pane"
-            hx-swap="innerHTML">&#x21bb;</button>
+    <div class="flex items-center gap-1">
+      <button type="button"
+              class="px-2 py-0.5 text-xs bg-slate-800 text-white rounded hover:bg-slate-700"
+              title="Create a new test run"
+              aria-label="Create a new test run"
+              onclick="tmsCreateRun()">+ New run</button>
+      <button type="button"
+              class="text-slate-400 hover:text-slate-700 hover:bg-slate-100 rounded w-6 h-6 flex items-center justify-center leading-none"
+              title="Refresh test runs"
+              aria-label="Refresh test runs"
+              hx-get="/ui/test-run-tree"
+              hx-target="#test-run-pane"
+              hx-swap="innerHTML">&#x21bb;</button>
+    </div>
   </div>
   {% if tree.children %}
     {{ render_test_run_children(tree.children) }}
   {% else %}
-    <div class="px-2 py-4 text-slate-400 italic">No test runs yet. Open any project and click + New run.</div>
+    <div class="px-2 py-4 text-slate-400 italic">No test runs yet. Click <span class="font-medium">+ New run</span> above to create one.</div>
   {% endif %}
 </div>

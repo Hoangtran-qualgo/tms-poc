@@ -2,11 +2,14 @@
 
    Columns: name, created_at, case_count, status-breakdown badges.
    Each row opens run_editor.html via /ui/run/<project>/<group>/<file_name>.
-   The "+ New run" button opens tmsCreateRun(project, group); it is the
-   sole entry point for run creation in the UI (Phase 3 lock-in).
+
+   Run creation lives in the Test-run sidebar tab (see test_run_sidebar.html
+   and `tmsCreateRun` in app.js). This view is read-only by design — the
+   sidebar is the single entry point for new runs regardless of the
+   current main-pane location.
 
    The status-breakdown badges follow the spec's symbols:
-     PASSED → ✓, FAILED → ✗, PENDING → ?, IN-PROGRESS → ⋯, SKIPPED → ⤳.
+     PASSED → ✓, FAILED → ✗, PENDING → ?, EXECUTING → ⋯, SKIPPED → ⤳.
    Zero-count statuses are omitted. #}
 <div data-folder-path="{{ project }}/test-run/{{ group }}">
   <div class="flex items-center gap-3 mb-4">
@@ -25,9 +28,6 @@
       <h2 class="text-xl font-semibold text-slate-800">{{ group }}</h2>
     </div>
     <div class="flex-1"></div>
-    <button type="button"
-            class="px-3 py-1.5 text-sm bg-slate-800 text-white rounded hover:bg-slate-700"
-            onclick="tmsCreateRun('{{ project }}', '{{ group }}')">+ New run</button>
   </div>
 
   {% if runs %}
@@ -56,7 +56,7 @@
           {% if counts.get('PASSED', 0) %}<span class="inline-block px-1.5 py-0.5 mr-1 mb-0.5 text-xs rounded bg-emerald-100 text-emerald-700">&#10003; {{ counts['PASSED'] }}</span>{% endif %}
           {% if counts.get('FAILED', 0) %}<span class="inline-block px-1.5 py-0.5 mr-1 mb-0.5 text-xs rounded bg-rose-100 text-rose-700">&#10007; {{ counts['FAILED'] }}</span>{% endif %}
           {% if counts.get('PENDING', 0) %}<span class="inline-block px-1.5 py-0.5 mr-1 mb-0.5 text-xs rounded bg-slate-200 text-slate-700">? {{ counts['PENDING'] }}</span>{% endif %}
-          {% if counts.get('IN-PROGRESS', 0) %}<span class="inline-block px-1.5 py-0.5 mr-1 mb-0.5 text-xs rounded bg-amber-100 text-amber-700">&#8943; {{ counts['IN-PROGRESS'] }}</span>{% endif %}
+          {% if counts.get('EXECUTING', 0) %}<span class="inline-block px-1.5 py-0.5 mr-1 mb-0.5 text-xs rounded bg-amber-100 text-amber-700">&#8943; {{ counts['EXECUTING'] }}</span>{% endif %}
           {% if counts.get('SKIPPED', 0) %}<span class="inline-block px-1.5 py-0.5 mr-1 mb-0.5 text-xs rounded bg-slate-100 text-slate-500">&#10551; {{ counts['SKIPPED'] }}</span>{% endif %}
         </td>
       </tr>
@@ -65,10 +65,8 @@
   </table>
   {% else %}
   <div class="text-center py-12 border border-dashed border-slate-200 rounded bg-white">
-    <p class="text-slate-500 mb-4">No runs yet in <span class="font-medium">{{ group }}</span>.</p>
-    <button type="button"
-            class="px-3 py-1.5 bg-slate-800 text-white rounded hover:bg-slate-700"
-            onclick="tmsCreateRun('{{ project }}', '{{ group }}')">+ Create the first run</button>
+    <p class="text-slate-500">No runs yet in <span class="font-medium">{{ group }}</span>.</p>
+    <p class="text-slate-400 text-xs mt-1">Use the <span class="font-medium">Test run</span> sidebar tab to create one.</p>
   </div>
   {% endif %}
 </div>

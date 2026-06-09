@@ -6,9 +6,10 @@ _`validate_run`), `app/storage.py` (`create_run`, `read_run`,_
 _`write_run`, `delete_run`, `list_run_groups`, `list_runs`,_
 _`create_run_group`, `delete_run_group`, `add_run_case`,_
 _`remove_run_case`, `update_run_result`, `list_test_run_tree`,_
-_`RESERVED_DEPTH2_NAMES`), `app/errors.py` (`RunParseError`),_
-_`app/server.py` (`/api/runs/*`, `/ui/run/...`, `ui_folder`_
-_dispatcher branch, `/ui/test-run-tree`), `app/templates/`_
+_`list_projects`, `RESERVED_DEPTH2_NAMES`), `app/errors.py`_
+_(`RunParseError`), `app/server.py` (`/api/runs/*`,_
+_`/api/run-groups`, `/ui/run/...`, `ui_folder` dispatcher_
+_branch, `/ui/test-run-tree`), `app/templates/`_
 _(`folder_test_run_area.html`, `folder_test_run_group.html`,_
 _`run_editor.html`, `test_run_sidebar.html`), `app/static/app.js`_
 _(`tmsRunEditor`, `tmsCreateRun`, `tmsBuildCasePicker`,_
@@ -20,7 +21,7 @@ A **test run** is a stored snapshot of "I executed these test cases
 and these were the results". Each run lives as a single YAML file
 under its owning project's typed `test-run/` area, organised into
 one grouping folder. Runs reference test cases by data-root-relative
-file path; per-case results (`PENDING`, `IN-PROGRESS`, `PASSED`,
+file path; per-case results (`PENDING`, `EXECUTING`, `PASSED`,
 `FAILED`, `SKIPPED`) and free-form remarks live on the run, never on
 the test case. The UI exposes the area through a dedicated **Test
 run** sidebar tab and a main-pane run editor whose UX vocabulary
@@ -47,8 +48,11 @@ In scope:
   whole-doc Save, manual Reload, transient Saved badge, Add /
   Remove case, external-change banner, deferred-banner-across-
   htmx-swap.
-- The `tmsCreateRun` modal (run name + description + flat
-  test-case picker) and the reusable `tmsBuildCasePicker`.
+- The `tmsCreateRun` modal (Test-run sidebar button → group
+  selector + run name, with a reveal-on-select sub-form for
+  new groups and a zero-projects info branch) and the reusable
+  `tmsBuildCasePicker` (kept for the run editor's `+ Add test
+  case` flow even though creation no longer surfaces a picker).
 - The sidebar restructure delta (Test run vertical tab — owned
   by the sibling sidebar-restructure spec; this feature consumes
   it and adds clickable run leaves).
@@ -85,7 +89,7 @@ RunResult
 
 Constants (`app/models.py`):
 
-- `RUN_RESULTS = ("PENDING", "IN-PROGRESS", "PASSED", "FAILED",
+- `RUN_RESULTS = ("PENDING", "EXECUTING", "PASSED", "FAILED",
   "SKIPPED")`. The default for a freshly-created or freshly-added
   row is `"PENDING"`.
 
@@ -216,6 +220,10 @@ Constraints (enforced by storage):
   typed area for the sidebar tab; root → projects with runs →
   groups → run leaves. Projects without `test-run/` are
   omitted.
+- `list_projects() -> list[str]` — every depth-0 directory name,
+  case-insensitive sort. Backs `GET /api/run-groups` so the
+  create modal's `+ Create new group...` sub-form can target
+  bare projects (those without a `test-run/` folder yet).
 
 All run mutations use the existing storage primitives:
 `_validate_segment`, per-path locks, `_atomic_write_bytes`,
@@ -239,8 +247,9 @@ Error type (`app/errors.py`):
 | `POST` | `/api/runs/<project>/<group>/<file_name>/cases` | append case |
 | `DELETE` | `/api/runs/<project>/<group>/<file_name>/cases/<path>` | remove case |
 | `PATCH` | `/api/runs/<project>/<group>/<file_name>/cases/<path>` | partial result update |
-| `POST` | `/api/runs/<project>/groups` | create group |
+| `POST` | `/api/runs/<project>/groups` | create group (auto-creates `<project>/test-run/` if absent) |
 | `DELETE` | `/api/runs/<project>/groups/<group>` | delete empty group |
+| `GET` | `/api/run-groups` | aggregate listing for the create modal — `{projects: [...], groups: [{project, group}, ...]}` |
 
 All errors use the standard `{error: {code, message, details}}`
 envelope.
@@ -250,7 +259,7 @@ envelope.
 | Path | Renders |
 |---|---|
 | `GET /ui/folder/<project>/test-run` | `folder_test_run_area.html` (groups landing) |
-| `GET /ui/folder/<project>/test-run/<group>` | `folder_test_run_group.html` (runs list + `+ New run`) |
+| `GET /ui/folder/<project>/test-run/<group>` | `folder_test_run_group.html` (read-only runs list — creation lives in the sidebar tab) |
 | `GET /ui/run/<project>/<group>/<file_name>` | `run_editor.html` (editor) |
 | `GET /ui/test-run-tree` | `test_run_sidebar.html` (Test run sidebar tab) |
 
@@ -268,17 +277,26 @@ is exactly two levels: requests for `<project>/test-run/<group>/
   empty state explaining groups auto-materialise on run
   create. No `+ New group` button — group creation is
   implicit in run creation.
-- **`folder_test_run_group.html`** — breadcrumb (`Projects /
-  <project> / test-run / <group>`); toolbar with
-  `+ New run` (calls `tmsCreateRun(project, group)`); runs
-  table sorted newest-first by `created_at`, with columns
-  `name`, `created_at`, `case_count`, status-breakdown
-  badges (`✓`/`✗`/`?`/`⋯`/`⤳`; zero-count statuses omitted);
-  empty-state CTA also calls `tmsCreateRun`.
+- **`folder_test_run_group.html`** — read-only view.
+  Breadcrumb (`Projects / <project> / test-run / <group>`);
+  runs table sorted newest-first by `created_at`, with
+  columns `name`, `created_at`, `case_count`, status-
+  breakdown badges (`✓`/`✗`/`?`/`⋯`/`⤳`; zero-count statuses
+  omitted). No creation affordance: the empty state shows
+  "No runs yet in `<group>`. Use the **Test run** sidebar
+  tab to create one." rather than a `+ Create the first
+  run` CTA.
 - **`run_editor.html`** — the editor shell described under
   *Invariants & rules / Run editor* below.
-- **`test_run_sidebar.html`** — Test run sidebar partial; run
-  leaves link to `/ui/run/<project>/<group>/<file_name>`.
+- **`test_run_sidebar.html`** — Test run sidebar partial.
+  Header hosts the **`+ New run`** button — the single
+  entry point for run creation, always visible / always
+  enabled, calls `tmsCreateRun()` with no arguments
+  (modal collects project / group itself). Folder rows
+  (projects, groups) are decorative — only run leaves
+  navigate, linking to `/ui/run/<project>/<group>/<file_name>`.
+  Empty state copy points at the same button: "No test runs
+  yet. Click **+ New run** above to create one."
 
 ### JS controller (`app/static/app.js`)
 
@@ -292,21 +310,34 @@ is exactly two levels: requests for `<project>/test-run/<group>/
   `_showBanner({...})`, `_hideBanner()`.
 - `tmsBootRunEditor()` — entry point called by the editor
   template's tail `<script>`.
-- `tmsCreateRun(project, group)` — opens the create modal.
+- `tmsCreateRun()` — no-arg modal opener wired to the
+  sidebar's `+ New run` button. See *Invariants & rules /
+  Create flow* below for the full state machine.
 - `tmsBuildCasePicker(features, opts)` — reusable flat
   checkbox table; `opts.exclude` filters out paths already in
-  a run; `opts.onChange` fires after every selection change.
-  Returns `{ node, getSelected(), countVisible() }`.
+  a run; `opts.onChange` fires after every selection change
+  (including bulk toggles from the header). Header row includes
+  a tri-state select-all checkbox that respects the live filter.
+  Returns `{ node, getSelected(), countVisible() }`. **No
+  longer used during run creation** (the create modal asks
+  only for group + name); kept because the run editor's
+  `+ Add test case` modal still uses it.
 - `tmsFetchProjectFeaturePaths(project)` — fetches
   `/api/tree` and returns the project's `.feature` files
-  sorted by folder path then file name.
+  sorted by folder path then file name. Used by the run
+  editor's `+ Add test case` flow.
 - `tmsSlugifyForFilename(name)` — derives the run's
   `file_name` stem from the human label (`.yaml` is appended
-  server-side by `_normalize_run_filename`).
+  server-side by `_normalize_run_filename`). Surfaced live
+  as a hint under the run-name input ("will save as
+  `<slug>.yaml`") so silent slug collisions become visible
+  before submit.
 - `tmsOpenModal({title, body, size, confirmLabel,
-  confirmDisabled, onConfirm})` — gained a `size: "md" |
-  "lg" | "xl"` parameter; `tmsCreateRun` and the Add-case
-  modal request `"lg"`.
+  confirmDisabled, onConfirm})` — `size: "md" | "lg" | "xl"`
+  (default `"md"`); `confirmLabel` accepts `null` to suppress
+  the Confirm button entirely (used by the zero-projects
+  branch of `tmsCreateRun`). The run editor's `+ Add test
+  case` picker still requests `"lg"`.
 
 ### Wiring (`app/static/app.js`, bottom)
 
@@ -414,6 +445,24 @@ visibility, refresh dirty).
 `_afterRowsChanged()`. Idempotent in the sense that the row
 disappears regardless of dirty state.
 
+**Path masking (test-case column).** Each results-table row
+splits `r.file_path` into two `<span data-role="…">`s inside
+the link: a muted folder prefix (`text-slate-400`,
+`truncate min-w-0` for ellipsis on overflow) followed by the
+emphasized filename (`text-slate-700`, `flex-none` so it is
+always shown in full). The `<a>` itself is a flex container
+(`flex items-center min-w-0 w-full font-mono text-xs`) so the
+folder span shrinks while the filename stays at the cell's
+right edge. The defensive `rsplit('/', 1)` / JS `lastIndexOf
+("/")` branch handles zero-slash file_paths (hand-edited
+YAML) by rendering an empty folder span and putting the
+whole string in filename. Three preservation surfaces keep
+the full path for non-display use: `<tr data-file-path>`
+(serialize / dirty-snapshot), `<td title>` (tooltip), and
+`<a hx-get="/ui/file/…">` (click-through). The clone path
+(`_createResultRow`) mirrors the server-rendered shape so
+added rows render identically.
+
 **Tombstone rendering.** Computed server-side in `ui_run`:
 each result dict gains `missing: bool` via
 `(storage.root / file_path).is_file()`. Recomputed every
@@ -423,8 +472,10 @@ underlying cases vanish.
 When `r.missing`:
 
 - `<tr>` gains `run-row-missing` + `data-missing="1"`.
-- The file-path link swaps to `line-through text-slate-400`
-  (strike-through, dimmed).
+- Only the **filename span** swaps to `line-through
+  text-slate-400`; the folder span stays muted but unstruck
+  so the path context still reads naturally and only the
+  case identity is marked as removed.
 - The remark cell shows a fixed override `<span
   class="run-remark-override">test case was removed</span>`;
   the `<textarea class="run-remark">` is hidden but **stays
@@ -474,25 +525,82 @@ dirty); the handler covers both editors in a single check.
 
 ### Create flow (`tmsCreateRun`)
 
-- Opens an `lg` `tmsOpenModal` titled "Create run in
-  `<project>` / `<group>`" with: run-name input
-  (autofocused), description textarea (optional), and a
-  `tmsBuildCasePicker` over every `.feature` under the
-  project. Confirm is gated on **(name non-empty) AND
-  (≥1 case selected)**.
-- `file_name` is derived client-side from the human name via
-  `tmsSlugifyForFilename` (lowercase; whitespace → `-`;
-  strip non-`[a-z0-9_-]`; trim hyphens). The server's
-  `_validate_segment` + `_normalize_run_filename` are the
-  authority; the slug is purely a UX convenience. Empty
-  slug (e.g. "🔥🔥🔥") surfaces an inline error.
-- On Confirm: `POST /api/runs` with
-  `{project, group, name, file_name, description,
-  case_paths}`. On success: close modal, `htmx.ajax("GET",
-  /ui/run/<project>/<group>/<file_name>.yaml)`. On failure
-  (e.g. duplicate name → 409 `NameConflictError`): error
-  rendered inline; modal stays open for retry; the picker's
-  selection is preserved.
+`tmsCreateRun()` is wired to the Test-run sidebar header's
+`+ New run` button and takes no arguments. The modal lives
+outside any project context — it asks the user where the run
+should go, then opens the run editor on the result so the
+user can add description / cases / set results afterwards.
+
+**Bootstrap (single round-trip).** Fetches `GET
+/api/run-groups`, which returns
+`{projects: [...], groups: [{project, group}, ...]}`. On
+fetch failure, surfaces a plain `alert(...)` and returns
+without opening a modal.
+
+**Branch — zero projects.** If `projects.length === 0`,
+opens an information-only modal with the copy "No projects
+yet — create one first." and a Cancel-only footer. The
+Confirm button is suppressed via
+`tmsOpenModal({confirmLabel: null})`. This keeps the
+sidebar button's "always enabled" promise honest while
+preventing nonsense submits when there is nothing to
+target.
+
+**Branch — base shape.** Otherwise, opens an `md`
+`tmsOpenModal` titled "Create test run" with two fields:
+
+1. **Where** — a single native `<select>`. Existing groups
+   are emitted as `<optgroup label="<project>">
+   <option value="<project>|<group>"><group></option>
+   </optgroup>`; the dropdown ends with a non-grouped
+   `<option value="__new__">+ Create new group...</option>`.
+   Selecting that sentinel reveals an inline sub-form below
+   the `<select>` containing:
+   - **Project** — `<select>` listing every existing
+     project (sourced from the endpoint's `projects` field,
+     including bare projects without a `test-run/` folder).
+     Project creation is **out of scope** for this modal.
+   - **Group name** — free-text `<input>`. Permissive
+     character rules — storage's existing folder-name
+     guards are the only gate. Trimmed; non-empty enforced
+     client-side.
+2. **Run name** — free-text `<input>`. The slug derived by
+   `tmsSlugifyForFilename` is rendered live under the input
+   ("will save as `<slug>.yaml`") so silent slug collisions
+   become visible before submit. Empty slug surfaces the
+   placeholder hint "(enter a name to see the file name)"
+   and gates Confirm off.
+
+**Confirm gate.** `(slug non-empty) AND (path resolved)`,
+where "path resolved" means either an existing
+`proj|group` pair is selected or both project + group-name
+inputs are non-empty in the new-group branch.
+
+**Submit.** The handler clears all inline errors, then:
+
+1. If the user picked the new-group branch, `POST
+   /api/runs/<project>/groups` with `{name: <group>}`. On
+   409, surfaces "Group already exists in this project."
+   under the group-name input and returns; the user's
+   other inputs (project select, run name) are preserved.
+   On other failures, surfaces the server's message verbatim.
+   The endpoint auto-creates `<project>/test-run/` if absent.
+2. `POST /api/runs` with `{project, group, name, file_name,
+   case_paths: [], description: ""}`. On 409, surfaces "A
+   run with this name already exists in this group." under
+   the run-name input and returns; on other failures,
+   surfaces the server's message under the same input.
+3. On 201, closes the modal and issues
+   `htmx.ajax("GET", "/ui/run/<project>/<group>/<file_name>.yaml",
+   {target: "#main-pane", swap: "innerHTML"})` to open the
+   run editor where the user fills in description, adds
+   cases, and sets results.
+
+The modal stays open on any error so the user can correct
+just the offending input. The slug preview, the reveal-on-
+select toggle, and the inline-error clearing are all
+driven by simple per-input listeners (`change` on the
+`<select>`s; `input` on the text inputs).
 
 ### Case picker (`tmsBuildCasePicker`)
 
@@ -504,9 +612,23 @@ dirty); the handler covers both editors in a single check.
   selected"` depending on filter state.
 - Click-row-to-toggle (not just the checkbox) for cheaper
   selection.
+- Header-row tri-state checkbox (`<input data-role="select-all"
+  aria-label="Select all visible">`) toggles every **currently
+  visible** row in one click. Respects the live filter — when a
+  filter narrows the set, the checkbox toggles only the rows that
+  match. State reflects only visible rows: `0/N` → unchecked,
+  `N/N` → checked, `1..N-1` → indeterminate. Hidden-but-checked
+  selections are preserved across filter changes and across
+  bulk toggles; `getSelected()` continues to return the union of
+  visible + hidden checked rows. The header is checkbox-only as a
+  click target (not the whole `<th>`) so accidental bulk
+  operations are rarer; with zero visible rows it stays enabled
+  and clicks are a self-correcting no-op.
 - Empty states: `"No .feature files in this project yet."`
   if the project has nothing; `"All test cases are already
-  in this run."` if every case is in the exclude set.
+  in this run."` if every case is in the exclude set. The
+  empty-state path replaces the entire `<table>` so no header
+  checkbox is rendered.
 
 ## Affects
 
@@ -581,11 +703,20 @@ dirty); the handler covers both editors in a single check.
   remarks works via native focus order, but `j/k` row
   navigation or `Enter`-to-next-row would speed bulk
   triage.
-- **Slug collisions.** `tmsSlugifyForFilename` is purely
-  client-side; two runs whose names slug to the same stem
-  collide via `NameConflictError`. Surfacing the existing
-  slug as a hint ("This will be saved as
-  `smoke-test-a.yaml`") would prevent surprise.
+- **Project creation from the create modal.** The current
+  zero-projects branch is a dead-end ("No projects yet —
+  create one first."). A future iteration could let the
+  user create a project inline by replacing the project
+  `<select>` with a combobox-style input that accepts new
+  names; right now project creation happens through the
+  Directory tree only. (The earlier "surface the slug as a
+  hint" follow-up shipped as the live "will save as
+  `<slug>.yaml`" preview under the run-name input.)
+- **Status rename history.** The `EXECUTING` value was
+  previously called `IN-PROGRESS`; renamed Jun 8, 2026 as a
+  hard cutover with no read-time alias. Pre-rename YAMLs
+  containing `result: IN-PROGRESS` fail `validate_run` with
+  HTTP 422 — see `DONE.md` § Must have for context.
 
 ## Acceptance criteria
 

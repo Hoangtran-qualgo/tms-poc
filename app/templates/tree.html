@@ -29,9 +29,8 @@
                     class="caret w-4 text-center text-slate-400 cursor-pointer"
                     onclick="event.stopPropagation(); toggleTreeFolder(this.parentElement)">&#9654;</button>
             {# Every folder (any depth) loads its folder view in the main
-               pane on name-click. Decision B4 revised — sub-folders under
-               modules now have their own view via folder_subfolder.html
-               (see IN-PROGRESS.md "Increase folder nesting depth"). The
+               pane on name-click. Sub-folders under modules render via
+               folder_subfolder.html (depths 3..MAX_FOLDER_DEPTH). The
                caret to the left still toggles the children list. #}
             <span class="flex-1 truncate cursor-pointer {% if child.depth == 0 %}font-semibold text-slate-800{% elif child.depth == 1 %}font-medium text-slate-700{% else %}text-slate-600{% endif %}"
                   hx-get="/ui/folder/{{ child.path }}"
@@ -69,8 +68,7 @@
 <div class="text-sm py-2 px-2">
   {# Small header with manual refresh button. SSE keeps the tree in sync
      automatically, but the button is a safety net when the watcher misses
-     an event or the SSE connection drops (see IN-PROGRESS.md "Manual
-     refresh button for the directory tree"). Re-rendered with every swap
+     an event or the SSE connection drops. Re-rendered with every swap
      since this partial is the entire #tree-pane innerHTML. #}
   <div class="flex items-center justify-between mb-1 px-1">
     <span class="text-xs uppercase tracking-wide text-slate-400 font-medium">Tree</span>

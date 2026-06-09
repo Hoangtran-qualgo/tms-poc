@@ -87,14 +87,26 @@
          ("test case was removed"). The textarea itself stays in the
          DOM so the stored remark round-trips through Save unchanged —
          restoring the file un-tombstones the row on the next render. #}
+      {# Path is masked: folder shown muted with ellipsis-truncation,
+         filename emphasized and always visible. Full path stays in the
+         <td title>, the <a hx-get>, and the <tr data-file-path> for
+         click-through, serialize, and tooltip. The defensive `rsplit`
+         handles zero-slash file_paths (hand-edited YAML) by rendering
+         an empty folder span and putting the whole string in filename. #}
+      {% set _parts = r.file_path.rsplit('/', 1) %}
+      {% set _folder = (_parts[0] ~ '/') if _parts|length == 2 else '' %}
+      {% set _filename = _parts[1] if _parts|length == 2 else _parts[0] %}
       <tr class="border-t border-slate-100 align-top{% if r.missing %} run-row-missing{% endif %}"
           data-file-path="{{ r.file_path }}"
           {% if r.missing %}data-missing="1"{% endif %}>
-        <td class="px-3 py-2 truncate" title="{{ r.file_path }}">
-          <a class="run-row-link hover:underline cursor-pointer font-mono text-xs {% if r.missing %}line-through text-slate-400{% else %}text-slate-700{% endif %}"
+        <td class="px-3 py-2" title="{{ r.file_path }}">
+          <a class="run-row-link hover:underline cursor-pointer flex items-center min-w-0 w-full font-mono text-xs"
              hx-get="/ui/file/{{ r.file_path }}"
              hx-target="#main-pane"
-             hx-swap="innerHTML">{{ r.file_path }}</a>
+             hx-swap="innerHTML">
+            <span data-role="folder" class="truncate min-w-0 text-slate-400">{{ _folder }}</span>
+            <span data-role="filename" class="flex-none {% if r.missing %}line-through text-slate-400{% else %}text-slate-700{% endif %}">{{ _filename }}</span>
+          </a>
         </td>
         <td class="px-3 py-2">
           <select class="run-result-select w-full border border-slate-300 rounded px-1.5 py-1 text-sm bg-white">
@@ -126,9 +138,12 @@
      RUN_RESULTS (no duplication in JS). Never rendered until cloned. #}
   <template id="run-result-row-template">
     <tr class="border-t border-slate-100 align-top">
-      <td class="px-3 py-2 text-slate-800 truncate">
-        <a class="run-row-link hover:underline cursor-pointer font-mono text-xs text-slate-700"
-           hx-target="#main-pane" hx-swap="innerHTML"></a>
+      <td class="px-3 py-2 text-slate-800">
+        <a class="run-row-link hover:underline cursor-pointer flex items-center min-w-0 w-full font-mono text-xs"
+           hx-target="#main-pane" hx-swap="innerHTML">
+          <span data-role="folder" class="truncate min-w-0 text-slate-400"></span>
+          <span data-role="filename" class="flex-none text-slate-700"></span>
+        </a>
       </td>
       <td class="px-3 py-2">
         <select class="run-result-select w-full border border-slate-300 rounded px-1.5 py-1 text-sm bg-white">

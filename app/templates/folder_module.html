@@ -1,8 +1,8 @@
 {# folder_module.html — main-pane module view.
 
    Lists sub-folders (if any) and feature files inside the module. The
-   sub-folder section is the depth-3 entry point for the "Increase folder
-   nesting depth to 10 levels" feature (see IN-PROGRESS.md / PLAN.md B4).
+   sub-folder section is the depth-3 entry point for arbitrarily nested
+   folders (depths 3..MAX_FOLDER_DEPTH).
    Description column shows only the first line, truncated (R2 / G3). #}
 <div data-folder-path="{{ module_path }}">
   <div class="flex items-center gap-3 mb-4">

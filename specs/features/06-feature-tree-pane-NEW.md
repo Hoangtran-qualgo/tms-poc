@@ -131,9 +131,8 @@ only on subsequent `sse:change` events.
 - Caret button: `event.stopPropagation()` + `toggleTreeFolder(...)`.
   Does NOT trigger HTMX.
 - Folder name span: `hx-get="/ui/folder/<path>"` →
-  `#main-pane`. Works at any depth (revisits PLAN.md decision B4 —
-  sub-folders under modules navigate to their own view via
-  `folder_subfolder.html`).
+  `#main-pane`. Works at any depth. Sub-folders under modules
+  navigate to their own view via `folder_subfolder.html`.
 - File rows: `hx-get="/ui/file/<path>"` → `#main-pane`. Non-
   `.feature` rows use the same hx-get; the route returns
   `unsupported.html`.

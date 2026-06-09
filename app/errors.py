@@ -12,6 +12,9 @@ Currently defined:
 - ``RunParseError`` — raised by ``storage.read_run`` when a run file's YAML
   is malformed. Mirrors :class:`GherkinParseError`'s shape; maps to HTTP
   ``422``.
+- ``EnumsParseError`` — raised by ``storage.read_project_enums`` when the
+  project's ``enums.yaml`` is malformed or violates the schema. Mirrors
+  :class:`RunParseError`'s shape; maps to HTTP ``422``.
 """
 
 from __future__ import annotations
@@ -71,6 +74,29 @@ class RunParseError(Exception):
     ``line`` / ``column`` are 1-indexed when known and ``0`` when not
     available (PyYAML reports them on most syntax errors). Maps to HTTP
     ``422`` at the API layer.
+    """
+
+    __slots__ = ("line", "column", "message")
+
+    def __init__(self, *, line: int, column: int, message: str) -> None:
+        super().__init__(f"{line}:{column}: {message}")
+        self.line = line
+        self.column = column
+        self.message = message
+
+
+class EnumsParseError(Exception):
+    """A project's ``enums.yaml`` is malformed or violates the schema.
+
+    Raised by ``storage.read_project_enums`` for malformed YAML, for
+    schema violations (non-list value under a kind, non-dict list element,
+    invalid key identifier, multi-line label, duplicate inner key), and
+    propagated through every storage path that cross-checks a saved
+    ``Feature.enums`` against the project's vocabulary.
+
+    ``line`` / ``column`` are 1-indexed when PyYAML reports a location
+    (``MarkedYAMLError`` family) and ``0`` otherwise. Maps to HTTP
+    ``422`` ``enums_parse_error`` at the API layer.
     """
 
     __slots__ = ("line", "column", "message")
