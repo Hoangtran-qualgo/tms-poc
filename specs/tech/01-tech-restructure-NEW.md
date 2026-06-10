@@ -283,8 +283,9 @@ _remaining is a structural-feasibility unknown._
 
 **Assumptions still unverified (status under Dispositions below):**
 
-1. **Suite is actually 236/236 green** — not re-run this session, and the
-   tree has uncommitted feature-12 changes. Pre-flight must re-establish it.
+1. **Suite is actually 236/236 green** — **RESOLVED Jun 10**: confirmed
+   236/236 via `.venv/bin/python .smoke-scratch/run.py` (the bare `python`
+   shim fails — no PyYAML). Re-confirm before each slice.
 2. **Exact repoint set** — **RESOLVED Jun 10** (enumerated above in
    Confirmed); no longer gating. JS holds ~30 of the ~31 path-reads.
 3. **JS runtime behaviour after the split** — no Playwright; the inline
@@ -312,9 +313,9 @@ _remaining is a structural-feasibility unknown._
 
 **Dispositions (Jun 10, 2026 — user review):**
 
-- *Suite 236/236 green* (#1) — **deferred to pre-flight** (one command).
-  *Exact repoint set* (#2) — **resolved** (enumerated; ~30 JS, 1 server, 0
-  storage/models, + 4 private re-exports).
+- *Suite 236/236 green* (#1) — **resolved Jun 10** (236/236 via
+  `.venv/bin/python`). *Exact repoint set* (#2) — **resolved** (enumerated;
+  ~30 JS, 1 server, 0 storage/models, + 4 private re-exports).
 - *JS runtime behaviour* (#3, R7) — **manually self-verified by the user**;
   automated JS behaviour testing stays out of scope. Residual risk owned,
   not eliminated.
@@ -381,8 +382,9 @@ _remaining is a structural-feasibility unknown._
 
 ### Pre-flight (once, before slice 1)
 
-- [ ] Capture a baseline: `python .smoke-scratch/run.py` → record the
-      236/236 count and the exact list of passing scripts.
+- [x] Capture a baseline: `.venv/bin/python .smoke-scratch/run.py` (**must
+      use the project venv** — the bare `python` pyenv shim lacks PyYAML).
+      Confirmed **236/236, 0 failed** on Jun 10, 2026.
 - [ ] Dump the baseline Flask URL map (`app.url_map`) to compare against
       after slice 1.
 - [ ] `grep -rl 'app/static/app.js\|app/storage.py\|app/server.py\|app/models.py'`
