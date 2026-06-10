@@ -1,10 +1,11 @@
 # 05 · Test case CRUD
 
 _Retroactive spec: documents the as-shipped behaviour. Source files:_
-_`app/server.py` (file routes), `app/storage.py` (file methods),_
-_`app/static/app.js` (`tmsCreateFile`, `tmsEditor.move/rename`),_
-_`app/templates/file_editor.html` (topbar buttons),_
-_`app/templates/folder_*.html` (create buttons)._
+_`app/server/routes_files.py` (file routes), `app/storage/_features.py`_
+_(file methods; moves + duplicates in `_folders.py`), `app/static/_
+_03_folder_actions.js` (`tmsCreateFile`) + `08_file_editor.js`_
+_(`tmsEditor.move/rename`), `app/templates/file_editor.html` (topbar_
+_buttons), `app/templates/folder_*.html` (create buttons)._
 
 ## Summary
 
@@ -74,7 +75,7 @@ Storage methods:
 - `Storage.duplicate_file(parts, new_name)`
 - `Storage.delete_file(parts)`
 
-UI triggers (`app/static/app.js`):
+UI triggers (`app/static/03_folder_actions.js` + `08_file_editor.js`):
 
 - `tmsCreateFile(parent)` — `tmsOpenModal`-based form with file
   name + description; posts `/api/files`. Hint text declares
@@ -167,7 +168,7 @@ UI gaps in v1:
   every write path.
 - `02-storage-core` for the eight underlying methods plus the
   locking and atomic-write guarantees.
-- `app/static/app.js` modal primitive (`tmsOpenModal`) for create
+- `app/static/03_folder_actions.js` modal primitive (`tmsOpenModal`) for create
   and move pickers.
 - `app/templates/file_editor.html` topbar markup (`#btn-rename`,
   `#btn-move`, `#btn-save`, `#btn-save-raw`).

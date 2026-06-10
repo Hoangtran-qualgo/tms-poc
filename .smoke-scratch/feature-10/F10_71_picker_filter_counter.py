@@ -13,7 +13,7 @@ Static JS inspection of app/static/app.js.
 import re
 import pathlib
 
-JS = pathlib.Path("app/static/app.js").read_text()
+JS = "\n".join(_p.read_text() for _p in sorted(pathlib.Path("app/static").glob("*.js")))
 picker = re.search(r"function tmsBuildCasePicker\(features, opts = \{\}\)\s*\{.*?\n\}",
                    JS, re.DOTALL).group(0)
 

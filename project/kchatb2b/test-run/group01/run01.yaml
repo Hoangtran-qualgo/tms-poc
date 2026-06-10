@@ -1,10 +1,94 @@
-name: run01
+name: run
 created_at: '2026-06-08T04:19:23+00:00'
 description: ''
 results:
 - file_path: kchatb2b/desktop-app/API/workspace/create_workspace.feature
-  result: PENDING
+  result: SKIPPED
   remark: ''
 - file_path: kchatb2b/desktop-app/API/workspace/update_workspace_name.feature
+  result: FAILED
+  remark: ''
+- file_path: kchatb2b/desktop-app/UI/AI chat/create_page_content.feature
+  result: EXECUTING
+  remark: ''
+- file_path: kchatb2b/desktop-app/UI/AI chat/create_slide_content.feature
+  result: PENDING
+  remark: ''
+- file_path: kchatb2b/desktop-app/UI/AI chat/create_slide_image.feature
+  result: PASSED
+  remark: ''
+- file_path: kchatb2b/desktop-app/UI/chat/create_channel.feature
+  result: SKIPPED
+  remark: ''
+- file_path: kchatb2b/desktop-app/UI/chat/create_channel_negative.feature
+  result: PENDING
+  remark: ''
+- file_path: kchatb2b/desktop-app/UI/chat/share_file.feature
+  result: PENDING
+  remark: ''
+- file_path: kchatb2b/desktop-app/UI/chat/share_media.feature
+  result: PENDING
+  remark: ''
+- file_path: kchatb2b/desktop-app/UI/knowledge/AI-chat/create_slide_content.feature
+  result: PENDING
+  remark: ''
+- file_path: kchatb2b/desktop-app/UI/knowledge/AI-chat/create_slide_image.feature
+  result: PENDING
+  remark: ''
+- file_path: kchatb2b/desktop-app/UI/knowledge/AI-chat/update_slide_content.feature
+  result: PENDING
+  remark: ''
+- file_path: kchatb2b/desktop-app/UI/knowledge/AI-chat/update_slide_image.feature
+  result: PENDING
+  remark: ''
+- file_path: kchatb2b/desktop-app/UI/knowledge/Attachments/chat_file_displayed.feature
+  result: PENDING
+  remark: ''
+- file_path: kchatb2b/desktop-app/UI/knowledge/Attachments/chat_media_displayed.feature
+  result: PENDING
+  remark: ''
+- file_path: kchatb2b/desktop-app/UI/knowledge/Attachments/file_filter.feature
+  result: PENDING
+  remark: ''
+- file_path: kchatb2b/desktop-app/UI/knowledge/Attachments/media_filter.feature
+  result: PENDING
+  remark: ''
+- file_path: kchatb2b/desktop-app/UI/knowledge/Connected Sources/connected_source_displayed.feature
+  result: PENDING
+  remark: ''
+- file_path: kchatb2b/desktop-app/UI/knowledge/Connected Sources/resource_displayed.feature
+  result: PENDING
+  remark: ''
+- file_path: kchatb2b/desktop-app/UI/knowledge/Content/create_folder.feature
+  result: PENDING
+  remark: ''
+- file_path: kchatb2b/desktop-app/UI/knowledge/Content/create_page.feature
+  result: PENDING
+  remark: ''
+- file_path: kchatb2b/desktop-app/UI/knowledge/Content/create_presentation.feature
+  result: PENDING
+  remark: ''
+- file_path: kchatb2b/desktop-app/UI/knowledge/Content/delete_page.feature
+  result: PENDING
+  remark: ''
+- file_path: kchatb2b/desktop-app/UI/knowledge/Content/delete_presentation.feature
+  result: PENDING
+  remark: ''
+- file_path: kchatb2b/desktop-app/UI/knowledge/Content/interact_presentation_task_bar.feature
+  result: PENDING
+  remark: ''
+- file_path: kchatb2b/desktop-app/UI/knowledge/Content/update_folder_name.feature
+  result: PENDING
+  remark: ''
+- file_path: kchatb2b/portal/add_storage_provider.feature
+  result: PENDING
+  remark: ''
+- file_path: kchatb2b/portal/portal_display.feature
+  result: PENDING
+  remark: ''
+- file_path: kchatb2b/portal/remove_storage_provider.feature
+  result: PENDING
+  remark: ''
+- file_path: kchatb2b/portal/view_storage_provider.feature
   result: PENDING
   remark: ''

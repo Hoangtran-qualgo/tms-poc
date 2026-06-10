@@ -1,7 +1,7 @@
 # 01 · Gherkin I/O
 
 _Retroactive spec: documents the as-shipped behaviour. Source files:_
-_`app/gherkin_io.py`, `app/models.py`, `app/errors.py`._
+_`app/gherkin_io.py`, `app/models/`, `app/errors.py`._
 
 ## Summary
 

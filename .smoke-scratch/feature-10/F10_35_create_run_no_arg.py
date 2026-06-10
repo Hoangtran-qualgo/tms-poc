@@ -7,7 +7,7 @@ keeps matching it.
 """
 import re, pathlib
 
-APP_JS = pathlib.Path("app/static/app.js").read_text()
+APP_JS = "\n".join(_p.read_text() for _p in sorted(pathlib.Path("app/static").glob("*.js")))
 
 # Match exactly: `async function tmsCreateRun() {`. The empty parens
 # guard against accidental future re-parameterisation.

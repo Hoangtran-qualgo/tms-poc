@@ -85,6 +85,24 @@ class RunParseError(Exception):
         self.message = message
 
 
+class ReportParseError(Exception):
+    """A quality-report file's YAML cannot be parsed.
+
+    Raised by ``storage.read_report`` when the on-disk YAML is malformed
+    or its root is not a mapping. ``line`` / ``column`` are 1-indexed when
+    PyYAML reports them and ``0`` otherwise. Maps to HTTP ``422``
+    ``report_parse_error`` at the API layer (mirrors :class:`RunParseError`).
+    """
+
+    __slots__ = ("line", "column", "message")
+
+    def __init__(self, *, line: int, column: int, message: str) -> None:
+        super().__init__(f"{line}:{column}: {message}")
+        self.line = line
+        self.column = column
+        self.message = message
+
+
 class EnumsParseError(Exception):
     """A project's ``enums.yaml`` is malformed or violates the schema.
 

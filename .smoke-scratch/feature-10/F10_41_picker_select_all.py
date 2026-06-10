@@ -21,7 +21,7 @@ Three assertions:
 import re
 import pathlib
 
-APP_JS = pathlib.Path("app/static/app.js").read_text()
+APP_JS = "\n".join(_p.read_text() for _p in sorted(pathlib.Path("app/static").glob("*.js")))
 
 # --- 1. Header hosts the select-all checkbox --------------------------
 # Match the actual <input> string literal the picker emits via

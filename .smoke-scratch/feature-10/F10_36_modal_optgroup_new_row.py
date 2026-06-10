@@ -8,7 +8,7 @@ a browser smoke.
 """
 import pathlib
 
-APP_JS = pathlib.Path("app/static/app.js").read_text()
+APP_JS = "\n".join(_p.read_text() for _p in sorted(pathlib.Path("app/static").glob("*.js")))
 
 # `<optgroup>` is created via document.createElement and labelled with the
 # project name; one of the assertions should reference both.

@@ -1,7 +1,8 @@
 # TMS — test case management tools
 
-A local Flask web app for editing Gherkin `.feature` files stored under
-`./project/<project>/<module>/...`.
+A local Flask web app for managing test cases: editing Gherkin
+`.feature` files, organising test runs, and generating quality reports —
+all stored as files under `./project/<project>/...`.
 
 ## Prerequisites
 
@@ -49,6 +50,22 @@ If you prefer not to activate the venv, call the interpreter directly:
 
 Then open <http://127.0.0.1:5000>.
 
+## Tests
+
+The suite is a set of standalone "smoke" scripts under `.smoke-scratch/`.
+Always run them with the venv interpreter (a bare `python` may lack the
+pinned dependencies such as PyYAML):
+
+```bash
+.venv/bin/python .smoke-scratch/run.py
+```
+
+Filter to one feature's smokes:
+
+```bash
+.venv/bin/python .smoke-scratch/run.py --filter feature-12
+```
+
 ## Data
 
 Test cases live as `.feature` files under `./project/`. The folder
@@ -59,7 +76,7 @@ hierarchy is project → module → optional sub-folders → file.
 - `PLAN.md` — architecture and design decisions.
 - `IN-PROGRESS.md` — current backlog (MoSCoW).
 - `DONE.md` — completed items / change log.
-- `specs/` — per-feature specifications (`specs/features/`) and
-  cross-cutting tech / business rules (`specs/rules/`). See
-  `specs/README.md`.
+- `specs/` — feature specs (`specs/features/`), technical-initiative
+  specs (`specs/tech/`), and cross-cutting tech / business rules
+  (`specs/rules/`). See `specs/README.md`.
 - `AGENTS.md` — engineering principles for contributors and AI agents.

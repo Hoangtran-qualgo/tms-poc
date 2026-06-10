@@ -12,6 +12,10 @@ is explicitly designated as such.
 
 _(empty)_
 
+_The five UI/UX styling + detailing enhancements (E1–E5) specced in
+`specs/tech/02-tech-ui-styling-enhancement-NEW.md` shipped Jun 10, 2026 —
+see `DONE.md` for the as-built breakdown._
+
 ## Should have
 
 _(empty)_
@@ -30,19 +34,8 @@ _(empty)_
   annoying. If yes, add a sibling Set + restore helper scoped to
   `#test-run-pane`, hooked into `htmx:afterSwap`.
 
-- **Investigate new feature: test report.**
-  - Filter test cases by condition (folder / tag / tag-presence
-    percentage — e.g., what % of test cases carry tag `@xxx` and
-    what % do not).
-  - **Rendering**: no pie chart. Render each category as a top-level
-    bullet point with a count / percentage, expandable via a
-    collapse/expand drop-down that reveals the matching test cases
-    underneath. All groups collapsed by default.
-  - Deeper reports derived from test runs — scope TBD; nail down
-    during the Investigate phase.
-
 - **Investigate new feature: folder-level test case filter.**
-  - From a folder view, filter and list test cases by contain /
+  - From a folder view (from project/ level to single folder level), filter and list test cases by contain /
     not-contain rules over:
     - a specific tag.
     - a specific group of tags (all must match / none must match).
@@ -63,11 +56,4 @@ _(empty)_
   - Out of scope until v1 of `11-feature-testcase-component`
     ships and teams start hitting the limits of the
     hand-edit-the-YAML flow.
-
-- **Investigate new feature: quality report.**
-  - In a project, list the most-failed areas based on component data
-    in the selected test run (max. 10).
-  - In a project, list the per-test-case statistic in the selected
-    test run (max. 10).
-  - Depends on the `component` data investigation above.
 

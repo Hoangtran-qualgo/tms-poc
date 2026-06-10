@@ -57,6 +57,24 @@ The rest of the spec body (problem statement, data model, API, UI
 flows, acceptance criteria, etc.) is shaped to match the feature; no
 fixed template beyond the three relationship sections.
 
+## /specs/tech
+
+One Markdown file per **technical** initiative that is not a product
+feature — refactors, restructures, dependency moves, and other
+internal "tech movement". Naming mirrors `/specs/features`:
+
+```
+<NN>-tech-<name>-<NEW|UPDATE>.md
+```
+
+Same `<NN>` / `<name>` / `<NEW|UPDATE>` rules as feature specs, with an
+independent index sequence. A tech spec carries the same three
+relationship sections (`## Affects`, `## Depends on`,
+`## Surface for follow-up`) plus a problem/scope body and acceptance
+criteria, and may hold a temporary implementation-plan section that is
+deleted once the work ships. Behaviour-preserving by default: the scope
+is "move/restructure code", not "change what it does".
+
 ## /specs/rules
 
 Cross-cutting rules that apply to all feature work:

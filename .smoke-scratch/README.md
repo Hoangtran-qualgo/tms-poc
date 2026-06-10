@@ -35,6 +35,27 @@ Variations:
 - **JS / template smokes** use `app.test_client().get(...)`
   and inspect the rendered HTML with the `re` module — no
   browser, no Playwright.
+- **JS *source*-inspection smokes** read the client JS as text and
+  regex for function bodies / wiring. `app/static/app.js` was split
+  into ordered `NN_*.js` files (specs/tech/01-tech-restructure-NEW.md),
+  so these read the **concatenation** of all of them, which
+  reconstructs the original single-file source view:
+
+  ```python
+  JS = "\n".join(
+      _p.read_text() for _p in sorted((REPO_ROOT / "app" / "static").glob("*.js"))
+  )
+  ```
+
+  `sorted()` over the `NN_` prefix yields the same order the files
+  load in `base.html` (= the original source order), so a regex that
+  grabs the *first* match of a method shared by two controllers
+  (e.g. `boot()` on the run editor vs. the file editor) still resolves
+  to the right one. Concatenating (rather than reading one specific
+  file) keeps a smoke correct when a symbol is moved between split
+  files, and lets smokes that span areas (tree + bootstrap listener,
+  run editor + sse fan-out) assert in one pass. Per *No shared
+  helpers* below, this line is copy-pasted, not factored out.
 
 ## Filename convention
 

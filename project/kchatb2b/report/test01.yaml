@@ -1,0 +1,7 @@
+type: tag_ranking
+title: test01
+created_at: '2026-06-10T11:22:00+00:00'
+status: PENDING
+run_paths:
+- kchatb2b/test-run/group02/run01.yaml
+- kchatb2b/test-run/group01/run01.yaml

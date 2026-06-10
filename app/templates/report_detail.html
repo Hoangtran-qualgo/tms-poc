@@ -1,0 +1,193 @@
+{# report_detail.html — main-pane detail for one quality report.
+
+   Consumed by GET /ui/report/<project>/<file_name>. The server has
+   already run reporting.compute_report, so `view` is the per-type view
+   model (see app/reporting.py). This template only branches + formats;
+   it does no computation.
+
+   Results recompute live, so the root element re-GETs itself on every
+   `sse:change` (a run result, an underlying .feature's enums/tags, or
+   an added/removed run all change the rendered numbers with no edit to
+   the report file). Spec: specs/features/12-feature-quality-report-NEW.md. #}
+
+{% set is_run_set = view.type in ["enum_ranking", "tag_ranking", "case_trend"] %}
+{% set is_ranking = view.type in ["enum_ranking", "tag_ranking", "tag_inventory"] %}
+
+<div id="report-detail"
+     data-project="{{ project }}"
+     data-file-name="{{ file_name }}"
+     data-report-type="{{ view.type }}"
+     hx-get="/ui/report/{{ project }}/{{ file_name }}"
+     hx-trigger="sse:change"
+     hx-target="#main-pane"
+     hx-swap="innerHTML">
+
+  <div class="text-sm text-slate-500 truncate mb-2">
+    <a class="hover:underline cursor-pointer"
+       hx-get="/ui/folder/" hx-target="#main-pane" hx-swap="innerHTML">Projects</a>
+    <span class="px-1">/</span>
+    <a class="hover:underline cursor-pointer"
+       hx-get="/ui/folder/{{ project }}" hx-target="#main-pane" hx-swap="innerHTML">{{ project }}</a>
+    <span class="px-1">/</span>
+    <span class="text-slate-400">report</span>
+    <span class="px-1">/</span>
+    <span class="font-mono text-slate-600">{{ file_name }}</span>
+  </div>
+
+  <div class="flex items-start gap-3 mb-1">
+    <h2 class="text-xl font-semibold text-slate-800 flex-1 min-w-0">{{ view.title }}</h2>
+    <span class="shrink-0 text-xs uppercase tracking-wide px-2 py-1 rounded bg-slate-100 text-slate-600 font-medium">{{ view.type.replace('_', ' ') }}</span>
+  </div>
+
+  {# Params line — echoes the report's config so the header is self-describing.
+     E4: key factors (status / kind / tag / scope / case) are bold-emphasised;
+     the enum-ranking `status` filter is also palette-coloured via data-status
+     (shared single source — § Status palette). #}
+  <div class="text-xs text-slate-500 mb-1 flex flex-wrap gap-x-4 gap-y-0.5">
+    {% if view.params.status %}<span><span class="text-slate-400">status</span> {% if view.type == 'enum_ranking' %}<span class="font-mono font-semibold" data-status="{{ view.params.status }}">{{ view.params.status }}</span>{% else %}<span class="font-mono font-semibold text-slate-700">{{ view.params.status }}</span>{% endif %}</span>{% endif %}
+    {% if view.params.kind %}<span><span class="text-slate-400">kind</span> <span class="font-mono font-semibold text-slate-700">{{ view.params.kind }}</span></span>{% endif %}
+    {% if view.params.tag %}<span><span class="text-slate-400">tag</span> <span class="font-mono font-semibold text-slate-700">@{{ view.params.tag }}</span></span>{% endif %}
+    {% if view.params.scope %}<span><span class="text-slate-400">scope</span> <span class="font-mono font-semibold text-slate-700">{{ view.params.scope }}</span></span>{% endif %}
+    {% if view.params.case_path %}<span><span class="text-slate-400">case</span> <span class="font-mono font-semibold text-slate-700">{{ view.params.case_path }}</span></span>{% endif %}
+  </div>
+  <div class="text-xs text-slate-400 mb-3">Created {{ view.created_at }} &middot; <span class="font-semibold text-slate-600">{{ view.total }} {% if is_ranking %}case{% if view.total != 1 %}s{% endif %}{% else %}run{% if view.total != 1 %}s{% endif %}{% endif %}</span></div>
+
+  {% if is_run_set %}
+  <div class="mb-3">
+    <button type="button" id="btn-report-add-runs"
+            class="px-3 py-1.5 text-sm border border-slate-300 rounded hover:bg-slate-50"
+            onclick="tmsAddReportRuns('{{ project }}', '{{ file_name }}')">+ Add runs</button>
+  </div>
+  {% elif view.type == "tag_inventory" %}
+  <div class="mb-3">
+    <button type="button" id="btn-report-edit-scope"
+            class="px-3 py-1.5 text-sm border border-slate-300 rounded hover:bg-slate-50"
+            onclick="tmsEditReportScope('{{ project }}', '{{ file_name }}')">Edit scope</button>
+  </div>
+  {% endif %}
+
+  {# Tolerant warnings — unresolved runs, removed cases, missing scope. #}
+  {% if view.warnings %}
+  <div class="mb-3 rounded border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-800">
+    <div class="font-medium mb-1">Some data could not be read:</div>
+    <ul class="list-disc pl-5 space-y-0.5">
+      {% for w in view.warnings %}<li>{{ w }}</li>{% endfor %}
+    </ul>
+  </div>
+  {% endif %}
+
+  {# ----- Ranking / inventory: bucket table ----------------------------- #}
+  {% if is_ranking %}
+    {% if view.buckets %}
+    <div class="border border-slate-200 rounded bg-white divide-y divide-slate-100">
+      {% for b in view.buckets %}
+      <details class="group">
+        <summary class="flex items-center gap-3 px-3 py-2 cursor-pointer hover:bg-slate-50 select-none {% if b.synthetic %}text-slate-400 italic{% else %}text-slate-700{% endif %}">
+          <span class="w-4 text-slate-300 group-open:rotate-90 transition-transform">&#9654;</span>
+          <span class="flex-1 min-w-0 truncate {% if not b.synthetic %}font-medium{% endif %}">{{ b.label }}</span>
+          <span class="shrink-0 w-40 hidden sm:block">
+            <span class="block h-2 rounded bg-slate-100 overflow-hidden">
+              <span class="block h-2 {% if b.synthetic %}bg-slate-300{% else %}bg-slate-600{% endif %}" style="width: {{ '%.1f'|format(b.pct * 100) }}%"></span>
+            </span>
+          </span>
+          <span class="shrink-0 tabular-nums text-right w-12">{{ b.count }}</span>
+          <span class="shrink-0 tabular-nums text-right w-12 text-slate-400">{{ '%.0f'|format(b.pct * 100) }}%</span>
+        </summary>
+        <div class="px-10 py-2 bg-slate-50 border-t border-slate-100">
+          {% if b.cases %}
+          {# Cases are grouped by folder (first-seen order), mirroring the
+             run-editor E2 idiom: a muted folder heading per group, then
+             filename-only list items. The full path stays on the <a hx-get>
+             for click-through. Defensive `rsplit` handles zero-slash paths. #}
+          {% set ns = namespace(folders=[]) %}
+          {% for c in b.cases %}
+            {% set _parts = c.file_path.rsplit('/', 1) %}
+            {% set _folder = _parts[0] if _parts|length == 2 else '' %}
+            {% if _folder not in ns.folders %}{% set ns.folders = ns.folders + [_folder] %}{% endif %}
+          {% endfor %}
+          <div class="space-y-2">
+            {% for folder in ns.folders %}
+            <div data-group-folder="{{ folder }}">
+              <div class="mb-1">
+                <span class="inline-block font-mono text-xs font-semibold text-slate-700 bg-slate-200 rounded px-1.5 py-0.5">{{ folder if folder else '(ungrouped)' }}</span>
+              </div>
+              <ul class="space-y-0.5 pl-3">
+                {% for c in b.cases %}
+                  {% set _parts = c.file_path.rsplit('/', 1) %}
+                  {% set _folder = _parts[0] if _parts|length == 2 else '' %}
+                  {% set _filename = _parts[1] if _parts|length == 2 else _parts[0] %}
+                  {% if _folder == folder %}
+                <li>
+                  <a class="font-mono text-xs text-slate-600 hover:underline cursor-pointer"
+                     hx-get="/ui/file/{{ c.file_path }}" hx-target="#main-pane" hx-swap="innerHTML">{{ _filename }}</a>
+                </li>
+                  {% endif %}
+                {% endfor %}
+              </ul>
+            </div>
+            {% endfor %}
+          </div>
+          {% else %}
+          <span class="text-xs text-slate-400 italic">No cases.</span>
+          {% endif %}
+        </div>
+      </details>
+      {% endfor %}
+    </div>
+    {% else %}
+    <div class="text-center py-10 border border-dashed border-slate-200 rounded bg-white text-slate-400 italic text-sm">
+      {% if is_run_set %}
+      No qualifying cases yet. Use <span class="font-medium">+ Add runs</span> above to include test runs.
+      {% else %}
+      No cases under this scope.
+      {% endif %}
+    </div>
+    {% endif %}
+  {% endif %}
+
+  {# ----- Case trend: timeline table ------------------------------------ #}
+  {% if view.type == "case_trend" %}
+    {% if view.tombstoned %}
+    <div class="mb-3 rounded border border-rose-200 bg-rose-50 px-3 py-2 text-sm text-rose-700">
+      This test case no longer exists on disk. The trend below is reconstructed from historical runs.
+    </div>
+    {% else %}
+    <div class="mb-3 text-xs text-slate-500 flex flex-wrap gap-x-4 gap-y-0.5">
+      {% if view.current_tags %}<span><span class="text-slate-400">current tags</span> {% for t in view.current_tags %}<span class="font-mono">@{{ t }}</span> {% endfor %}</span>{% endif %}
+      {% for kind, key in view.current_enums.items() %}<span><span class="text-slate-400">{{ kind }}</span> <span class="font-mono">{{ key }}</span></span>{% endfor %}
+    </div>
+    {% endif %}
+
+    {# Result cells colour-coded by status via the shared single-source
+       palette (app.css [data-status]); an absent run (em-dash) carries no
+       data-status and renders muted (§ Status palette / E4). #}
+    {% if view.trend %}
+    <table class="w-full text-sm border border-slate-200 rounded overflow-hidden bg-white">
+      <thead class="bg-slate-100 text-slate-600">
+        <tr>
+          <th class="text-left px-3 py-2 font-medium">Run</th>
+          <th class="text-left px-3 py-2 font-medium w-48">When</th>
+          <th class="text-left px-3 py-2 font-medium w-40">Result</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for t in view.trend %}
+        <tr class="border-t border-slate-100">
+          <td class="px-3 py-2">
+            <a class="hover:underline cursor-pointer"
+               hx-get="/ui/run/{{ t.run_path.split('/')[0] }}/{{ t.run_path.split('/')[2] }}/{{ t.run_path.split('/')[3] }}"
+               hx-target="#main-pane" hx-swap="innerHTML">{{ t.run }}</a>
+          </td>
+          <td class="px-3 py-2 text-slate-500 text-xs font-mono">{{ t.created_at }}</td>
+          <td class="px-3 py-2 font-mono text-xs font-medium {% if t.result == '\u2014' %}text-slate-300{% endif %}"{% if t.result != '\u2014' %} data-status="{{ t.result }}"{% endif %}>{{ t.result }}</td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+    {% else %}
+    <div class="text-center py-10 border border-dashed border-slate-200 rounded bg-white text-slate-400 italic text-sm">
+      No runs yet. Use <span class="font-medium">+ Add runs</span> above to track this case across runs.
+    </div>
+    {% endif %}
+  {% endif %}
+</div>

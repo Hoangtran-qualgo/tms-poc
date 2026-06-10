@@ -20,6 +20,7 @@ from pathlib import Path
 from flask import Flask, render_template
 
 from . import storage as storage_module
+from .models import RUN_RESULTS
 from .server import api as api_blueprint, ui as ui_blueprint
 from .storage import Storage
 from .watcher import EventBus, Watcher
@@ -67,7 +68,9 @@ def create_app(data_root: str | os.PathLike[str] | None = None) -> Flask:
         # Render the initial tree server-side so the first paint is fully
         # populated; HTMX then handles subsequent refreshes via SSE.
         return render_template(
-            "base.html", tree=storage.list_tree()
+            "base.html",
+            tree=storage.list_tree(),
+            run_results=list(RUN_RESULTS),
         )
 
     return app

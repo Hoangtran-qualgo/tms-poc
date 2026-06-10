@@ -1,81 +1,80 @@
-"""Smoke j1: run_editor.html row + template prototype carry the two-span shape.
+"""Smoke j1: run_editor.html rows are filename-only under folder headings.
 
-Tracks the "Investigate: run editor — mask test-case column to filename only"
-Must-have item. Static-wiring (template-source) only.
+Updated for tech-02 E2 (specs/tech/02-tech-ui-styling-enhancement-NEW.md):
+results are grouped by folder. Each group emits a plain `run-group-head`
+heading row carrying the folder, and each result row is filename-only — the
+masked folder span (the old two-span shape) is dropped. Static template-source
+inspection only.
 
 Five assertions:
-1. Server-rendered row contains a `data-role="folder"` span.
-2. Server-rendered row contains a `data-role="filename"` span.
-3. `<template id="run-result-row-template">` prototype contains the
-   same two spans (clone-path parity with the server path).
+1. The server emits a folder heading row: `<tr class="run-group-head"
+   ... data-group-folder="{{ folder }}">`.
+2. Result rows are filename-only: a `data-role="filename"` span exists and
+   NO `data-role="folder"` span remains anywhere in the template.
+3. Both the result-row `<template>` and the group-head `<template>` exist
+   (clone-path parity with the server path).
 4. The full path is preserved on all three preservation surfaces:
    `<tr data-file-path>`, `<td title>`, and `<a hx-get>` use
    `{{ r.file_path }}` verbatim.
-5. The `<td>` wrapping the link no longer carries `truncate` —
-   responsibility for ellipsis moved to the inner folder span's
-   `truncate min-w-0` flex layout, so a stale outer `truncate` would
-   be dead and confusing.
+5. The test-case `<td>` does not carry `truncate` (ellipsis lives on the
+   inner filename span's `truncate min-w-0`).
 """
 import pathlib
 import re
 
 TPL = pathlib.Path("app/templates/run_editor.html").read_text()
 
-# --- 1 + 2. Server row carries both data-role spans -------------------
-# Carve out the `{% for r in run.results %}` block once so we don't
-# accidentally match the <template> prototype below.
-server_block = re.search(
-    r"\{%\s*for\s+r\s+in\s+run\.results\s*%\}(.*?)\{%\s*endfor\s*%\}",
-    TPL, re.S,
-)
-assert server_block, "could not locate {% for r in run.results %} block"
-server_html = server_block.group(1)
-assert 'data-role="folder"' in server_html, (
-    "server row should contain <span data-role='folder'> for the masked folder path"
-)
-assert 'data-role="filename"' in server_html, (
-    "server row should contain <span data-role='filename'> for the emphasized filename"
-)
-print("PASS  server row carries data-role='folder' + data-role='filename' spans")
+# --- 1. Server emits a folder heading row -----------------------------
+assert re.search(
+    r'<tr class="run-group-head[^"]*"[^>]*data-group-folder="\{\{\s*folder\s*\}\}"',
+    TPL,
+), "server must emit a run-group-head row keyed by data-group-folder"
+print("PASS  server emits run-group-head folder heading rows")
 
-# --- 3. <template> prototype mirrors the same shape -------------------
-proto_block = re.search(
-    r'<template\s+id="run-result-row-template">(.*?)</template>',
-    TPL, re.S,
+# --- 2. Filename-only rows: filename span present, folder span gone ---
+assert 'data-role="filename"' in TPL, (
+    "result rows must contain <span data-role='filename'> for the filename"
 )
-assert proto_block, "could not locate <template id='run-result-row-template'>"
-proto_html = proto_block.group(1)
-assert 'data-role="folder"' in proto_html, (
-    "prototype must mirror the server row's data-role='folder' span"
+assert 'data-role="folder"' not in TPL, (
+    "E2: the masked folder span must be dropped (folder now lives in the heading)"
 )
-assert 'data-role="filename"' in proto_html, (
-    "prototype must mirror the server row's data-role='filename' span"
-)
-print("PASS  <template> prototype mirrors the two-span shape")
+print("PASS  rows are filename-only; folder span dropped")
 
-# --- 4. Full path preserved on tr/td/a ---------------------------------
-# Each surface carries the unmasked Jinja expression {{ r.file_path }}.
-assert re.search(r'data-file-path="\{\{\s*r\.file_path\s*\}\}"', server_html), (
+# --- 3. Both <template>s exist ----------------------------------------
+assert re.search(r'<template\s+id="run-result-row-template">', TPL), (
+    "result-row <template> must exist"
+)
+assert re.search(r'<template\s+id="run-group-head-template">', TPL), (
+    "E2: a group-head <template> must exist so JS clones headings without drift"
+)
+proto = re.search(
+    r'<template\s+id="run-result-row-template">(.*?)</template>', TPL, re.S
+).group(1)
+assert 'data-role="filename"' in proto and 'data-role="folder"' not in proto, (
+    "result-row prototype must mirror the filename-only shape"
+)
+print("PASS  result-row + group-head templates present, prototype filename-only")
+
+# --- 4. Full path preserved on tr/td/a --------------------------------
+assert re.search(r'data-file-path="\{\{\s*r\.file_path\s*\}\}"', TPL), (
     "<tr data-file-path='{{ r.file_path }}'> must carry the unmasked full path"
 )
-assert re.search(r'title="\{\{\s*r\.file_path\s*\}\}"', server_html), (
+assert re.search(r'title="\{\{\s*r\.file_path\s*\}\}"', TPL), (
     "<td title='{{ r.file_path }}'> must carry the unmasked full path for tooltip"
 )
-assert re.search(r'hx-get="/ui/file/\{\{\s*r\.file_path\s*\}\}"', server_html), (
-    "<a hx-get='/ui/file/{{ r.file_path }}'> must carry the unmasked full path for navigation"
+assert re.search(r'hx-get="/ui/file/\{\{\s*r\.file_path\s*\}\}"', TPL), (
+    "<a hx-get='/ui/file/{{ r.file_path }}'> must carry the unmasked full path"
 )
 print("PASS  full r.file_path preserved on <tr data-file-path>, <td title>, <a hx-get>")
 
-# --- 5. Outer <td> no longer carries `truncate` ------------------------
-# Match the test-case <td> opening tag (the one with title=).
+# --- 5. Test-case <td> does not carry `truncate` ----------------------
 td_match = re.search(
-    r'<td\s+class="([^"]*)"\s+title="\{\{\s*r\.file_path\s*\}\}"',
-    server_html,
+    r'<td\s+class="([^"]*)"\s+title="\{\{\s*r\.file_path\s*\}\}"', TPL
 )
 assert td_match, "could not locate the test-case <td> opening tag"
 td_classes = td_match.group(1).split()
 assert "truncate" not in td_classes, (
-    f"<td> should no longer carry `truncate` class; got {td_classes!r}. "
-    "Truncation now lives on the inner folder span."
+    f"<td> should not carry `truncate`; got {td_classes!r}. "
+    "Truncation now lives on the inner filename span."
 )
-print("PASS  outer <td> no longer carries dead `truncate` class")
+print("PASS  test-case <td> does not carry `truncate` (lives on filename span)")

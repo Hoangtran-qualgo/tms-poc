@@ -1,7 +1,7 @@
 # Pattern: see .smoke-scratch/README.md
 """feature-05 / testcase-crud / server body type-rejection (condition-coverage gap-closer).
 
-Cross-cutting: exercises the shared `app/server.py` request-validation
+Cross-cutting: exercises the shared `app/server/_shared.py` request-validation
 helpers used by the file, folder, and run routes. The existing suite
 drives the *empty/whitespace* legs of these guards but never the
 `not isinstance(...)` legs, so the type-checks below were untested

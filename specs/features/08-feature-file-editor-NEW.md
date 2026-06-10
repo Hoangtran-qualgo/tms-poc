@@ -1,8 +1,9 @@
 # 08 · File editor
 
 _Retroactive spec: documents the as-shipped behaviour. Source files:_
-_`app/templates/file_editor.html`, `app/static/app.js` (`tmsEditor`_
-_object), `app/server.py` (`ui_file`, `_folder_crumbs`)._
+_`app/templates/file_editor.html`, `app/static/08_file_editor.js` (`tmsEditor`_
+_object) + `09_bootstrap.js` (bottom-of-file wiring), `app/server/routes_ui.py`_
+_(`ui_file`) + `app/server/_shared.py` (`_folder_crumbs`)._
 
 ## Summary
 
@@ -74,7 +75,7 @@ Template (`file_editor.html`):
   with keys `path`, `file_name`, `feature`, `raw` — consumed by
   `tmsEditor.boot()` via `JSON.parse(textContent)`.
 
-`tmsEditor` controller (`app/static/app.js`):
+`tmsEditor` controller (`app/static/08_file_editor.js`):
 
 - Lifecycle: `boot()`, `_refreshFromDisk()`.
 - Dirty / save UX: `markDirty(d)`, `updateSaveButton()`,
@@ -92,7 +93,7 @@ Template (`file_editor.html`):
 - Step / table editing helpers: `addStep('background' |
   'scenario')`, `addExamplesBlock()`.
 
-Wiring (`app/static/app.js`, bottom of file):
+Wiring (`app/static/09_bootstrap.js`):
 
 - `htmx:afterSwap` on `#main-pane` clears `tmsEditor.state` when
   the main pane swaps to anything other than the editor.
@@ -268,7 +269,7 @@ Browser-native confirm fires when `state.dirty == true`.
   tab.
 - `03-watcher-and-sse` for the `sse:change` event that drives
   external-change detection.
-- `app/static/app.js` modal primitive (`tmsOpenModal`) for the
+- `app/static/03_folder_actions.js` modal primitive (`tmsOpenModal`) for the
   move folder-picker.
 - HTMX 2.x for the post-save / post-move re-routes
   (`htmx.ajax(...)`); Tailwind CDN for layout.

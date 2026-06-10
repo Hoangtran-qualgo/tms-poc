@@ -32,6 +32,6 @@ with tempfile.TemporaryDirectory() as td:
 
     # JS helper present (function definitions in app.js are not in base.html,
     # so we just check the script tag wiring is present).
-    assert 'src="/static/app.js"' in html or "static/app.js" in html
+    assert 'src="/static/09_bootstrap.js"' in html or "09_bootstrap.js" in html
 
     print("PASS 2.h initial DOM: test-run-pane lazy-mount stub correct")

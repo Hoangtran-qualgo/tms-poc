@@ -28,8 +28,10 @@ reflects the current state.
 
 ## Module boundaries
 
-- Routes (`app/server.py`) know HTTP only; never touch the FS.
-- `app/storage.py` is the sole FS I/O module.
+- Routes (`app/server/` package — `routes_*.py` over the `api`/`ui`
+  blueprints) know HTTP only; never touch the FS.
+- The `app/storage/` package (`_core.py` + per-domain mixins) is the
+  sole FS I/O module.
 - `app/gherkin_io.py` is pure: text ↔ model, no I/O.
 - `app/watcher.py` owns the observer, pubsub, `recent_writes` TTL set,
   and the temp-file path filter; SSE subscribes per request.

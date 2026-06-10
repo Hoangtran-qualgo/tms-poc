@@ -19,7 +19,7 @@ from app import create_app
 
 
 REPO = pathlib.Path(__file__).resolve().parents[2]
-JS = (REPO / "app" / "static" / "app.js").read_text()
+JS = "\n".join(_p.read_text() for _p in sorted((REPO / "app" / "static").glob("*.js")))
 
 
 # --- RR1 (a): <main id="main-pane"> does NOT subscribe to sse:change. ---

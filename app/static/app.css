@@ -1,1 +1,11 @@
 /* TMS custom CSS. Only used when a Tailwind utility cannot cover the case. */
+
+/* Run-result status palette — single source of truth (specs/tech/02).
+   Consumed by both the server-rendered report cells and the JS-set run
+   editor <select> via a `data-status` attribute, so the colour code lives
+   in exactly one place. SKIPPED = purple (decision D1). */
+[data-status="PASSED"]    { color: #059669; } /* emerald-600 / green  */
+[data-status="FAILED"]    { color: #e11d48; } /* rose-600    / red    */
+[data-status="EXECUTING"] { color: #0284c7; } /* sky-600     / blue   */
+[data-status="SKIPPED"]   { color: #9333ea; } /* purple-600  / purple */
+[data-status="PENDING"]   { color: #d97706; } /* amber-600   / orange */

@@ -1,9 +1,9 @@
 # 09 · Search
 
 _Retroactive spec: documents the as-shipped behaviour. Source files:_
-_`app/storage.py` (`Storage.search`), `app/server.py`_
+_`app/storage/_search.py` (`Storage.search`), `app/server/routes_search.py`_
 _(`/api/search`, `/ui/search`), `app/templates/search_results.html`,_
-_`app/templates/base.html` (top-bar form), `app/static/app.js`_
+_`app/templates/base.html` (top-bar form), `app/static/07_util_search.js`_
 _(`tmsWireSearch`)._
 
 ## Summary
@@ -85,7 +85,7 @@ UI form (`base.html`):
   HTMX 2.x (see DONE.md "Search function does not display
   results").
 
-`tmsWireSearch` (`app/static/app.js`):
+`tmsWireSearch` (`app/static/07_util_search.js`):
 
 - `q.keydown` Enter → cancel debounce, fire immediately.
 - `q.input` → schedule fire after 300 ms.
@@ -161,7 +161,7 @@ UI form (`base.html`):
 - `02-storage-core` for `Storage.search` and the data-root walk.
 - `01-gherkin-io` for the parsed `Feature` objects whose
   `description` and `scenario.tags` are searched.
-- `app/static/app.js` (`tmsWireSearch`) for the debounce / Enter
+- `app/static/07_util_search.js` (`tmsWireSearch`) for the debounce / Enter
   / on-change logic; HTMX `htmx.ajax(...)` for the actual swap.
 - Tailwind CDN for layout (visual only).
 

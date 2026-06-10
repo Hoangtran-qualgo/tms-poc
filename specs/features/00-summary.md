@@ -26,6 +26,7 @@ here are summaries, not duplications.
 | 09 | `09-feature-search-NEW.md` | Search input + scope + match mode + 0 / 1 / ≥2 result UX. | Spec'd |
 | 10 | `10-feature-test-run-NEW.md` | Typed-area test runs (`<project>/test-run/<group>/<run>.yaml`) with run editor, tombstone rendering, and external-change banner. | Spec'd |
 | 11 | `11-feature-testcase-component-NEW.md` | Test-case project-level enums — generic `Feature.enums` map driven by `enums.yaml` (`<kind>: [- <key>: <label>]` schema; key stored on disk, label is display-only); component is the seeded kind; new kinds ship with zero code change; `# enum.<kind>: <key>` namespaced header-comment encoding (collision-free with regular comments); read-tolerant / write-strict orphan handling. | Spec'd |
+| 12 | `12-feature-quality-report-NEW.md` | Persisted **Reports** (new reserved `<project>/report/<file>.yaml` area + sidebar tab) of one immutable `type`: enum-kind ranking, tag ranking, single-case trend (run-set data source), and static tag-presence inventory (folder data source; merges the `test report` item). Results recompute live from run results joined to current `Feature.enums` / tags; distinct-case counting; ≤ 10 runs. | Spec'd |
 
 ---
 
@@ -92,7 +93,7 @@ Populated as each batch lands.
   `07-folder-views` (host the create buttons and re-render after
   mutation).
 - **Depends on**: `02-storage-core`; `app/errors.py` (NameConflictError
-  → 409, ValueError → 400); `app/static/app.js` (`tmsOpenModal` for
+  → 409, ValueError → 400); `app/static/03_folder_actions.js` (`tmsOpenModal` for
   sub-folder, `window.prompt` for project/module — legacy v1).
 - **Surface for follow-up**: folder rename and delete UI buttons
   missing (API already exists); folder *move* not implemented;
@@ -111,7 +112,7 @@ Populated as each batch lands.
   move / save / save-raw are invoked from the editor topbar).
 - **Depends on**: `01-gherkin-io` (parse/validate/serialize);
   `02-storage-core` (eight file methods + locks);
-  `app/static/app.js` (`tmsOpenModal`); editor topbar markup
+  `app/static/03_folder_actions.js` (`tmsOpenModal`); editor topbar markup
   (`#btn-rename`, `#btn-move`, `#btn-save`, `#btn-save-raw`).
 - **Surface for follow-up**: no UI surface for delete or duplicate
   today (API-only); `10-feature-test-run` (shipped) chose
@@ -131,7 +132,7 @@ Populated as each batch lands.
   the tree invokes their UI routes via HTMX).
 - **Depends on**: `02-storage-core` (`list_tree`);
   `03-watcher-and-sse` (`sse:change` trigger); HTMX 2.x +
-  `htmx-ext-sse@2`; `app/static/app.js`
+  `htmx-ext-sse@2`; `app/static/01_tree.js`
   (`toggleTreeFolder`, `tmsRestoreTreeState`, `tmsExpandedFolders`).
 - **Surface for follow-up**: per-event SSE payloads would let the
   tree re-render only affected sub-trees instead of a full
@@ -244,7 +245,7 @@ single-`component` field to **generic enum map** driven by
 (S1 model, S2 storage, S3 HTTP + editor); see `DONE.md`
 for the full as-shipped breakdown._
 
-- **Affects**: `01-gherkin-io` / `app/models.py` (new
+- **Affects**: `01-gherkin-io` / `app/models/` (new
   `Feature.enums: dict[str, str]` field, stores selected
   **keys** only; parser pre-parse scan for
   `# enum.<kind>: <key>` namespaced directives; serializer
@@ -282,6 +283,54 @@ for the full as-shipped breakdown._
   on a specific kind is new work; bulk-edit across N test cases
   is the obvious next ergonomic step once teams adopt a new
   kind retroactively.
+
+### 12 · quality-report
+
+_Spec'd Jun 9, 2026 — forward-looking Investigate spec (PDCA
+investigation). Q1–Q5 + 8 follow-ups resolved same day; scope
+broadened to merge the sibling `test report` tag-presence
+inventory as a 4th report type (Option 2). Plan/Do shipped
+Jun 10, 2026 in three slices (S1 model+aggregation, S2 storage,
+S3 HTTP+UI); verified at 17/17 feature-12 + 236/236 full suite.
+As-built deltas vs spec: added `GET /api/runs/<project>` for the
+run picker, `case_trend` create uses a native `<select>`, the run
+picker is flat-with-filter, the `sse:change` re-GET covers all
+types (D5), and `tag_inventory` scope is editable via an
+`Edit scope` action._
+
+- **Affects**: `app/models/` (new `Report` dataclass +
+  `validate_report` + `REPORT_TYPES`); `02-storage-core` (new
+  `_REPORT_AREA`, `"report"` added to `RESERVED_DEPTH2_NAMES`,
+  `create_report` / `read_report` / `write_report` /
+  `delete_report` / `list_reports` / `list_report_tree`, new
+  public `iter_feature_paths` helper, write-time cross-checks;
+  `list_tree` / `list_folder` + `_reject_reserved_typed_area`
+  hide / block the area via the existing reserved-name filter,
+  no code change); `app/reporting.py`
+  (**new** pure aggregation module); `app/errors.py` (new
+  `ReportParseError`); `app/server/routes_reports.py` (`/api/reports/*` +
+  `/ui/report*` routes + errorhandler); `base.html` (third
+  sidebar tab + lazy `#reports-pane`); `app/static/02_sidebar.js` +
+  `05_report_flows.js` (`tmsSwitchSidebarTab` extended, `tmsActivateReportsPane`,
+  `tmsCreateReport`, run-picker); new `reports_sidebar.html` /
+  `report_detail.html` templates; `IN-PROGRESS.md` (`test report`
+  item merged here as Type 4).
+- **Depends on**: `10-feature-test-run` (`TestRun` / `RunResult`,
+  `RUN_RESULTS`, `list_runs` / `read_run`, reserved-area +
+  sidebar-tab patterns this clones); `11-feature-testcase-
+  component` (`Feature.enums`, `read_project_enums`, and the
+  definitional-vs-historical decision licensing live enum reads);
+  `01-gherkin-io` (`Feature.tags` / `Scenario.tags`,
+  `read_feature`); `02-storage-core` (atomic write + locks,
+  `_iter_feature_files`); `03-watcher-and-sse` (`sse:change`
+  keeps the tab + detail view fresh); `pyyaml`.
+- **Surface for follow-up**: saved multi-view dashboards become an
+  additive 5th `type` (the original "Option 3", no migration);
+  Reports-tab expand-state persistence (same shape as the Test-run
+  tab item); CSV / clipboard export of a ranking; bulk run
+  selection by filter on the add-runs picker (v1 is manual
+  select); non-result trend metrics once runs carry richer
+  metadata.
 
 ---
 

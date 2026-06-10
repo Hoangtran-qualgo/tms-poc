@@ -2,7 +2,7 @@
 
 _Retroactive spec: documents the as-shipped behaviour. Source files:_
 _`app/templates/tree.html`, `app/templates/base.html` (wiring),_
-_`app/server.py` (`ui_tree`), `app/static/app.js`_
+_`app/server/routes_tree.py` (`ui_tree`), `app/static/01_tree.js`_
 _(`toggleTreeFolder`, `tmsExpandedFolders`, `tmsRestoreTreeState`)._
 
 ## Summary
@@ -17,7 +17,7 @@ As of Phase 2 of `10-feature-test-run` (Jun 5, 2026), the tree pane
 is one of two tabs in a vertical-tab sidebar (the other being the
 *Test run* tab; see `10-feature-test-run-NEW.md`). The shell-level
 restructure — tab strip, drag-to-resize, collapse — lives in
-`app/templates/base.html` and `app/static/app.js`'s
+`app/templates/base.html` and `app/static/02_sidebar.js`'s
 `tmsSwitchSidebarTab` / `tmsInitSidebar` block; this spec's scope
 remains the inner tree partial itself.
 
@@ -71,7 +71,7 @@ Wiring (`app/templates/base.html`):
   `#sidebar-panels`; the other (`#test-run-pane`) is hidden by
   default and lazy-mounted on its first tab activation.
 
-Client state (`app/static/app.js`):
+Client state (`app/static/01_tree.js`):
 
 - `const tmsExpandedFolders = new Set()` — folder paths the user
   has expanded. Module-scope; survives tree re-renders.
@@ -167,7 +167,7 @@ only on subsequent `sse:change` events.
 - `02-storage-core` for `Storage.list_tree()`.
 - `03-watcher-and-sse` for the `sse:change` trigger.
 - HTMX 2.x with `htmx-ext-sse@2` (declared in `base.html`).
-- `app/static/app.js` for `toggleTreeFolder` /
+- `app/static/01_tree.js` for `toggleTreeFolder` /
   `tmsRestoreTreeState`.
 - Tailwind CDN (visual; no behavioural dependency).
 

@@ -7,7 +7,7 @@ sub-form references both expected inputs.
 """
 import re, pathlib
 
-APP_JS = pathlib.Path("app/static/app.js").read_text()
+APP_JS = "\n".join(_p.read_text() for _p in sorted(pathlib.Path("app/static").glob("*.js")))
 
 # The reveal helper must compare `whereSel.value` against `"__new__"`.
 assert re.search(

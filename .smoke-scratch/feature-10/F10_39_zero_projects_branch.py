@@ -8,7 +8,7 @@ that suppresses the Confirm button).
 """
 import re, pathlib
 
-APP_JS = pathlib.Path("app/static/app.js").read_text()
+APP_JS = "\n".join(_p.read_text() for _p in sorted(pathlib.Path("app/static").glob("*.js")))
 
 # Guard on the empty-projects shape.
 assert re.search(
