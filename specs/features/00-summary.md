@@ -26,6 +26,7 @@ here are summaries, not duplications.
 | 09 | `09-feature-search-NEW.md` | Search input + scope + match mode + 0 / 1 / ≥2 result UX. | Spec'd |
 | 10 | `10-feature-test-run-NEW.md` | Typed-area test runs (`<project>/test-run/<group>/<run>.yaml`) with run editor, tombstone rendering, and external-change banner. | Spec'd |
 | 11 | `11-feature-testcase-component-NEW.md` | Test-case project-level enums — generic `Feature.enums` map driven by `enums.yaml` (`<kind>: [- <key>: <label>]` schema; key stored on disk, label is display-only); component is the seeded kind; new kinds ship with zero code change; `# enum.<kind>: <key>` namespaced header-comment encoding (collision-free with regular comments); read-tolerant / write-strict orphan handling. | Spec'd |
+| 12 | `12-feature-quality-report-NEW.md` | Persisted **Reports** (new reserved `<project>/report/<file>.yaml` area + sidebar tab) of one immutable `type`: enum-kind ranking, tag ranking, single-case trend (run-set data source), and static tag-presence inventory (folder data source; merges the `test report` item). Results recompute live from run results joined to current `Feature.enums` / tags; distinct-case counting; ≤ 10 runs. | Spec'd |
 
 ---
 
@@ -282,6 +283,54 @@ for the full as-shipped breakdown._
   on a specific kind is new work; bulk-edit across N test cases
   is the obvious next ergonomic step once teams adopt a new
   kind retroactively.
+
+### 12 · quality-report
+
+_Spec'd Jun 9, 2026 — forward-looking Investigate spec (PDCA
+investigation). Q1–Q5 + 8 follow-ups resolved same day; scope
+broadened to merge the sibling `test report` tag-presence
+inventory as a 4th report type (Option 2). Plan/Do shipped
+Jun 10, 2026 in three slices (S1 model+aggregation, S2 storage,
+S3 HTTP+UI); verified at 17/17 feature-12 + 236/236 full suite.
+As-built deltas vs spec: added `GET /api/runs/<project>` for the
+run picker, `case_trend` create uses a native `<select>`, the run
+picker is flat-with-filter, the `sse:change` re-GET covers all
+types (D5), and `tag_inventory` scope is editable via an
+`Edit scope` action._
+
+- **Affects**: `app/models.py` (new `Report` dataclass +
+  `validate_report` + `REPORT_TYPES`); `02-storage-core` (new
+  `_REPORT_AREA`, `"report"` added to `RESERVED_DEPTH2_NAMES`,
+  `create_report` / `read_report` / `write_report` /
+  `delete_report` / `list_reports` / `list_report_tree`, new
+  public `iter_feature_paths` helper, write-time cross-checks;
+  `list_tree` / `list_folder` + `_reject_reserved_typed_area`
+  hide / block the area via the existing reserved-name filter,
+  no code change); `app/reporting.py`
+  (**new** pure aggregation module); `app/errors.py` (new
+  `ReportParseError`); `app/server.py` (`/api/reports/*` +
+  `/ui/report*` routes + errorhandler); `base.html` (third
+  sidebar tab + lazy `#reports-pane`); `app/static/app.js`
+  (`tmsSwitchSidebarTab` extended, `tmsActivateReportsPane`,
+  `tmsCreateReport`, run-picker); new `reports_sidebar.html` /
+  `report_detail.html` templates; `IN-PROGRESS.md` (`test report`
+  item merged here as Type 4).
+- **Depends on**: `10-feature-test-run` (`TestRun` / `RunResult`,
+  `RUN_RESULTS`, `list_runs` / `read_run`, reserved-area +
+  sidebar-tab patterns this clones); `11-feature-testcase-
+  component` (`Feature.enums`, `read_project_enums`, and the
+  definitional-vs-historical decision licensing live enum reads);
+  `01-gherkin-io` (`Feature.tags` / `Scenario.tags`,
+  `read_feature`); `02-storage-core` (atomic write + locks,
+  `_iter_feature_files`); `03-watcher-and-sse` (`sse:change`
+  keeps the tab + detail view fresh); `pyyaml`.
+- **Surface for follow-up**: saved multi-view dashboards become an
+  additive 5th `type` (the original "Option 3", no migration);
+  Reports-tab expand-state persistence (same shape as the Test-run
+  tab item); CSV / clipboard export of a ranking; bulk run
+  selection by filter on the add-runs picker (v1 is manual
+  select); non-result trend metrics once runs carry richer
+  metadata.
 
 ---
 

@@ -99,6 +99,13 @@
                 style="writing-mode: vertical-rl">
           Test run
         </button>
+        <button type="button" data-sidebar-tab="reports"
+                class="sidebar-tab flex-1 px-2 py-3 text-xs uppercase tracking-wide select-none border-l-2 border-transparent text-slate-500 hover:text-slate-700 hover:bg-slate-100"
+                onclick="tmsSwitchSidebarTab('reports')"
+                title="Quality reports"
+                style="writing-mode: vertical-rl">
+          Reports
+        </button>
       </nav>
 
       <div id="sidebar-panels" class="flex-1 min-w-0 relative">
@@ -117,6 +124,12 @@
              keep the panel fresh even while it is hidden. #}
           <div class="text-sm py-2 px-2 text-slate-400 italic">Loading test runs&hellip;</div>
         </aside>
+        <aside id="reports-pane"
+               class="absolute inset-0 overflow-auto bg-white hidden">
+          {# Placeholder. First click on the Reports tab calls
+             tmsActivateReportsPane (mirrors the Test-run pane). #}
+          <div class="text-sm py-2 px-2 text-slate-400 italic">Loading reports&hellip;</div>
+        </aside>
       </div>
 
       <div id="sidebar-resize-handle"
@@ -132,6 +145,9 @@
     </main>
   </div>
 
+  {# Run-result vocabulary, server-rendered so the report-create modal's
+     status <select> stays in lock-step with models.RUN_RESULTS. #}
+  <script>window.TMS_RUN_RESULTS = {{ run_results | tojson }};</script>
   <script src="{{ url_for('static', filename='app.js') }}"></script>
 </body>
 </html>

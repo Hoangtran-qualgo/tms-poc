@@ -1,0 +1,78 @@
+{# reports_sidebar.html — Reports sidebar tab partial.
+
+   Consumed by:
+     - GET /ui/reports-tree, swapped into #reports-pane.
+     - First fetched on the user's first click on the Reports tab (lazy
+       mount); subsequent re-renders are driven by sse:change.
+
+   Mirrors test_run_sidebar.html but the report area is flat (no group
+   level), so each project's children are report leaves directly. Leaves
+   link to /ui/report/<project>/<file_name> in the main pane and show the
+   report title with a small type badge.
+
+   Spec: specs/features/12-feature-quality-report-NEW.md. #}
+
+{% macro render_report_children(children) %}
+  {% if children %}
+  <ul class="space-y-0.5">
+    {% for child in children %}
+      <li>
+        {% if child.type == "folder" %}
+          <div class="tree-folder flex items-center gap-1 pr-1 py-0.5 rounded hover:bg-slate-100 select-none"
+               data-depth="{{ child.depth }}"
+               data-path="{{ child.path }}">
+            <button type="button"
+                    class="caret w-4 text-center text-slate-400 cursor-pointer"
+                    onclick="event.stopPropagation(); toggleTreeFolder(this.parentElement)">&#9654;</button>
+            <span class="flex-1 truncate font-semibold text-slate-800">{{ child.name }}</span>
+          </div>
+          <div class="tree-children hidden pl-4 border-l border-slate-100 ml-2">
+            {{ render_report_children(child.children) }}
+          </div>
+        {% elif child.type == "report" %}
+          <div class="tree-file flex items-center gap-1 pr-1 py-0.5 rounded hover:bg-slate-100 cursor-pointer select-none"
+               data-path="{{ child.path }}"
+               hx-get="/ui/report/{{ child.project }}/{{ child.file_name }}"
+               hx-target="#main-pane"
+               hx-swap="innerHTML">
+            <span class="w-4 text-center text-slate-300">&middot;</span>
+            <span class="flex-1 truncate text-slate-700">{{ child.title or child.file_name }}</span>
+            {% if child.report_type %}
+            <span class="shrink-0 text-[10px] uppercase tracking-wide text-slate-400 font-medium">{{ child.report_type.split('_')[0] }}</span>
+            {% endif %}
+          </div>
+        {% endif %}
+      </li>
+    {% endfor %}
+  </ul>
+  {% endif %}
+{% endmacro %}
+
+<div class="text-sm py-2 px-2">
+  {# Header: small label + "+ New report" + manual refresh button.
+     The "+ New report" button is the sole entry point for report
+     creation in the UI; it is always visible and always enabled (the
+     modal handles the zero-projects state internally). #}
+  <div class="flex items-center justify-between mb-1 px-1 gap-1">
+    <span class="text-xs uppercase tracking-wide text-slate-400 font-medium">Reports</span>
+    <div class="flex items-center gap-1">
+      <button type="button"
+              class="px-2 py-0.5 text-xs bg-slate-800 text-white rounded hover:bg-slate-700"
+              title="Create a new quality report"
+              aria-label="Create a new quality report"
+              onclick="tmsCreateReport()">+ New report</button>
+      <button type="button"
+              class="text-slate-400 hover:text-slate-700 hover:bg-slate-100 rounded w-6 h-6 flex items-center justify-center leading-none"
+              title="Refresh reports"
+              aria-label="Refresh reports"
+              hx-get="/ui/reports-tree"
+              hx-target="#reports-pane"
+              hx-swap="innerHTML">&#x21bb;</button>
+    </div>
+  </div>
+  {% if tree.children %}
+    {{ render_report_children(tree.children) }}
+  {% else %}
+    <div class="px-2 py-4 text-slate-400 italic">No reports yet. Click <span class="font-medium">+ New report</span> above to create one.</div>
+  {% endif %}
+</div>

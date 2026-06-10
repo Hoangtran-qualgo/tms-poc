@@ -745,3 +745,102 @@ Items fixed during v1 manual verification.
     new enum kinds ship with **zero code change** (e.g.
     `priorities`, `sprint`) — only product behaviour layered
     on a specific kind is new work.
+
+- **New feature: quality report (typed `report/` area, live
+  recomputation, four report types, Reports sidebar tab).**
+  _Investigate signed off Jun 9, 2026; Do phase shipped Jun 10,
+  2026 in three slices (S1 model + aggregation, S2 storage,
+  S3 HTTP + UI)._
+  - **Spec**: `root/specs/features/12-feature-quality-report-NEW.md`
+    (forward-looking Investigate spec; Q1–Q-decisions resolved
+    before the Do phase). Aggregated summary entry in
+    `root/specs/features/00-summary.md` § 12. Four report types:
+    `enum_ranking`, `tag_ranking`, `case_trend` (run-set sourced,
+    mutable) and `tag_inventory` (folder-scope sourced, static).
+    Reports persist in a reserved `<project>/report/` typed area;
+    results are **recomputed live on every render** — no caching,
+    no result persistence.
+  - **S1 — Model + aggregation engine** (`app/models.py`,
+    `app/reporting.py`). New `REPORT_TYPES` constant + `Report`
+    dataclass + `validate_report` (type discriminator, per-type
+    config presence, run-set vs. scope shape exclusivity, ≤ 10
+    runs). New pure `reporting.compute_report(storage, project,
+    report)` dispatching to `_enum_ranking` / `_tag_ranking` /
+    `_case_trend` / `_tag_inventory`, all returning the common
+    envelope `{type, title, created_at, total, buckets|trend,
+    warnings, params}`. Tolerant by design: missing / malformed
+    run paths and missing scope folders are dropped from the
+    computation and surfaced as `warnings` rather than crashing;
+    an empty run set yields `total=0` + empty buckets, no warning.
+    Enum-ranking counts **distinct cases** and resolves keys to
+    `enums.yaml` labels; synthetic `unset` / `removed` buckets
+    reconcile the count. Tag-ranking buckets are multi-valued
+    (a case can land in many) plus an `untagged` bucket, so the
+    percentage total can exceed 100%. Case-trend orders columns
+    by run `created_at`, renders an absent-run placeholder, and
+    flags tombstoned (removed) cases. Storage gained the
+    `iter_feature_paths` helper backing the feature scans.
+  - **S2 — Storage + persistence + reserved area + cross-checks**
+    (`app/storage.py`, `app/errors.py`). New `ReportParseError`
+    (422 `report_parse_error`) alongside `RunParseError` /
+    `EnumsParseError`. `_REPORT_AREA = "report"` added to
+    `RESERVED_DEPTH2_NAMES` so the generic `create_folder` rejects
+    a hand-made `report/` and `_tree_children` / `list_folder`
+    hide it from the directory tree and project module tables —
+    its only surface is the Reports tab. `_normalize_report_filename`
+    (`.yaml` suffix), `_report_segments`, and the full CRUD set:
+    `create_report`, `read_report`, `write_report`, `delete_report`,
+    `list_reports` (best-effort, skips parse errors), and
+    `list_report_tree` (aggregates the flat `report/` subtree across
+    projects, mirroring `list_test_run_tree`). Write-time
+    cross-checks reject unknown enum `kind`, missing run / scope /
+    case paths, and > 10 runs **before** writing anything; an empty
+    run set is accepted. `read_report` wraps malformed YAML and
+    non-mapping roots in `ReportParseError`.
+  - **S3 — HTTP + UI** (`app/server.py`, `app/templates/`,
+    `app/static/app.js`). Report API routes (`POST /api/reports`,
+    `GET` list, `GET` / `PATCH` / `DELETE` on
+    `/api/reports/<project>/<file_name>`) with `type` + `created_at`
+    immutable on PATCH (422 otherwise); plus
+    `@api.errorhandler(ReportParseError)` → 422. UI routes
+    `GET /ui/reports-tree` (sidebar partial) and
+    `GET /ui/report/<project>/<file_name>` (calls `compute_report`
+    → per-type detail template, 404 if missing). New templates
+    `reports_sidebar.html` (flat report leaves + new/refresh
+    buttons + empty state) and `report_detail.html` (branches on
+    `view.type`: ranking table with collapsible per-bucket case
+    lists, trend timeline with status-coloured cells, inventory
+    carrying/not-carrying split, tolerant warnings, empty states).
+    `base.html` gained the third **Reports** sidebar tab + lazy
+    pane and injects `TMS_RUN_RESULTS`. `app.js` extended
+    `tmsSwitchSidebarTab`; added `tmsActivateReportsPane`,
+    `tmsCreateReport` (per-type config modal), `tmsBuildRunPicker`,
+    `tmsAddReportRuns`, and `tmsEditReportScope`.
+  - **As-built deltas vs. the original S3 cut** (folded into the
+    spec's S3 checklist before deletion): added
+    `GET /api/runs/<project>` — a flat newest-first run list across
+    all groups, backing the run picker's `run_paths` source (not in
+    the original surface list); `case_trend` creation uses a single
+    native `<select>` rather than the checkbox `tmsBuildCasePicker`
+    (single-select reads cleaner as a select); the run picker is a
+    **flat filter + group column** rather than a project→group tree
+    (same selection power, less machinery); the lazy Reports pane
+    re-GETs on `sse:change` for **all** report types once mounted;
+    `tag_inventory` detail exposes an **Edit scope** action
+    (`tmsEditReportScope`, folder `<select>` → PATCH `scope`);
+    trend result cells are colour-coded by status.
+  - **Verified** via 17 standalone smoke scripts in
+    `root/.smoke-scratch/feature-12/` (`F12_01`–`F12_07` +
+    `F12_10`–`F12_13` aggregation / validation / storage /
+    parse-error / cross-check / reserved-area; `F12_20`–`F12_25`
+    HTTP + UI: create→navigate, sidebar aggregation, per-type
+    detail render, add/remove-runs PATCH + immutability,
+    `app.js`/template JS wiring, `/api/runs/<project>` envelope +
+    scope PATCH). JS-heavy surfaces are covered by the standing
+    static-inspection + render-and-grep convention (no
+    Playwright runtime). Full suite:
+    **236/236 PASS / 0 FAIL** (was 219 before this feature's 17).
+  - **Surface for follow-up**: report types are recomputed live, so
+    new enum kinds and tags flow in with zero report-file edits;
+    result caching / snapshotting and richer chart rendering are
+    the obvious next steps once report sets grow.

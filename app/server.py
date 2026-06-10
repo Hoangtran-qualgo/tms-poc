@@ -30,10 +30,12 @@ from .errors import (
     EnumsParseError,
     GherkinParseError,
     NameConflictError,
+    ReportParseError,
     RunParseError,
     ValidationError,
 )
-from .models import RUN_RESULTS, Feature, TestRun
+from .models import RUN_RESULTS, Feature, Report, TestRun
+from .reporting import compute_report
 from .sse import sse_response
 from .storage import MAX_FOLDER_DEPTH, Storage
 from .watcher import EventBus
@@ -445,6 +447,99 @@ def patch_run_case(
     return jsonify({"ok": True})
 
 
+@api.get("/runs/<project>")
+def get_project_runs(project: str):
+    """Return a flat list of every run in ``<project>``, newest first.
+
+    Backs the report run-picker (``tmsBuildRunPicker`` in ``app.js``).
+    Each entry is ``{path, group, file_name, name, created_at}`` where
+    ``path`` is the data-root-relative run path a report stores in its
+    ``run_paths``. Empty list if the project has no ``test-run/`` folder.
+    """
+    s = _storage()
+    out: list[dict[str, str]] = []
+    for group in s.list_run_groups(project):
+        for run in s.list_runs(project, group):
+            out.append(
+                {
+                    "path": f"{project}/test-run/{group}/{run['file_name']}",
+                    "group": group,
+                    "file_name": run["file_name"],
+                    "name": run["name"],
+                    "created_at": run["created_at"],
+                }
+            )
+    out.sort(key=lambda r: r["path"])
+    out.sort(key=lambda r: r["created_at"] or "", reverse=True)
+    return jsonify({"runs": out})
+
+
+# ---------------------------------------------------------------------------
+# Quality reports (typed area under <project>/report/)
+# ---------------------------------------------------------------------------
+#
+# See specs/features/12-feature-quality-report-NEW.md. Reports persist the
+# definition only; results recompute live on every read via
+# `reporting.compute_report`. PATCH preserves the immutable
+# `type` / `created_at` (mirroring the run editor's created_at handling).
+
+
+@api.post("/reports/<project>")
+def post_report(project: str):
+    body = _require_json_object()
+    file_name = _require_non_empty_string(body.get("file_name"), "file_name")
+    report = Report.from_dict(body)
+    _storage().create_report(project, file_name, report)
+    return jsonify({"ok": True}), 201
+
+
+@api.get("/reports/<project>")
+def get_report_list(project: str):
+    return jsonify({"reports": _storage().list_reports(project)})
+
+
+@api.get("/reports/<project>/<file_name>")
+def get_report(project: str, file_name: str):
+    return jsonify(_storage().read_report(project, file_name).to_dict())
+
+
+@api.patch("/reports/<project>/<file_name>")
+def patch_report(project: str, file_name: str):
+    """Whole-doc update. ``type`` and ``created_at`` are immutable.
+
+    The existing report is loaded first (404 if missing). An incoming
+    body that changes ``type`` or a non-empty ``created_at`` that differs
+    is rejected with 422; otherwise the server-stamped ``created_at`` is
+    preserved and the rest of the document is re-validated + cross-checked
+    by :meth:`Storage.write_report`.
+    """
+    body = _require_json_object()
+    s = _storage()
+    existing = s.read_report(project, file_name)
+    incoming = Report.from_dict(body)
+    if incoming.type != existing.type:
+        raise ValidationError(
+            field="type",
+            message=(
+                f"Report type is immutable; cannot change "
+                f"{existing.type!r} to {incoming.type!r}."
+            ),
+        )
+    if incoming.created_at and incoming.created_at != existing.created_at:
+        raise ValidationError(
+            field="created_at", message="created_at is immutable."
+        )
+    incoming.created_at = existing.created_at
+    s.write_report(project, file_name, incoming)
+    return jsonify({"ok": True})
+
+
+@api.delete("/reports/<project>/<file_name>")
+def delete_report(project: str, file_name: str):
+    _storage().delete_report(project, file_name)
+    return "", 204
+
+
 # ---------------------------------------------------------------------------
 # Search
 # ---------------------------------------------------------------------------
@@ -542,6 +637,16 @@ def _handle_run_parse(e: RunParseError):
     )
 
 
+@api.errorhandler(ReportParseError)
+def _handle_report_parse(e: ReportParseError):
+    return _error(
+        "report_parse_error",
+        e.message,
+        422,
+        details={"line": e.line, "column": e.column},
+    )
+
+
 @api.errorhandler(EnumsParseError)
 def _handle_enums_parse(e: EnumsParseError):
     return _error(
@@ -587,6 +692,19 @@ def ui_test_run_tree() -> str:
     """
     return render_template(
         "test_run_sidebar.html", tree=_storage().list_test_run_tree()
+    )
+
+
+@ui.get("/reports-tree")
+def ui_reports_tree() -> str:
+    """Render the Reports sidebar tab as a fresh HTML partial.
+
+    Aggregates the ``report/`` subtree of every project that has one.
+    Lazily fetched on the user's first click on the Reports tab; once
+    mounted it listens to ``sse:change`` like the other sidebar panes.
+    """
+    return render_template(
+        "reports_sidebar.html", tree=_storage().list_report_tree()
     )
 
 
@@ -763,6 +881,31 @@ def ui_run(project: str, group: str, file_name: str):
         file_name=file_name,
         run=run_dict,
         results_options=list(RUN_RESULTS),
+    )
+
+
+@ui.get("/report/<project>/<file_name>")
+def ui_report(project: str, file_name: str):
+    """Render the report detail for one report YAML file.
+
+    The persisted :class:`~app.models.Report` is loaded then handed to
+    :func:`~app.reporting.compute_report`, which reads the live runs /
+    features / enums and returns the per-type view model. The template
+    branches on ``view.type`` (ranking vs trend vs inventory). Results
+    are never cached: every render recomputes from current disk state.
+
+    Raises :class:`FileNotFoundError` (404) if the report is missing and
+    :class:`~app.errors.ReportParseError` (422) on malformed YAML, both
+    surfaced via the UI blueprint error handlers.
+    """
+    s = _storage()
+    report = s.read_report(project, file_name)
+    view = compute_report(s, project, report)
+    return render_template(
+        "report_detail.html",
+        project=project,
+        file_name=file_name,
+        view=view,
     )
 
 
