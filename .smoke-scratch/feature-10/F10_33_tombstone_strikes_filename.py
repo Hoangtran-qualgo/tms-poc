@@ -1,11 +1,10 @@
-"""Smoke j3: tombstone strikes the filename span only, not the folder span.
+"""Smoke j3: tombstone strikes the filename span.
 
-Tracks the "Investigate: run editor — mask test-case column to filename only"
-Must-have item. Verifies the Q4(b) decision: when a row is tombstoned
-(`r.missing`), the `line-through` class lives on the filename span only;
-the folder span stays muted but unstruck. A sibling live row asserts
-neither span carries `line-through` so we catch any over-eager CSS rule
-that might apply line-through universally.
+Updated for tech-02 E2 (specs/tech/02-tech-ui-styling-enhancement-NEW.md):
+rows are filename-only (the folder moved to the group heading), so when a row
+is tombstoned (`r.missing`) the `line-through` lives on the filename span. A
+sibling live row asserts its filename span is NOT struck, so we catch any
+over-eager CSS rule that might apply line-through universally.
 
 Mirrors the Flask test-client + Storage fixture pattern from
 `F10_29_tombstone_render.py`. End-to-end render only — no JS exercised.
@@ -51,26 +50,18 @@ with tempfile.TemporaryDirectory() as td:
         assert m, f"<span data-role='{role}'> not found in row body"
         return m.group(0)
 
-    # --- 1. Tombstoned row: filename span struck, folder span clean ---
+    # --- 1. Tombstoned row: filename span struck ----------------------
     pay_body = row_body("Alpha/Checkout/pay.feature")
-    pay_folder = span(pay_body, "folder")
     pay_filename = span(pay_body, "filename")
     assert "line-through" in pay_filename, (
         f"tombstoned filename span should carry line-through; got: {pay_filename!r}"
     )
-    assert "line-through" not in pay_folder, (
-        f"tombstoned folder span should NOT carry line-through; got: {pay_folder!r}"
-    )
-    print("PASS  tombstoned row: filename struck, folder unstruck")
+    print("PASS  tombstoned row: filename struck")
 
-    # --- 2. Sibling live row: neither span carries line-through -------
+    # --- 2. Sibling live row: filename not struck ---------------------
     refund_body = row_body("Alpha/Checkout/refund.feature")
-    refund_folder = span(refund_body, "folder")
     refund_filename = span(refund_body, "filename")
-    assert "line-through" not in refund_folder, (
-        f"live row folder span must not carry line-through; got: {refund_folder!r}"
-    )
     assert "line-through" not in refund_filename, (
         f"live row filename span must not carry line-through; got: {refund_filename!r}"
     )
-    print("PASS  live sibling row: neither span carries line-through")
+    print("PASS  live sibling row: filename not struck")

@@ -844,3 +844,135 @@ Items fixed during v1 manual verification.
     new enum kinds and tags flow in with zero report-file edits;
     result caching / snapshotting and richer chart rendering are
     the obvious next steps once report sets grow.
+
+- **Tech: restructure & decentralize the codebase.** _Investigate +
+  Plan + Do shipped Jun 10, 2026 in four behaviour-preserving slices;
+  spec `root/specs/tech/01-tech-restructure-NEW.md` (the first
+  `/specs/tech` initiative)._
+  - **Why**: four files had grown large enough that any one change
+    forced scanning unrelated logic — `app/static/app.js` (3554 lines),
+    `app/storage.py` (2258), `app/server.py` (968), `app/models.py`
+    (753). Goal: split each into smaller single-purpose units behind an
+    **unchanged public surface** (same HTTP routes, on-disk behaviour,
+    and DOM behaviour). Verified by the smoke suite staying green after
+    every slice.
+  - **Slice 1 — `models.py` → `root/app/models/` package**:
+    `_common.py` (shared constants + `_is_single_line`), `_feature.py`,
+    `_run.py`, `_report.py`; `__init__.py` re-exports the full surface
+    (incl. the `_is_valid_tag` private a smoke imports). The `_common`
+    leaf keeps submodules acyclic (star, not chain). Old `models.py`
+    deleted.
+  - **Slice 2 — `server.py` → `root/app/server/` package**: `_shared.py`
+    (defines the `api` + `ui` blueprints + cross-route helpers +
+    `_folder_crumbs`), eight `routes_*.py` (tree / folders / files /
+    runs / reports / search / enums / ui), `errors.py` (12 handlers).
+    `__init__.py` imports every route module for its registration side
+    effects and re-exports `api` / `ui` / `_folder_crumbs`. **URL map
+    stayed byte-identical at 47 rules** (handler + blueprint names are
+    verbatim). Old `server.py` deleted.
+  - **Slice 3 — `storage.py` → `root/app/storage/` package**: `_core.py`
+    (constants + free functions + `_PathLock` + a `_StorageBase` holding
+    init / path discipline / locking / self-write / `_atomic_write_bytes`)
+    plus seven mixins (`_listing`, `_features`, `_enums`, `_search`,
+    `_folders`, `_runs`, `_reports`) composed into `Storage` in
+    `__init__.py`. Each mixin imports only `_core` + stdlib + sibling app
+    modules (acyclic); cross-area calls resolve at runtime on the composed
+    instance. Two atomic-write smokes monkeypatch `app.storage.os.replace`/
+    `.fsync` — preserved with **zero smoke churn** by re-exporting `os` on
+    the package (shared singleton, so the patch still reaches
+    `_core._atomic_write_bytes`). Old `storage.py` deleted.
+  - **Slice 4 — `app.js` → nine ordered global scripts**: split by
+    contiguous source ranges into `01_tree.js`, `02_sidebar.js`,
+    `03_folder_actions.js`, `04_run_create.js`, `05_report_flows.js`,
+    `06_run_editor.js`, `07_util_search.js`, `08_file_editor.js`,
+    `09_bootstrap.js` (verbatim — no body edits; symbol inventory verified
+    identical). No build step / ES modules — they stay classic globals
+    loaded by `base.html` in `NN_` order with `09_bootstrap.js` **last**
+    (it registers the listeners + `tmsBootShell`, which call functions
+    defined earlier). The `NN_` prefix also makes a sorted glob of
+    `static/*.js` reproduce the original source order, which the
+    static-inspection smokes rely on. Old `app.js` deleted.
+  - **Smoke impact**: ~30 JS source-inspection smokes repointed from
+    reading `app/static/app.js` to a glob-concat of `static/*.js` (the
+    `.smoke-scratch/README.md` "JS source-inspection" idiom documents
+    why); `run.py` extended to also discover `{feature,tech}-*` dirs +
+    `[FT]\d+_\d+` files; a new guard `tech-01/T01_01_script_order.py`
+    asserts the `<script>` load order + that every `static/NN_*.js` is
+    referenced. No assertion was deleted or weakened.
+  - **Verified**: full suite **237/237 PASS / 0 FAIL** (236 + the new
+    `tech-01` guard), `node --check` clean on all nine JS files,
+    `create_app()` boots with the URL map unchanged at 47 rules, and
+    `import app.storage` has no cycle. JS **runtime** behaviour (no
+    build step to catch load-order / `ReferenceError` mistakes) was
+    confirmed by a manual browser pass owned by the user.
+  - **Spec-pointer follow-through**: every `## Source file` /
+    relationship-section pointer that named the now-deleted monoliths was
+    updated to the new package / submodule / `NN_*.js` paths across
+    `root/specs/features/01,02,04,05,06,07,08,09,10,11,12` +
+    `00-summary.md`, and the `root/specs/rules/tech-rule.md` module-
+    boundary statements.
+
+- **Tech: UI/UX styling & detailing enhancements (E1–E5).** _Investigate +
+  Plan + Do shipped Jun 10, 2026; spec
+  `root/specs/tech/02-tech-ui-styling-enhancement-NEW.md`. Five Must-have
+  presentational/freshness polish items, each investigated + built
+  individually. No data-model, on-disk, or HTTP-contract change._
+  - **Palette foundation (drives E3 + E4)**: a single source-of-truth status
+    palette as five `[data-status]` attribute selectors in
+    `root/app/static/app.css` (no Tailwind build → raw CSS is the only
+    cross-consumer home). `PASSED` green / `FAILED` red / `EXECUTING` blue /
+    `SKIPPED` **purple** / `PENDING` orange. Consumers attach only the
+    `data-status` hook, never a colour.
+  - **E1 — Result column width**: widened the run-editor results table and the
+    report `case_trend` table `Result` header from `w-32` to `w-40` so the
+    longest status (`EXECUTING`) never clips/wraps (`run_editor.html`,
+    `report_detail.html`).
+  - **E2 — folder grouping (run editor)**: `run_editor.html` groups
+    `run.results` by folder server-side (first-seen folder order, within-folder
+    order preserved), emits one plain `run-group-head` row per folder, and
+    renders each result row **filename-only** (the masked folder span is
+    dropped — the heading now carries the folder). `06_run_editor.js`: result
+    reads scoped to `tr[data-file-path]`; "+ Add case" lands rows in their
+    folder group via `_insertResultRow` (cloning a `run-group-head-template`
+    when the folder is new); remove drops an empty heading; a new
+    `_compareJson` projection sorts by `file_path` so dirty / external-change
+    comparisons stay order-insensitive while **Save** still persists grouped
+    DOM order. _Post-ship extension (user feedback): the same grouping idiom
+    was applied to the **ranking-report bucket case lists**
+    (`report_detail.html`, shared by `enum_ranking` / `tag_ranking` /
+    `tag_inventory`) — each bucket now groups its cases by folder with a
+    filename-only list (server-side Jinja only; no `reporting.py` change;
+    smoke `T02_08`). Folder headings on **both** surfaces (report buckets +
+    run-editor `run-group-head` rows) render as a **badge** — bold dark text
+    on a slate-200 pill — to lift contrast against the muted case filenames;
+    `06_run_editor.js:_createGroupHead` writes the badge `<span>` so
+    JS-created headings match._
+  - **E3 — run-editor Result colour**: the `Result` `<select>` carries
+    `data-status` (server-rendered for live rows; kept in lock-step by JS on
+    `change` and on clone), so the shared palette colours the closed select.
+  - **E4 — report detail consistency + highlight**: dropped the inline
+    `result_colors` Jinja map in favour of the shared `data-status` palette on
+    the `case_trend` Result cell (em-dash keeps its muted fallback);
+    bold-emphasised the key factors (status / kind / case / run-count / tag /
+    scope) and palette-coloured the **enum-ranking** `status` param
+    (`report_detail.html`).
+  - **E5 — auto-refresh tree on create**: the watcher suppresses `sse:change`
+    for in-app self-writes, so new artifacts didn't appear until an external
+    change / manual Refresh. Added `tmsRefreshTreePane(paneId)` in
+    `02_sidebar.js` (re-GETs only a **mounted** pane; unmounted lazy panes load
+    fresh on first open) and wired each create flow to refresh **only its own
+    tab's tree** (decision D4): case → `#tree-pane` (`03_folder_actions.js`),
+    run → `#test-run-pane` (`04_run_create.js`), report → `#reports-pane`
+    (`05_report_flows.js`).
+  - **Smoke impact**: 8 new smokes under `.smoke-scratch/tech-02/`
+    (`T02_01` palette source · `T02_02` E1 width · `T02_03` E3 select hook ·
+    `T02_04` E4 palette+emphasis · `T02_05` E2 server grouping · `T02_06` E2
+    JS touch-points · `T02_07` E5 create-refresh · `T02_08` E2 report-bucket
+    grouping). Six feature-10 smokes
+    updated for the intentional E2 structural change (filename-only rows +
+    order-insensitive compare): `F10_31`/`F10_32`/`F10_33` (folder span
+    dropped → filename-only + heading) and `F10_67`/`F10_76`/`F10_69`
+    (`JSON.stringify` baseline/disk projection → `_compareJson`); `F12_22`
+    re-pointed from inline `text-rose-600` to `data-status="FAILED"`. No
+    assertion was weakened — each preserved its original intent.
+  - **Verified**: full suite **245/245 PASS / 0 FAIL** (237 + 8 new tech-02).

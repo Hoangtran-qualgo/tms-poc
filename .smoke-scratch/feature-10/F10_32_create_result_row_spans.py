@@ -1,16 +1,17 @@
-"""Smoke j2: tmsRunEditor._createResultRow populates both data-role spans.
+"""Smoke j2: tmsRunEditor._createResultRow populates the filename span.
 
-Tracks the "Investigate: run editor — mask test-case column to filename only"
-Must-have item. Static-wiring (function-body grep) only — the actual
-clone & render path is exercised by browser interaction.
+Updated for tech-02 E2 (specs/tech/02-tech-ui-styling-enhancement-NEW.md):
+clones are filename-only (the folder is carried by the group heading), so the
+function writes ONLY the filename span and no longer touches a folder span.
+Static-wiring (function-body grep) only.
 
 Four assertions on the body of `_createResultRow`:
 1. The function carves the path via `lastIndexOf("/")` (defensive
    split that handles zero-slash file_paths — parity with the Jinja
    `rsplit('/', 1)` branch in run_editor.html).
-2. The function writes textContent into BOTH spans via
-   `querySelector('[data-role="folder"]')` and
-   `querySelector('[data-role="filename"]')`.
+2. The function writes textContent into the filename span via
+   `querySelector('[data-role="filename"]')` and does NOT write a
+   `data-role="folder"` span (E2: folder span dropped).
 3. The function still preserves the full path on the link tooltip
    (`linkCell.setAttribute("title", file_path)`).
 4. The function still preserves the full path on the navigation
@@ -19,7 +20,7 @@ Four assertions on the body of `_createResultRow`:
 import pathlib
 import re
 
-APP_JS = pathlib.Path("app/static/app.js").read_text()
+APP_JS = "\n".join(_p.read_text() for _p in sorted(pathlib.Path("app/static").glob("*.js")))
 
 # Carve out the `_createResultRow(file_path) { ... }` body via the
 # consistent method-indent + `\n  },` closer used by the rest of
@@ -38,27 +39,15 @@ assert 'lastIndexOf("/")' in body, (
 )
 print("PASS  _createResultRow splits path via lastIndexOf('/')")
 
-# --- 2. Populates both data-role spans --------------------------------
-assert "querySelector('[data-role=\"folder\"]')" in body or \
-       'querySelector(\'[data-role="folder"]\')' in body, (
-    "_createResultRow should populate the folder span via "
-    "querySelector('[data-role=\"folder\"]').textContent"
-)
-assert "querySelector('[data-role=\"filename\"]')" in body or \
-       'querySelector(\'[data-role="filename"]\')' in body, (
-    "_createResultRow should populate the filename span via "
-    "querySelector('[data-role=\"filename\"]').textContent"
-)
-# Confirm textContent assignment is wired (not just a query without a write).
-assert re.search(
-    r'querySelector\([\'"]\[data-role="folder"\][\'"]\)\.textContent\s*=',
-    body,
-), "folder span must get a textContent assignment"
+# --- 2. Populates the filename span only (folder span dropped) --------
 assert re.search(
     r'querySelector\([\'"]\[data-role="filename"\][\'"]\)\.textContent\s*=',
     body,
 ), "filename span must get a textContent assignment"
-print("PASS  both data-role spans receive textContent assignments")
+assert 'data-role="folder"' not in body, (
+    "E2: _createResultRow must NOT touch a folder span (filename-only rows)"
+)
+print("PASS  _createResultRow writes the filename span; no folder span")
 
 # --- 3. Tooltip preserved with full path -------------------------------
 assert re.search(

@@ -1,9 +1,10 @@
 # 04 · Folder CRUD
 
 _Retroactive spec: documents the as-shipped behaviour. Source files:_
-_`app/server.py` (folder routes), `app/storage.py` (folder methods),_
-_`app/static/app.js` (`tmsCreateProject`, `tmsCreateModule`,_
-_`tmsCreateSubfolder`), `app/templates/folder_*.html` (create buttons)._
+_`app/server/routes_folders.py` (folder routes), `app/storage/_folders.py`_
+_(folder methods), `app/static/03_folder_actions.js` (`tmsCreateProject`,_
+_`tmsCreateModule`, `tmsCreateSubfolder`), `app/templates/folder_*.html`_
+_(create buttons)._
 
 ## Summary
 
@@ -53,7 +54,7 @@ Storage methods (called by the routes):
 - `Storage.rename_folder(parts, new_name) -> None`
 - `Storage.delete_folder(parts) -> None`
 
-UI triggers (`app/static/app.js`):
+UI triggers (`app/static/03_folder_actions.js`):
 
 - `tmsCreateProject()` — prompt-based, posts to `/api/folders`
   with `parent: ""`. Used by the `+ New project` button in
@@ -121,7 +122,7 @@ main pane re-renders.
 - `02-storage-core` for all FS work and name validation.
 - `app/errors.py` for `NameConflictError` (→ HTTP 409) and
   `ValueError` (→ HTTP 400).
-- `app/static/app.js` modal primitive (`tmsOpenModal`) for the
+- `app/static/03_folder_actions.js` modal primitive (`tmsOpenModal`) for the
   sub-folder create flow; `window.prompt` for project / module
   create (legacy v1 affordance).
 

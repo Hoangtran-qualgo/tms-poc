@@ -39,15 +39,18 @@
     <span class="shrink-0 text-xs uppercase tracking-wide px-2 py-1 rounded bg-slate-100 text-slate-600 font-medium">{{ view.type.replace('_', ' ') }}</span>
   </div>
 
-  {# Params line — echoes the report's config so the header is self-describing. #}
+  {# Params line — echoes the report's config so the header is self-describing.
+     E4: key factors (status / kind / tag / scope / case) are bold-emphasised;
+     the enum-ranking `status` filter is also palette-coloured via data-status
+     (shared single source — § Status palette). #}
   <div class="text-xs text-slate-500 mb-1 flex flex-wrap gap-x-4 gap-y-0.5">
-    {% if view.params.status %}<span><span class="text-slate-400">status</span> <span class="font-mono">{{ view.params.status }}</span></span>{% endif %}
-    {% if view.params.kind %}<span><span class="text-slate-400">kind</span> <span class="font-mono">{{ view.params.kind }}</span></span>{% endif %}
-    {% if view.params.tag %}<span><span class="text-slate-400">tag</span> <span class="font-mono">@{{ view.params.tag }}</span></span>{% endif %}
-    {% if view.params.scope %}<span><span class="text-slate-400">scope</span> <span class="font-mono">{{ view.params.scope }}</span></span>{% endif %}
-    {% if view.params.case_path %}<span><span class="text-slate-400">case</span> <span class="font-mono">{{ view.params.case_path }}</span></span>{% endif %}
+    {% if view.params.status %}<span><span class="text-slate-400">status</span> {% if view.type == 'enum_ranking' %}<span class="font-mono font-semibold" data-status="{{ view.params.status }}">{{ view.params.status }}</span>{% else %}<span class="font-mono font-semibold text-slate-700">{{ view.params.status }}</span>{% endif %}</span>{% endif %}
+    {% if view.params.kind %}<span><span class="text-slate-400">kind</span> <span class="font-mono font-semibold text-slate-700">{{ view.params.kind }}</span></span>{% endif %}
+    {% if view.params.tag %}<span><span class="text-slate-400">tag</span> <span class="font-mono font-semibold text-slate-700">@{{ view.params.tag }}</span></span>{% endif %}
+    {% if view.params.scope %}<span><span class="text-slate-400">scope</span> <span class="font-mono font-semibold text-slate-700">{{ view.params.scope }}</span></span>{% endif %}
+    {% if view.params.case_path %}<span><span class="text-slate-400">case</span> <span class="font-mono font-semibold text-slate-700">{{ view.params.case_path }}</span></span>{% endif %}
   </div>
-  <div class="text-xs text-slate-400 mb-3">Created {{ view.created_at }} &middot; {{ view.total }} {% if is_ranking %}case{% if view.total != 1 %}s{% endif %}{% else %}run{% if view.total != 1 %}s{% endif %}{% endif %}</div>
+  <div class="text-xs text-slate-400 mb-3">Created {{ view.created_at }} &middot; <span class="font-semibold text-slate-600">{{ view.total }} {% if is_ranking %}case{% if view.total != 1 %}s{% endif %}{% else %}run{% if view.total != 1 %}s{% endif %}{% endif %}</span></div>
 
   {% if is_run_set %}
   <div class="mb-3">
@@ -92,14 +95,38 @@
         </summary>
         <div class="px-10 py-2 bg-slate-50 border-t border-slate-100">
           {% if b.cases %}
-          <ul class="space-y-0.5">
-            {% for c in b.cases %}
-            <li>
-              <a class="font-mono text-xs text-slate-600 hover:underline cursor-pointer"
-                 hx-get="/ui/file/{{ c.file_path }}" hx-target="#main-pane" hx-swap="innerHTML">{{ c.file_path }}</a>
-            </li>
+          {# Cases are grouped by folder (first-seen order), mirroring the
+             run-editor E2 idiom: a muted folder heading per group, then
+             filename-only list items. The full path stays on the <a hx-get>
+             for click-through. Defensive `rsplit` handles zero-slash paths. #}
+          {% set ns = namespace(folders=[]) %}
+          {% for c in b.cases %}
+            {% set _parts = c.file_path.rsplit('/', 1) %}
+            {% set _folder = _parts[0] if _parts|length == 2 else '' %}
+            {% if _folder not in ns.folders %}{% set ns.folders = ns.folders + [_folder] %}{% endif %}
+          {% endfor %}
+          <div class="space-y-2">
+            {% for folder in ns.folders %}
+            <div data-group-folder="{{ folder }}">
+              <div class="mb-1">
+                <span class="inline-block font-mono text-xs font-semibold text-slate-700 bg-slate-200 rounded px-1.5 py-0.5">{{ folder if folder else '(ungrouped)' }}</span>
+              </div>
+              <ul class="space-y-0.5 pl-3">
+                {% for c in b.cases %}
+                  {% set _parts = c.file_path.rsplit('/', 1) %}
+                  {% set _folder = _parts[0] if _parts|length == 2 else '' %}
+                  {% set _filename = _parts[1] if _parts|length == 2 else _parts[0] %}
+                  {% if _folder == folder %}
+                <li>
+                  <a class="font-mono text-xs text-slate-600 hover:underline cursor-pointer"
+                     hx-get="/ui/file/{{ c.file_path }}" hx-target="#main-pane" hx-swap="innerHTML">{{ _filename }}</a>
+                </li>
+                  {% endif %}
+                {% endfor %}
+              </ul>
+            </div>
             {% endfor %}
-          </ul>
+          </div>
           {% else %}
           <span class="text-xs text-slate-400 italic">No cases.</span>
           {% endif %}
@@ -131,22 +158,16 @@
     </div>
     {% endif %}
 
-    {# Result cells colour-coded by status (spec § Detail templates);
-       an absent run (em-dash) renders muted. #}
-    {% set result_colors = {
-      "PASSED": "text-emerald-600",
-      "FAILED": "text-rose-600",
-      "SKIPPED": "text-slate-500",
-      "EXECUTING": "text-sky-600",
-      "PENDING": "text-amber-600"
-    } %}
+    {# Result cells colour-coded by status via the shared single-source
+       palette (app.css [data-status]); an absent run (em-dash) carries no
+       data-status and renders muted (§ Status palette / E4). #}
     {% if view.trend %}
     <table class="w-full text-sm border border-slate-200 rounded overflow-hidden bg-white">
       <thead class="bg-slate-100 text-slate-600">
         <tr>
           <th class="text-left px-3 py-2 font-medium">Run</th>
           <th class="text-left px-3 py-2 font-medium w-48">When</th>
-          <th class="text-left px-3 py-2 font-medium w-32">Result</th>
+          <th class="text-left px-3 py-2 font-medium w-40">Result</th>
         </tr>
       </thead>
       <tbody>
@@ -158,7 +179,7 @@
                hx-target="#main-pane" hx-swap="innerHTML">{{ t.run }}</a>
           </td>
           <td class="px-3 py-2 text-slate-500 text-xs font-mono">{{ t.created_at }}</td>
-          <td class="px-3 py-2 font-mono text-xs font-medium {% if t.result == '\u2014' %}text-slate-300{% else %}{{ result_colors.get(t.result, 'text-slate-700') }}{% endif %}">{{ t.result }}</td>
+          <td class="px-3 py-2 font-mono text-xs font-medium {% if t.result == '\u2014' %}text-slate-300{% endif %}"{% if t.result != '\u2014' %} data-status="{{ t.result }}"{% endif %}>{{ t.result }}</td>
         </tr>
         {% endfor %}
       </tbody>

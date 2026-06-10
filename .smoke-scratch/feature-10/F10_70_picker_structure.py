@@ -12,7 +12,7 @@ Static JS inspection of app/static/app.js.
 import re
 import pathlib
 
-JS = pathlib.Path("app/static/app.js").read_text()
+JS = "\n".join(_p.read_text() for _p in sorted(pathlib.Path("app/static").glob("*.js")))
 
 # --- CP1: folder-then-file ASC sort in tmsFetchProjectFeaturePaths. ---
 fetch_fn = re.search(

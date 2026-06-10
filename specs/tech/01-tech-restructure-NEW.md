@@ -225,7 +225,7 @@ never leave the suite red between slices.
 | R6 | Tech-slice verification smokes not discovered (`run.py` globs `feature-*` only) | High | Med | Decide pre-flight: extend the glob to `{feature,tech}-*`, or house them under an existing feature dir |
 | R7 | JS behaviour regression invisible to the suite (no Playwright) | Med | High | Manual browser pass mandatory in slice 4; residual risk accepted + documented |
 | R8 | Scope creep — "improve while moving" | Med | Med | Moves only; body edits forbidden (Scope § out); review every diff line |
-| R9 | Refactor started on an **uncommitted** working tree (feature-12 changes are unstaged) → per-slice `git revert` is unreliable | High | High | Commit / stash feature-12 **before** slice 1; do the restructure on its own branch |
+| R9 | Refactor on an uncommitted tree → per-slice `git revert` unreliable | **Low** | High | **feature-12 committed Jun 10** (tree clean bar prep docs); still branch the restructure off `feature/test-report` before slice 1 |
 
 ## Assumptions & confidence
 
@@ -323,9 +323,9 @@ _remaining is a structural-feasibility unknown._
   kept regardless, since its real job is catching a silently-dropped route
   (R3), not proving #4.
 - *No hidden external consumer* (#5) — **accepted.**
-- *Dirty working tree* (R9) — git / feature-12 workflow is **out of scope of
-  this spec**; standing recommendation is to run the restructure on a
-  dedicated branch so per-slice revert keeps working.
+- *Dirty working tree* (R9) — **resolved Jun 10**: feature-12 committed; tree
+  clean except restructure-prep docs (README, this spec). Remaining: branch
+  the restructure off `feature/test-report` before slice 1.
 - Remaining blind spots — **accepted as documented.**
 
 ## Affects
@@ -363,114 +363,3 @@ _remaining is a structural-feasibility unknown._
   splits cheaper.
 - If JS keeps growing, this split is the prerequisite for later adopting
   a real bundler / ES modules without a from-scratch rewrite.
-
-<!-- ============================================================ -->
-<!-- TEMPORARY — IMPLEMENTATION PLAN. NOT part of the spec body.  -->
-<!-- Working checklist for the Do phase only. DELETE this whole   -->
-<!-- section (down to EOF) once implementation is complete AND    -->
-<!-- the user signals to fold the as-built notes into DONE.md /   -->
-<!-- 00-summary.md. Do not treat anything below as decided spec.  -->
-<!-- ============================================================ -->
-
-## TEMP · Implementation plan (delete after Do + sign-off)
-
-> Scratch only. Tracks concrete actions + per-slice verification. The
-> sections above remain the source of truth. Each slice is one
-> git-revertable unit and must end with the suite green before the next
-> begins; if a slice can't go green, **revert it** rather than patching
-> downstream.
-
-### Pre-flight (once, before slice 1)
-
-- [x] Capture a baseline: `.venv/bin/python .smoke-scratch/run.py` (**must
-      use the project venv** — the bare `python` pyenv shim lacks PyYAML).
-      Confirmed **236/236, 0 failed** on Jun 10, 2026.
-- [ ] Dump the baseline Flask URL map (`app.url_map`) to compare against
-      after slice 1.
-- [ ] `grep -rl 'app/static/app.js\|app/storage.py\|app/server.py\|app/models.py'`
-      across `.smoke-scratch/` to list every smoke that reads a target
-      file by path (the repoint set).
-- [ ] **Decide where tech-slice verification smokes live (R6):** `run.py`
-      globs `feature-*` only, so either extend the glob to `{feature,tech}-*`
-      or house the URL-map + script-order asserts under an existing
-      feature dir. Record the new total smoke count once added.
-
-### Slice 1 — `models.py` → `app/models/` package (safest first)
-
-- [ ] Create `app/models/`; split into `_feature.py`, `_run.py`,
-      `_report.py`; `__init__.py` re-exports all public names + `_is_valid_tag`.
-- [ ] Delete the old `app/models.py`.
-- [ ] Verify: every `from app.models import …` (incl. the private
-      `_is_valid_tag` smoke) resolves; suite green.
-
-### Slice 2 — `server.py` → `app/server/` package
-
-- [ ] Create `app/server/` dir; move `server.py` body to modules per the
-      Target layout (`__init__.py`, `_shared.py`, `routes_*.py`,
-      `errors.py`).
-- [ ] `__init__.py`: define `api` + `ui`, import all route modules for
-      side effects (**R3 footgun**), re-export `api`, `ui`, `_folder_crumbs`.
-- [ ] Delete the old `app/server.py`.
-- [ ] Verify: `create_app()` boots; `app.url_map` matches the baseline
-      dump exactly; repoint any smoke that imported `app.server._folder_crumbs`
-      or grepped `server.py`; suite green.
-
-### Slice 3 — `storage.py` → `app/storage/` package
-
-- [ ] Step 3a: extract free functions + constants + `_PathLock` + the
-      serialize/parse helpers into `_core.py` (+ keep them importable);
-      run suite.
-- [ ] Step 3b: introduce `_StorageBase` (shared state + `_resolve` /
-      `_lock_for` / `_mark_write`); run suite.
-- [ ] Step 3c: move sections into mixins one at a time
-      (`_paths` → `_listing` → `_features` → `_enums` → `_search` →
-      `_folders` → `_runs` → `_reports`), running the suite after **each**
-      mixin so a break is localized.
-- [ ] `__init__.py`: assemble `class Storage(*Mixins, _StorageBase)`;
-      re-export constants + free functions; delete old `app/storage.py`.
-- [ ] Verify: no import cycle (`python -c "import app.storage"`);
-      repoint smokes importing `_normalize_run_filename` / `_PathLock` /
-      grepping `storage.py`; suite green.
-
-### Slice 4 — `app.js` → ordered files
-
-- [ ] Decide open-question Q2 (below) first: full split vs. extract only
-      `tmsEditor`.
-- [ ] **Enumerate every top-level symbol** (functions, `const`
-      singletons, the bottom-of-file executable listeners, `tmsWireSearch`)
-      and assign each to exactly one file before moving anything.
-- [ ] Create the JS files per the Target layout; move code verbatim (no
-      body edits).
-- [ ] `base.html`: replace the single `<script src="app.js">` with the
-      ordered list (bootstrap last); keep `window.TMS_RUN_RESULTS` before
-      them.
-- [ ] `node --check` each file.
-- [ ] Repoint the JS static-inspection smokes (`F12_24`, `F10_*`
-      js-wiring) to the new file(s) or a glob; add a smoke asserting the
-      `<script>` tag order in `base.html`.
-- [ ] Manual browser pass: every inline `onclick=` / `hx-on` handler
-      resolves (tree expand, sidebar tabs, create file/run/report,
-      run-editor save, file-editor save, search). Suite green.
-
-### Open questions to resolve before starting
-
-- [ ] **All four slices, or stop after a subset?** (Recommend all four,
-      one per slice.)
-- [ ] **JS: full 8-file split, or extract only `tmsEditor` (~40% of the
-      file) for most of the value at a fraction of the smoke churn?**
-- [ ] **Re-export the private names (`_normalize_run_filename`,
-      `_PathLock`, `_folder_crumbs`, `_is_valid_tag`) to keep smokes
-      untouched, OR repoint those smokes?** (Re-export = zero churn but
-      cements privates as semi-public.)
-- [ ] **Soft per-file line cap** — confirm ~600 is the target.
-
-### Cleanup on completion (after user signal)
-
-- [ ] Record the as-built breakdown in `DONE.md` (new `## Could have`
-      entry; convention: prior smoke-restructure refactor lived there
-      with no feature spec).
-- [ ] Update `specs/features/02-…` "Source file" pointer + `00-summary.md`
-      function-chain references to the new module paths.
-- [ ] Update `specs/README.md` if the `/specs/tech` convention needs
-      documenting.
-- [ ] **Delete this entire TEMP section** from the spec.

@@ -87,7 +87,7 @@ and only seeded enum kind.
 
 ### Data model — `Feature.enums`
 
-In `app/models.py`:
+In `app/models/_feature.py`:
 
 - `Feature.enums: dict[str, str] = field(default_factory=dict)`
   (new field on the dataclass). Outer keys are enum kind names
@@ -208,7 +208,7 @@ inner keys raise `EnumsParseError`.
 
 - **Auto-init on project create.** Today projects are created
   via `Storage.create_folder(["<project>"])` (depth-1 path);
-  see `app/storage.py::create_folder`. The method is a single
+  see `app/storage/_folders.py::create_folder`. The method is a single
   uniform `mkdir(parents=False)` that already handles all
   depths; we add a `len(segments) == 1` branch immediately
   after the `mkdir` to also write the default `enums.yaml`
@@ -271,7 +271,7 @@ New methods on `Storage`:
 - `list_tree` filters out `enums.yaml` at depth 2 (project
   root) so the file does not surface in the Directory tree.
   `list_folder` at depth 1 (project view) already returns
-  only modules (folder names — see `app/storage.py::list_folder`
+  only modules (folder names — see `app/storage/_listing.py::list_folder`
   depth-1 branch); no file-level filter needs adding there.
   v1 has **no UI** for editing the file beyond the
   `Initialize enums file` action; teams hand-edit it on disk.
@@ -524,7 +524,7 @@ under `enum.` to avoid collision with regular comments):
 
 ## Affects
 
-- `01-gherkin-io` / `app/models.py`: new
+- `01-gherkin-io` / `app/models/`: new
   `Feature.enums: dict[str, str]` field on the dataclass;
   `to_dict` / `from_dict` / `validate_feature` extended. Parser
   gains a pre-parse scan for `# <kind>: <value>` directives;
@@ -624,8 +624,8 @@ under `enum.` to avoid collision with regular comments):
 - **`EnumsParseError`** lives in `app/errors.py` alongside
   `RunParseError` (added by `10-feature-test-run`). The
   matching `@api.errorhandler(EnumsParseError)` is registered
-  in `app/server.py` next to the other `*ParseError` handlers
-  (see `app/server.py:472-509`), returning `422
+  in `app/server/errors.py` next to the other `*ParseError` handlers
+  (see `app/server/errors.py`), returning `422
   enums_parse_error` with `{line, column}` details when the
   parser can pin a location, otherwise just `{message}`.
 - **Labels with `:` or other YAML-special characters** must be
@@ -636,7 +636,7 @@ under `enum.` to avoid collision with regular comments):
   linear order** (each depends on the prior), every slice
   independently smoke-testable under `.smoke-scratch/`:
   - **S1 — Model + parser/serializer.** `Feature.enums` field
-    on the dataclass (`app/models.py`), comments-walking
+    on the dataclass (`app/models/_feature.py`), comments-walking
     extraction in `parse_feature` (`app/gherkin_io.py`),
     serializer emit, pure-model validation. No HTTP, no
     storage change. Smokes cover round-trip + identifier
@@ -651,15 +651,15 @@ under `enum.` to avoid collision with regular comments):
     rule), mtime cache, `list_tree` filtering of `enums.yaml`
     at depth 2 (project root — implementation-wise, `depth ==
     1` in `_tree_children`'s parameter, mirroring the existing
-    `RESERVED_DEPTH2_NAMES` filter at
-    `app/storage.py:346`), and the new
+    `RESERVED_DEPTH2_NAMES` filter in
+    `app/storage/_listing.py`), and the new
     `EnumsParseError` errorhandler registration in
-    `app/server.py`. Smokes cover the cross-check matrix
+    `app/server/errors.py`. Smokes cover the cross-check matrix
     (unknown kind, unknown key, missing-file, empty-file,
     label-rename-no-op). **Depends on S1; blocks S3.**
   - **S3 — HTTP + editor UI.** `GET /api/enums/<project>` and
-    `POST /api/enums/<project>` routes in `app/server.py`;
-    `tmsEditor` controller in `app/static/app.js` gains an
+    `POST /api/enums/<project>` routes in `app/server/routes_enums.py`;
+    `tmsEditor` controller in `app/static/08_file_editor.js` gains an
     `Enums` section in the structured tab (HTML scaffold in
     `app/templates/file_editor.html`); fetch-once-per-(project,
     session) cache keyed by project name parsed from

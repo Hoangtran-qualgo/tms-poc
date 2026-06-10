@@ -12,7 +12,7 @@ Static JS inspection of app/static/app.js (no runtime).
 import re
 import pathlib
 
-JS = pathlib.Path("app/static/app.js").read_text()
+JS = "\n".join(_p.read_text() for _p in sorted(pathlib.Path("app/static").glob("*.js")))
 
 # Scope to the boot() body (from `boot() {` to `_readCurrent()`'s start).
 m = re.search(r"\bboot\(\)\s*\{.*?\n  \},", JS, re.DOTALL)
@@ -28,8 +28,8 @@ for field in ["root.dataset.project", "root.dataset.group",
               "root.dataset.fileName", "root.dataset.createdAt"]:
     assert field in boot, f"boot() must read {field}"
 
-# --- RE1: captures the baseline snapshot. ---
-assert "this.state.baselineJson = JSON.stringify(this._readCurrent())" in boot
+# --- RE1: captures the baseline snapshot (E2: order-insensitive compare). ---
+assert "this.state.baselineJson = this._compareJson(this._readCurrent())" in boot
 
 # --- RE1: wires inputs + header buttons + initial dirty refresh. ---
 assert "this._wireInputs();" in boot

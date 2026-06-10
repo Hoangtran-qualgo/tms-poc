@@ -14,7 +14,7 @@ bottom of the file).
 import re
 import pathlib
 
-JS = pathlib.Path("app/static/app.js").read_text()
+JS = "\n".join(_p.read_text() for _p in sorted(pathlib.Path("app/static").glob("*.js")))
 
 # --- WR1: afterSwap clears tmsRunEditor.state when the editor left. ---
 after = re.search(r'addEventListener\("htmx:afterSwap".*?\}\);', JS, re.DOTALL).group(0)

@@ -7,7 +7,7 @@ the existing `tmsSlugifyForFilename` helper.
 """
 import re, pathlib
 
-APP_JS = pathlib.Path("app/static/app.js").read_text()
+APP_JS = "\n".join(_p.read_text() for _p in sorted(pathlib.Path("app/static").glob("*.js")))
 
 # Preview node with the expected data-role.
 assert 'data-role="slug-preview"' in APP_JS, "missing data-role='slug-preview' node"

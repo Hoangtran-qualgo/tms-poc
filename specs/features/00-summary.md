@@ -93,7 +93,7 @@ Populated as each batch lands.
   `07-folder-views` (host the create buttons and re-render after
   mutation).
 - **Depends on**: `02-storage-core`; `app/errors.py` (NameConflictError
-  → 409, ValueError → 400); `app/static/app.js` (`tmsOpenModal` for
+  → 409, ValueError → 400); `app/static/03_folder_actions.js` (`tmsOpenModal` for
   sub-folder, `window.prompt` for project/module — legacy v1).
 - **Surface for follow-up**: folder rename and delete UI buttons
   missing (API already exists); folder *move* not implemented;
@@ -112,7 +112,7 @@ Populated as each batch lands.
   move / save / save-raw are invoked from the editor topbar).
 - **Depends on**: `01-gherkin-io` (parse/validate/serialize);
   `02-storage-core` (eight file methods + locks);
-  `app/static/app.js` (`tmsOpenModal`); editor topbar markup
+  `app/static/03_folder_actions.js` (`tmsOpenModal`); editor topbar markup
   (`#btn-rename`, `#btn-move`, `#btn-save`, `#btn-save-raw`).
 - **Surface for follow-up**: no UI surface for delete or duplicate
   today (API-only); `10-feature-test-run` (shipped) chose
@@ -132,7 +132,7 @@ Populated as each batch lands.
   the tree invokes their UI routes via HTMX).
 - **Depends on**: `02-storage-core` (`list_tree`);
   `03-watcher-and-sse` (`sse:change` trigger); HTMX 2.x +
-  `htmx-ext-sse@2`; `app/static/app.js`
+  `htmx-ext-sse@2`; `app/static/01_tree.js`
   (`toggleTreeFolder`, `tmsRestoreTreeState`, `tmsExpandedFolders`).
 - **Surface for follow-up**: per-event SSE payloads would let the
   tree re-render only affected sub-trees instead of a full
@@ -245,7 +245,7 @@ single-`component` field to **generic enum map** driven by
 (S1 model, S2 storage, S3 HTTP + editor); see `DONE.md`
 for the full as-shipped breakdown._
 
-- **Affects**: `01-gherkin-io` / `app/models.py` (new
+- **Affects**: `01-gherkin-io` / `app/models/` (new
   `Feature.enums: dict[str, str]` field, stores selected
   **keys** only; parser pre-parse scan for
   `# enum.<kind>: <key>` namespaced directives; serializer
@@ -298,7 +298,7 @@ picker is flat-with-filter, the `sse:change` re-GET covers all
 types (D5), and `tag_inventory` scope is editable via an
 `Edit scope` action._
 
-- **Affects**: `app/models.py` (new `Report` dataclass +
+- **Affects**: `app/models/` (new `Report` dataclass +
   `validate_report` + `REPORT_TYPES`); `02-storage-core` (new
   `_REPORT_AREA`, `"report"` added to `RESERVED_DEPTH2_NAMES`,
   `create_report` / `read_report` / `write_report` /
@@ -308,10 +308,10 @@ types (D5), and `tag_inventory` scope is editable via an
   hide / block the area via the existing reserved-name filter,
   no code change); `app/reporting.py`
   (**new** pure aggregation module); `app/errors.py` (new
-  `ReportParseError`); `app/server.py` (`/api/reports/*` +
+  `ReportParseError`); `app/server/routes_reports.py` (`/api/reports/*` +
   `/ui/report*` routes + errorhandler); `base.html` (third
-  sidebar tab + lazy `#reports-pane`); `app/static/app.js`
-  (`tmsSwitchSidebarTab` extended, `tmsActivateReportsPane`,
+  sidebar tab + lazy `#reports-pane`); `app/static/02_sidebar.js` +
+  `05_report_flows.js` (`tmsSwitchSidebarTab` extended, `tmsActivateReportsPane`,
   `tmsCreateReport`, run-picker); new `reports_sidebar.html` /
   `report_detail.html` templates; `IN-PROGRESS.md` (`test report`
   item merged here as Type 4).

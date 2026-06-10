@@ -1,7 +1,9 @@
 # 02 · Storage core
 
-_Retroactive spec: documents the as-shipped behaviour. Source file:_
-_`app/storage.py`._
+_Retroactive spec: documents the as-shipped behaviour. Source files:_
+_the `app/storage/` package — `_core.py` (constants + free functions +_
+_`_PathLock` + `_StorageBase`) plus the `_listing` / `_features` / `_enums` /_
+_`_search` / `_folders` / `_runs` / `_reports` mixins composed in `__init__.py`._
 
 ## Summary
 

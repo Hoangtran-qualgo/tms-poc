@@ -16,7 +16,7 @@ keeps the same POST + navigation contract.
 import re
 import pathlib
 
-APP_JS = pathlib.Path("app/static/app.js").read_text()
+APP_JS = "\n".join(_p.read_text() for _p in sorted(pathlib.Path("app/static").glob("*.js")))
 GROUP_TPL = pathlib.Path("app/templates/folder_test_run_group.html").read_text()
 
 # --- 1. Template no longer hosts tmsCreateRun (moved to sidebar) -------

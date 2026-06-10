@@ -15,7 +15,7 @@ Static JS inspection of app/static/app.js.
 import re
 import pathlib
 
-JS = pathlib.Path("app/static/app.js").read_text()
+JS = "\n".join(_p.read_text() for _p in sorted(pathlib.Path("app/static").glob("*.js")))
 
 # Scope to the tmsCreateRun() body via brace matching.
 start = JS.index("async function tmsCreateRun()")

@@ -98,7 +98,7 @@ the data source changes.
 
 ## Design
 
-### Data model — `Report` (`app/models.py`)
+### Data model — `Report` (`app/models/_report.py`)
 
 A single dataclass with a `type` discriminator and a flat optional
 config (only the fields relevant to the type are populated):
@@ -246,17 +246,17 @@ buckets|trend, warnings, params}` so the template branches on `type`.
 ### Storage surface (extends `02-storage-core`, mirrors `10-test-run`)
 
 New reserved area constant and CRUD, structurally parallel to the
-test-run methods at `app/storage.py:1598-1704`:
+test-run methods in `app/storage/_runs.py`:
 
 - `_REPORT_AREA = "report"`; add `"report"` to
-  `RESERVED_DEPTH2_NAMES` (`app/storage.py:84`). This **alone**
-  hides the area from `list_tree` (depth-1 filter, `:376`), the
-  project module listing (`:545`), and blocks generic creation of a
-  `report` module — `_reject_reserved_typed_area` (`:320-337`)
+  `RESERVED_DEPTH2_NAMES` (`app/storage/_core.py`). This **alone**
+  hides the area from `list_tree` (depth-1 filter), the
+  project module listing, and blocks generic creation of a
+  `report` module — `_reject_reserved_typed_area`
   already reads the frozenset generically, so **no function change
   is needed**, exactly like `test-run`.
 - `iter_feature_paths(scope) -> Iterator[str]` — a thin **public**
-  wrapper over the existing private `_iter_feature_files` (`:1163`)
+  wrapper over the existing private `_iter_feature_files` (`app/storage/_search.py`)
   + `_resolve`, returning data-root-relative POSIX paths under a
   folder scope. Added so the new `app/reporting.py` does not reach
   into storage privates (used by Type 4).
@@ -278,7 +278,7 @@ test-run methods at `app/storage.py:1598-1704`:
   (best-effort, like `list_runs`).
 - `list_report_tree() -> dict` — aggregated `report/` subtree across
   projects for the sidebar, mirroring `list_test_run_tree`
-  (`app/storage.py:405`) but **two levels** (project → report leaf,
+  (`app/storage/_listing.py`) but **two levels** (project → report leaf,
   no group level). Leaf rows are `type: "report"` and link to
   `/ui/report/<project>/<file_name>`.
 
@@ -300,7 +300,7 @@ Report filenames are normalised the same way as runs (`<slug>.yaml`,
 reusing the `_normalize_run_filename` logic, generalised or
 duplicated as `_normalize_report_filename`).
 
-### HTTP surface (`app/server.py`)
+### HTTP surface (`app/server/routes_reports.py`)
 
 JSON on the `api` blueprint, HTML partials on `ui`, matching the
 project-scoped naming of `/api/runs/<project>/…` and `/api/enums/
@@ -325,16 +325,16 @@ project-scoped naming of `/api/runs/<project>/…` and `/api/enums/
 
 New `@api.errorhandler(ReportParseError)` returns `422
 report_parse_error` with `{line, column}` when available, registered
-next to `RunParseError` / `EnumsParseError` (`app/server.py:535-545`).
+next to `RunParseError` / `EnumsParseError` (`app/server/errors.py`).
 
-### UI surface (extends `base.html`, `app/static/app.js`)
+### UI surface (extends `base.html`, `app/static/02_sidebar.js` + `05_report_flows.js`)
 
 - **Third sidebar tab.** Add a `data-sidebar-tab="reports"` button to
   `#sidebar-tabs` and a lazy-mounted `#reports-pane` `<aside>` to
   `#sidebar-panels` (`base.html:79-120`). Extend `tmsSwitchSidebarTab`
-  (`app.js:72`) to toggle the third pane and add
+  (`02_sidebar.js`) to toggle the third pane and add
   `tmsActivateReportsPane` (clone of `tmsActivateTestRunPane`,
-  `app.js:114`) that attaches `hx-get="/ui/reports-tree"` +
+  `02_sidebar.js`) that attaches `hx-get="/ui/reports-tree"` +
   `hx-trigger="sse:change"` on first activation.
 - **`reports_sidebar.html`** — clone of `test_run_sidebar.html`;
   project → report leaves; header has a `+ New report` button
@@ -342,14 +342,14 @@ next to `RunParseError` / `EnumsParseError` (`app/server.py:535-545`).
   run tab's.
 - **`tmsCreateReport()`** — `tmsOpenModal` form: project select (when
   ambiguous), **file name** (live `<slug>.yaml` preview via
-  `tmsSlugifyForFilename`, `app.js:554`), **title**, and a **type**
+  `tmsSlugifyForFilename`, `04_run_create.js`), **title**, and a **type**
   `<select>`. On type change, reveal the type-specific config:
   - `enum_ranking` → status `<select>` + kind `<select>` (kinds from
     `GET /api/enums/<project>`).
   - `tag_ranking` → status `<select>`.
   - `case_trend` → a single-select case picker (reuse
     `tmsFetchProjectFeaturePaths` + `tmsBuildCasePicker`,
-    `app.js:567,614`).
+    `04_run_create.js`).
   - `tag_inventory` → a folder `<select>` (project modules /
     subfolders) + a tag `<input>` (the surveyed tag).
   POSTs `/api/reports/<project>`, then navigates `#main-pane` to
@@ -394,7 +394,7 @@ next to `RunParseError` / `EnumsParseError` (`app/server.py:535-545`).
 ## Discoveries from the existing codebase
 
 - Runs link to cases by external `file_path` only
-  (`RunResult`, `app/models.py:441-468`); there is no enum/tag copy on
+  (`RunResult`, `app/models/_run.py`); there is no enum/tag copy on
   the run, so live reads are mandatory — which matches the definitional
   /historical split called out in spec 11 (`:516-523`).
 - The reserved-typed-area machinery (`RESERVED_DEPTH2_NAMES`,
@@ -405,14 +405,14 @@ next to `RunParseError` / `EnumsParseError` (`app/server.py:535-545`).
   pane (`base.html:79-120`, `tmsActivateTestRunPane`); a third tab is
   additive.
 - `Storage._iter_feature_files` + `read_feature` already back the
-  search feature (`app/storage.py:1098-1101`) and give Type 4 its
+  search feature (`app/storage/_search.py`) and give Type 4 its
   folder walk for free.
 
 ## Affects
 
-- `app/models.py` — new `Report` dataclass + `validate_report` +
+- `app/models/_report.py` — new `Report` dataclass + `validate_report` +
   `REPORT_TYPES` constants.
-- `app/storage.py` — `_REPORT_AREA`; `"report"` added to
+- `app/storage/` (`_reports.py` + `_REPORT_AREA` in `_core.py`) — `"report"` added to
   `RESERVED_DEPTH2_NAMES`; `_serialize_report` / `_parse_report`;
   `create_report` / `read_report` / `write_report` / `delete_report` /
   `list_reports` / `list_report_tree`; new public `iter_feature_paths`
@@ -423,11 +423,11 @@ next to `RunParseError` / `EnumsParseError` (`app/server.py:535-545`).
 - `app/reporting.py` — **new** pure aggregation module.
 - `app/errors.py` — new `ReportParseError` (alongside `RunParseError`,
   `EnumsParseError`).
-- `app/server.py` — new `/api/reports/*` and `/ui/report*` routes; new
+- `app/server/routes_reports.py` — new `/api/reports/*` and `/ui/report*` routes; new
   `ReportParseError` errorhandler.
 - `app/templates/` — new `reports_sidebar.html`, `report_detail.html`;
   `base.html` gains the third tab + pane.
-- `app/static/app.js` — `tmsSwitchSidebarTab` extended;
+- `app/static/02_sidebar.js` + `05_report_flows.js` — `tmsSwitchSidebarTab` extended;
   `tmsActivateReportsPane`, `tmsCreateReport`, run-picker helpers.
 - `IN-PROGRESS.md` — the `test report` item is marked merged here as
   Type 4 (`:33-46`).
@@ -442,7 +442,7 @@ next to `RunParseError` / `EnumsParseError` (`app/server.py:535-545`).
 - `11-feature-testcase-component` — `Feature.enums`,
   `read_project_enums`, and the definitional-vs-historical decision
   that licenses live enum reads (no snapshot).
-- `01-gherkin-io` / `app/models.py` — `Feature.tags` /
+- `01-gherkin-io` / `app/models/` — `Feature.tags` /
   `Scenario.tags` for the tag dimension; `read_feature` parsing.
 - `02-storage-core` — atomic-write + per-path lock primitives;
   `_iter_feature_files` (wrapped by the new public
@@ -479,7 +479,7 @@ next to `RunParseError` / `EnumsParseError` (`app/server.py:535-545`).
 - **Plan/Do slicing (suggested), strict linear order**, each slice
   independently smoke-testable under `.smoke-scratch/`:
   - **S1 — Model + aggregation.** `Report` + `validate_report`
-    (`app/models.py`); `app/reporting.py` for all four types. No HTTP,
+    (`app/models/_report.py`); `app/reporting.py` for all four types. No HTTP,
     no storage. Smokes: distinct-case counting (D7), multi-valued tag
     buckets (D10, sum > 100 %), `(unset)`/`(removed)`/`(untagged)`
     buckets (D11), trend ordering + absent-run `"—"`, inventory %.

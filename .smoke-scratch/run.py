@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Walk `.smoke-scratch/feature-*/` and run every `F<N>_*.py` smoke.
+"""Walk `.smoke-scratch/{feature,tech}-*/` and run every `F<N>_*` / `T<N>_*` smoke.
 
 Usage:
     python .smoke-scratch/run.py
@@ -21,7 +21,7 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent
 REPO_ROOT = ROOT.parent
-FILE_RE = re.compile(r"^F\d+_\d+[a-z]?_.+\.py$")
+FILE_RE = re.compile(r"^[FT]\d+_\d+[a-z]?_.+\.py$")
 
 
 def _normalize_filter(flt: str | None) -> str | None:
@@ -33,7 +33,8 @@ def _normalize_filter(flt: str | None) -> str | None:
 def discover(flt: str | None) -> list[Path]:
     want = _normalize_filter(flt)
     smokes: list[Path] = []
-    for feature_dir in sorted(ROOT.glob("feature-*")):
+    dirs = sorted([*ROOT.glob("feature-*"), *ROOT.glob("tech-*")])
+    for feature_dir in dirs:
         if not feature_dir.is_dir():
             continue
         if want is not None:

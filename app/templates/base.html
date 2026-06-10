@@ -148,6 +148,20 @@
   {# Run-result vocabulary, server-rendered so the report-create modal's
      status <select> stays in lock-step with models.RUN_RESULTS. #}
   <script>window.TMS_RUN_RESULTS = {{ run_results | tojson }};</script>
-  <script src="{{ url_for('static', filename='app.js') }}"></script>
+  {# app.js was split into per-area files (specs/tech/01-tech-restructure-NEW.md
+     slice 4). All are classic global-scope scripts. The NN_ prefix encodes the
+     load order (= the original app.js source order): 09_bootstrap.js MUST load
+     LAST (it registers listeners + runs tmsBootShell, which calls functions
+     defined in the earlier files). The numeric prefix also makes a sorted
+     glob of static/*.js reproduce this order for the static-inspection smokes. #}
+  <script src="{{ url_for('static', filename='01_tree.js') }}"></script>
+  <script src="{{ url_for('static', filename='02_sidebar.js') }}"></script>
+  <script src="{{ url_for('static', filename='03_folder_actions.js') }}"></script>
+  <script src="{{ url_for('static', filename='04_run_create.js') }}"></script>
+  <script src="{{ url_for('static', filename='05_report_flows.js') }}"></script>
+  <script src="{{ url_for('static', filename='06_run_editor.js') }}"></script>
+  <script src="{{ url_for('static', filename='07_util_search.js') }}"></script>
+  <script src="{{ url_for('static', filename='08_file_editor.js') }}"></script>
+  <script src="{{ url_for('static', filename='09_bootstrap.js') }}"></script>
 </body>
 </html>

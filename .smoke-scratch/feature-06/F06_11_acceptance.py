@@ -120,7 +120,7 @@ print("PASS  AC2 (end-to-end): external FS burst -> one 'change' per tab after D
 # Hybrid: static + render-and-grep prove the wiring is in place; the
 # actual DOM-state preservation belongs to the JS runtime. ---
 REPO = pathlib.Path(__file__).resolve().parents[2]
-JS = (REPO / "app" / "static" / "app.js").read_text()
+JS = "\n".join(_p.read_text() for _p in sorted((REPO / "app" / "static").glob("*.js")))
 # Static: the Set survives re-renders (module scope).
 assert re.search(r"^const\s+tmsExpandedFolders\s*=\s*new\s+Set\s*\(", JS, re.MULTILINE), (
     "AC3 (static): the expanded-folders Set must be module-scope so it "

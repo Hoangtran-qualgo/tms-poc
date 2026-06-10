@@ -1,7 +1,8 @@
 # 07 · Folder views
 
 _Retroactive spec: documents the as-shipped behaviour. Source files:_
-_`app/server.py` (`ui_folder`, `_folder_crumbs`),_
+_`app/server/routes_ui.py` (`ui_folder`) + `app/server/_shared.py`_
+_(`_folder_crumbs`),_
 _`app/templates/folder_root.html`, `folder_project.html`,_
 _`folder_module.html`, `folder_subfolder.html`._
 

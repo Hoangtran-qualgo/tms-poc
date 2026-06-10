@@ -13,8 +13,12 @@ import pathlib
 import re
 
 
-JS = (pathlib.Path(__file__).resolve().parents[2]
-      / "app" / "static" / "app.js").read_text()
+JS = "\n".join(
+    _p.read_text()
+    for _p in sorted(
+        (pathlib.Path(__file__).resolve().parents[2] / "app" / "static").glob("*.js")
+    )
+)
 
 
 def _extract_function_body(js: str, signature_pattern: str) -> str:

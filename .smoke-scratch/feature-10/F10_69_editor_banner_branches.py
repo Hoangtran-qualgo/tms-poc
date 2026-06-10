@@ -17,16 +17,18 @@ Static JS inspection of app/static/app.js.
 import re
 import pathlib
 
-JS = pathlib.Path("app/static/app.js").read_text()
+JS = "\n".join(_p.read_text() for _p in sorted(pathlib.Path("app/static").glob("*.js")))
 
 m = re.search(r"async onExternalChange\(\)\s*\{.*?\n  \},", JS, re.DOTALL)
 assert m, "tmsRunEditor.onExternalChange() must be defined"
 fn = m.group(0)
 
-# --- RE12: 404 detection + apples-to-apples projection. ---
+# --- RE12: 404 detection + apples-to-apples projection.
+#          E2: the disk shape is projected via _compareJson (same
+#          order-insensitive projection the baseline uses). ---
 assert re.search(r"r\.status\s*===\s*404", fn), "must detect removal via 404"
-assert "JSON.stringify({" in fn and "file_path: rr.file_path" in fn, fn
-assert "created_at" not in fn.split("JSON.stringify({", 1)[1].split("})", 1)[0], (
+assert "this._compareJson({" in fn and "file_path: rr.file_path" in fn, fn
+assert "created_at" not in fn.split("this._compareJson({", 1)[1].split("})", 1)[0], (
     "RE12: the disk projection must omit created_at (apples-to-apples with baseline)"
 )
 assert re.search(r"if\s*\(\s*diskJson\s*===\s*this\.state\.baselineJson\s*\)\s*return", fn)

@@ -5,4 +5,3 @@ status: PENDING
 kind: components
 run_paths:
 - kchatb2b/test-run/group02/run01.yaml
-- kchatb2b/test-run/group01/run01.yaml

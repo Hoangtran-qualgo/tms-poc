@@ -11,7 +11,7 @@ import re
 
 
 REPO_ROOT = pathlib.Path(__file__).resolve().parents[2]
-JS = (REPO_ROOT / "app" / "static" / "app.js").read_text()
+JS = "\n".join(_p.read_text() for _p in sorted((REPO_ROOT / "app" / "static").glob("*.js")))
 
 
 def _extract_block(js: str, signature_re: str, contains: str | None = None) -> str:

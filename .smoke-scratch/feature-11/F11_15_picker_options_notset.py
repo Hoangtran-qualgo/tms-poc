@@ -13,7 +13,7 @@ Static JS inspection of `tmsEditor._buildEnumPicker`.
 import re
 import pathlib
 
-JS = pathlib.Path("app/static/app.js").read_text()
+JS = "\n".join(_p.read_text() for _p in sorted(pathlib.Path("app/static").glob("*.js")))
 m = re.search(r"_buildEnumPicker\(kind, entries\)\s*\{.*?\n  \},", JS, re.DOTALL)
 assert m, "_buildEnumPicker must be defined"
 fn = m.group(0)

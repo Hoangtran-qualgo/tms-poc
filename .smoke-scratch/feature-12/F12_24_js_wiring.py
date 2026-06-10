@@ -9,7 +9,7 @@ plus the + Add runs hook.
 import pathlib
 
 ROOT = pathlib.Path(__file__).resolve().parents[2] / "app"
-app_js = (ROOT / "static" / "app.js").read_text(encoding="utf-8")
+app_js = "\n".join(_p.read_text(encoding="utf-8") for _p in sorted((ROOT / "static").glob("*.js")))
 base_html = (ROOT / "templates" / "base.html").read_text(encoding="utf-8")
 detail_html = (ROOT / "templates" / "report_detail.html").read_text(encoding="utf-8")
 sidebar_html = (ROOT / "templates" / "reports_sidebar.html").read_text(encoding="utf-8")

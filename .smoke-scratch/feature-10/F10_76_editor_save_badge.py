@@ -15,7 +15,7 @@ Static JS inspection of app/static/app.js.
 import re
 import pathlib
 
-JS = pathlib.Path("app/static/app.js").read_text()
+JS = "\n".join(_p.read_text() for _p in sorted(pathlib.Path("app/static").glob("*.js")))
 
 
 def body(method_re):
@@ -32,9 +32,10 @@ assert re.search(r'dirtyEl\.classList\.toggle\("hidden",\s*!this\.state\.dirty\)
 assert re.search(r'saveBtn\.disabled\s*=\s*!this\.state\.dirty', set_dirty)
 assert re.search(r"if\s*\(\s*this\.state\.dirty\s*\)\s*this\._hideSavedBadge\(\)", set_dirty)
 
-# --- RE2: _refreshDirty compares the live snapshot vs the baseline. ---
+# --- RE2: _refreshDirty compares the live snapshot vs the baseline.
+#         E2: comparison is order-insensitive via _compareJson. ---
 refresh = body(r"_refreshDirty\(\)\s*\{")
-assert "JSON.stringify(this._readCurrent())" in refresh
+assert "this._compareJson(this._readCurrent())" in refresh
 assert "this.state.baselineJson" in refresh and "this._setDirty(dirty)" in refresh
 
 # --- RE4: save() PATCH + success/failure branches. ---
@@ -43,7 +44,7 @@ assert re.search(r"if\s*\(\s*!this\.state\s*\|\|\s*!this\.state\.dirty\s*\)\s*re
 assert '`/api/runs/${project}/${group}/${file_name}`' in save
 assert 'method: "PATCH"' in save
 # success path
-assert "this.state.baselineJson = JSON.stringify(current)" in save
+assert "this.state.baselineJson = this._compareJson(current)" in save
 assert "this._setDirty(false)" in save and "this.flashSaved()" in save
 # failure path
 assert re.search(r"alert\(", save) and "this._refreshDirty()" in save

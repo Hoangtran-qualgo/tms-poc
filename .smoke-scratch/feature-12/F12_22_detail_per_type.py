@@ -57,7 +57,9 @@ with tempfile.TemporaryDirectory() as td:
 
     trend_html = client.get("/ui/report/Alpha/trend.yaml").get_data(as_text=True)
     assert "FAILED" in trend_html and ">When<" in trend_html, "trend renders a timeline table"
-    assert "text-rose-600" in trend_html, "trend result cells colour-coded by status"
+    assert 'data-status="FAILED"' in trend_html, (
+        "trend result cells colour-coded by status via the shared data-status palette"
+    )
 
     inv_html = client.get("/ui/report/Alpha/inv.yaml").get_data(as_text=True)
     assert "carrying" in inv_html and "Inv R" in inv_html, inv_html[:400]

@@ -31,8 +31,8 @@ import tempfile
 from app import create_app
 
 
-JS_PATH = pathlib.Path("app/static/app.js")
-src = JS_PATH.read_text()
+JS_PATH = pathlib.Path("app/static")
+src = "\n".join(_p.read_text() for _p in sorted(JS_PATH.glob("*.js")))
 
 # --- 1. Session cache slot -------------------------------------------------
 assert "_vocabCache: Object.create(null)" in src, "vocab cache slot missing"

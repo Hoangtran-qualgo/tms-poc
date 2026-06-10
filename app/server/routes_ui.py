@@ -1,0 +1,269 @@
+"""UI partials (HTML rendered into the page by HTMX).
+
+All ``@ui`` views live here. JSON / REST lives on the ``api`` blueprint
+(``routes_*`` modules); the two are kept separate so the JSON API can
+evolve independently of the rendered HTML.
+"""
+
+from __future__ import annotations
+
+from flask import render_template, request
+
+from ..models import RUN_RESULTS
+from ..reporting import compute_report
+from ._shared import ui, _folder_crumbs, _is_feature_path, _storage
+
+
+@ui.get("/tree")
+def ui_tree() -> str:
+    """Render the tree pane as a fresh HTML partial.
+
+    Called by HTMX on initial page load (server-side include) and on every
+    ``sse:change`` event so the tree stays in sync with disk.
+    """
+    return render_template("tree.html", tree=_storage().list_tree())
+
+
+@ui.get("/test-run-tree")
+def ui_test_run_tree() -> str:
+    """Render the Test-run sidebar tab as a fresh HTML partial.
+
+    Aggregates the ``test-run/`` subtree of every project that has one.
+    Lazily fetched the first time the user clicks the Test-run tab; once
+    mounted the panel listens to ``sse:change`` like the Directory tree.
+    """
+    return render_template(
+        "test_run_sidebar.html", tree=_storage().list_test_run_tree()
+    )
+
+
+@ui.get("/reports-tree")
+def ui_reports_tree() -> str:
+    """Render the Reports sidebar tab as a fresh HTML partial.
+
+    Aggregates the ``report/`` subtree of every project that has one.
+    Lazily fetched on the user's first click on the Reports tab; once
+    mounted it listens to ``sse:change`` like the other sidebar panes.
+    """
+    return render_template(
+        "reports_sidebar.html", tree=_storage().list_report_tree()
+    )
+
+
+@ui.get("/folder/")
+@ui.get("/folder/<path:p>")
+def ui_folder(p: str = ""):
+    """Render the main-pane view for a folder.
+
+    Variants per :meth:`Storage.list_folder` (see PLAN.md §9.3):
+
+    - Empty / root path → ``folder_root.html``: project listing.
+    - Depth-1 (project) → ``folder_project.html``: module table.
+    - Depth-2 (module) → ``folder_module.html``: features + sub-folders.
+    - Depth-3..MAX (sub-folder) → ``folder_subfolder.html``: sub-folders
+      + features; the entry point for arbitrarily nested test cases.
+
+    Beyond MAX_FOLDER_DEPTH a 400 ``bad_request`` surfaces via the
+    blueprint-wide ``ValueError`` handler (raised from `list_folder`).
+    """
+    s = _storage()
+    segments = [x for x in p.split("/") if x] if p else []
+
+    if len(segments) == 0:
+        listing = s.list_folder("")
+        return render_template(
+            "folder_root.html", projects=listing["projects"]
+        )
+
+    if len(segments) == 1:
+        listing = s.list_folder(segments)
+        return render_template(
+            "folder_project.html",
+            project=segments[0],
+            modules=listing["modules"],
+        )
+
+    # Typed area: <project>/test-run/[<group>]. The generic list_folder
+    # would reject paths through the reserved name, so we never call it
+    # here. See `specs/features/10-feature-test-run-NEW.md` § "UI flows".
+    if len(segments) >= 2 and segments[1] == "test-run":
+        project = segments[0]
+        if len(segments) == 2:
+            groups = s.list_run_groups(project)
+            return render_template(
+                "folder_test_run_area.html",
+                project=project,
+                groups=groups,
+            )
+        if len(segments) == 3:
+            group = segments[2]
+            # Sort newest first (created_at DESC), tie-break by file_name
+            # ASC. Two-pass stable sort: secondary key first, then primary.
+            # Unparseable runs sink to the bottom (their created_at is "").
+            runs = s.list_runs(project, group)
+            runs.sort(key=lambda r: r["file_name"])
+            runs.sort(key=lambda r: r["created_at"] or "", reverse=True)
+            return render_template(
+                "folder_test_run_group.html",
+                project=project,
+                group=group,
+                runs=runs,
+            )
+        # Deeper paths under test-run/ are not valid; the typed area is
+        # exactly two levels (group + run file). Fall through to 404 by
+        # raising FileNotFoundError so the blueprint handler responds.
+        raise FileNotFoundError(
+            f"Folder not found: {'/'.join(segments)}"
+        )
+
+    listing = s.list_folder(segments)
+    folder_path = "/".join(segments)
+    if len(segments) == 2:
+        return render_template(
+            "folder_module.html",
+            project=segments[0],
+            module=segments[1],
+            module_path=folder_path,
+            folders=listing.get("folders", []),
+            features=listing["features"],
+        )
+
+    # Depth 3..MAX — generic sub-folder view. Render a breadcrumb of
+    # ancestors so the user can navigate back up at any level.
+    return render_template(
+        "folder_subfolder.html",
+        segments=segments,
+        crumbs=_folder_crumbs(segments),
+        folder_path=folder_path,
+        folder_name=segments[-1],
+        folders=listing["folders"],
+        features=listing["features"],
+    )
+
+
+@ui.get("/file/<path:p>")
+def ui_file(p: str):
+    """Render the main-pane view for a file.
+
+    Non-``.feature`` files render :file:`unsupported.html` per PLAN.md §9.7.
+    ``.feature`` files render the structured-plus-raw editor with the parsed
+    :class:`~app.models.Feature` and the raw on-disk text embedded as JSON
+    for the client editor controller to bootstrap from.
+
+    If the file is present but unparseable, the parse error propagates as a
+    422 envelope via the blueprint error handler — the user is expected to
+    repair the file externally or via the raw tab in a sibling file.
+    """
+    if not _is_feature_path(p):
+        return render_template("unsupported.html", file_path=p)
+    s = _storage()
+    feature = s.read_feature(p)  # raises FileNotFoundError / GherkinParseError
+    raw = s.read_raw(p)
+    segments = p.split("/")
+    file_name = segments[-1]
+    # `crumbs` covers every ancestor folder of the file (project, module,
+    # any sub-folders). The file editor template iterates over it to
+    # render an N-segment breadcrumb, which is what enables files to live
+    # at any depth from 2 (under a module) to MAX_FOLDER_DEPTH.
+    crumbs = _folder_crumbs(segments[:-1] + [file_name])
+    return render_template(
+        "file_editor.html",
+        file_path=p,
+        crumbs=crumbs,
+        file_name=file_name,
+        feature=feature.to_dict(),
+        raw=raw,
+    )
+
+
+@ui.get("/run/<project>/<group>/<file_name>")
+def ui_run(project: str, group: str, file_name: str):
+    """Render the run editor for one run YAML file.
+
+    Phase 3.C ships a read-only render: full breadcrumb, header buttons,
+    name / description / results table. The interactive controller
+    (dirty tracking, Save, Reload, Add case, SSE listener) is wired in
+    Phases 3.D\u20133.G; in the meantime the buttons render but do
+    nothing on click.
+
+    Raises :class:`FileNotFoundError` if the run does not exist (a
+    404 envelope is produced by the blueprint handler); raises
+    :class:`~app.errors.RunParseError` on malformed YAML, surfacing as
+    a 422 envelope.
+    """
+    s = _storage()
+    run = s.read_run(project, group, file_name)
+    # Tombstone-on-render (spec § "Tombstone rendering"): a row whose
+    # file_path no longer resolves to a .feature on disk is flagged so
+    # the template can strike it through and show the "test case was
+    # removed" override. Recomputed every render; storage doesn't
+    # auto-mutate runs when their underlying cases vanish.
+    run_dict = run.to_dict()
+    root = s.root
+    for r in run_dict["results"]:
+        r["missing"] = not (root / r["file_path"]).is_file()
+    return render_template(
+        "run_editor.html",
+        project=project,
+        group=group,
+        file_name=file_name,
+        run=run_dict,
+        results_options=list(RUN_RESULTS),
+    )
+
+
+@ui.get("/report/<project>/<file_name>")
+def ui_report(project: str, file_name: str):
+    """Render the report detail for one report YAML file.
+
+    The persisted :class:`~app.models.Report` is loaded then handed to
+    :func:`~app.reporting.compute_report`, which reads the live runs /
+    features / enums and returns the per-type view model. The template
+    branches on ``view.type`` (ranking vs trend vs inventory). Results
+    are never cached: every render recomputes from current disk state.
+
+    Raises :class:`FileNotFoundError` (404) if the report is missing and
+    :class:`~app.errors.ReportParseError` (422) on malformed YAML, both
+    surfaced via the UI blueprint error handlers.
+    """
+    s = _storage()
+    report = s.read_report(project, file_name)
+    view = compute_report(s, project, report)
+    return render_template(
+        "report_detail.html",
+        project=project,
+        file_name=file_name,
+        view=view,
+    )
+
+
+@ui.get("/search")
+def ui_search():
+    """Render the search results main-pane partial.
+
+    Accepts the same query params as ``/api/search`` and delegates to
+    :meth:`Storage.search`. Always returns HTML; the partial is responsible
+    for rendering the three UX variants documented in PLAN.md §9.6:
+
+    - 0 hits → "No matches"
+    - 1 hit  → inline ``<script>`` that auto-navigates to the file editor
+    - ≥2 hits → list view with file_path + first-line description + badge
+    """
+    q = request.args.get("q", "").strip()
+    scope = request.args.get("scope", "all")
+    match = request.args.get("match", "text")
+    case_sensitive = request.args.get("case", "false").lower() in (
+        "true",
+        "1",
+        "yes",
+    )
+    if not q:
+        return render_template(
+            "search_results.html", hits=[], query="", show_empty_state=True
+        )
+    hits = _storage().search(
+        q, scope=scope, match=match, case_sensitive=case_sensitive
+    )
+    return render_template(
+        "search_results.html", hits=hits, query=q, show_empty_state=False
+    )

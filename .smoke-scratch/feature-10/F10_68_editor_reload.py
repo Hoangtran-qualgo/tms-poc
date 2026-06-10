@@ -14,7 +14,7 @@ Static JS inspection of app/static/app.js.
 import re
 import pathlib
 
-JS = pathlib.Path("app/static/app.js").read_text()
+JS = "\n".join(_p.read_text() for _p in sorted(pathlib.Path("app/static").glob("*.js")))
 
 m = re.search(r"async reload\(\)\s*\{.*?\n  \},", JS, re.DOTALL)
 assert m, "tmsRunEditor.reload() must be defined"

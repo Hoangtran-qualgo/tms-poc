@@ -1,18 +1,18 @@
 # 10 · Test run
 
 _Retroactive spec: documents the as-shipped behaviour. Source files:_
-_`app/models.py` (`TestRun`, `RunResult`, `RUN_RESULTS`,_
-_`validate_run`), `app/storage.py` (`create_run`, `read_run`,_
+_`app/models/_run.py` (`TestRun`, `RunResult`, `RUN_RESULTS`,_
+_`validate_run`), `app/storage/_runs.py` (`create_run`, `read_run`,_
 _`write_run`, `delete_run`, `list_run_groups`, `list_runs`,_
 _`create_run_group`, `delete_run_group`, `add_run_case`,_
 _`remove_run_case`, `update_run_result`, `list_test_run_tree`,_
 _`list_projects`, `RESERVED_DEPTH2_NAMES`), `app/errors.py`_
-_(`RunParseError`), `app/server.py` (`/api/runs/*`,_
+_(`RunParseError`), `app/server/routes_runs.py` (`/api/runs/*`,_
 _`/api/run-groups`, `/ui/run/...`, `ui_folder` dispatcher_
 _branch, `/ui/test-run-tree`), `app/templates/`_
 _(`folder_test_run_area.html`, `folder_test_run_group.html`,_
-_`run_editor.html`, `test_run_sidebar.html`), `app/static/app.js`_
-_(`tmsRunEditor`, `tmsCreateRun`, `tmsBuildCasePicker`,_
+_`run_editor.html`, `test_run_sidebar.html`), `app/static/06_run_editor.js`_
+_+ `04_run_create.js` (`tmsRunEditor`, `tmsCreateRun`, `tmsBuildCasePicker`,_
 _`tmsFetchProjectFeaturePaths`, `tmsSlugifyForFilename`)._
 
 ## Summary
@@ -87,7 +87,7 @@ RunResult
 └─ remark:    str            # freeform, may be ""
 ```
 
-Constants (`app/models.py`):
+Constants (`app/models/_run.py`):
 
 - `RUN_RESULTS = ("PENDING", "EXECUTING", "PASSED", "FAILED",
   "SKIPPED")`. The default for a freshly-created or freshly-added
@@ -183,7 +183,7 @@ Constraints (enforced by storage):
 
 ## Public surface
 
-### Storage (`app/storage.py`)
+### Storage (`app/storage/_runs.py`)
 
 - `create_run_group(project: str, group: str) -> None` —
   validates segments, creates `<project>/test-run/<group>/`,
@@ -235,7 +235,7 @@ Error type (`app/errors.py`):
   mirrors `GherkinParseError`. Surfaces YAML parse failures as
   HTTP 422 via the blueprint error handler.
 
-### HTTP API (`app/server.py`)
+### HTTP API (`app/server/routes_runs.py`)
 
 | Method | Path | Effect |
 |---|---|---|
@@ -254,7 +254,7 @@ Error type (`app/errors.py`):
 All errors use the standard `{error: {code, message, details}}`
 envelope.
 
-### UI routes (`app/server.py`)
+### UI routes (`app/server/routes_runs.py` + `routes_ui.py` dispatch)
 
 | Path | Renders |
 |---|---|
@@ -298,7 +298,7 @@ is exactly two levels: requests for `<project>/test-run/<group>/
   Empty state copy points at the same button: "No test runs
   yet. Click **+ New run** above to create one."
 
-### JS controller (`app/static/app.js`)
+### JS controller (`app/static/06_run_editor.js`; create flow in `04_run_create.js`)
 
 - `tmsRunEditor` — singleton mirroring `tmsEditor`:
   `boot()`, `_readCurrent()`, `_wireInputs()`,
@@ -339,7 +339,7 @@ is exactly two levels: requests for `<project>/test-run/<group>/
   branch of `tmsCreateRun`). The run editor's `+ Add test
   case` picker still requests `"lg"`.
 
-### Wiring (`app/static/app.js`, bottom)
+### Wiring (`app/static/09_bootstrap.js`)
 
 - `htmx:afterSwap` on `#main-pane` clears
   `tmsRunEditor.state` when the editor leaves the main pane
@@ -662,7 +662,7 @@ driven by simple per-input listeners (`change` on the
   needed — debounce is path-agnostic).
 - The sidebar-restructure spec for the **Test run** sidebar
   tab (this feature only consumes it and wires its leaves).
-- `tmsOpenModal` (modal primitive in `app/static/app.js`),
+- `tmsOpenModal` (modal primitive in `app/static/03_folder_actions.js`),
   `htmx.ajax` for the post-save / post-reload navigation,
   Tailwind for layout.
 - `pyyaml` (`requirements.txt`).
