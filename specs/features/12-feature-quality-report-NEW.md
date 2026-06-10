@@ -363,15 +363,18 @@ next to `RunParseError` / `EnumsParseError` (`app/server/errors.py`).
 - **Detail templates** — one `report_detail.html` that branches on
   `view.type`:
   - ranking (Types 1, 2): a table `rank | value | count | %`, each
-    row a collapsible disclosure revealing the matching cases as a
-    bullet list (all collapsed by default; the `test report` render
-    lock-in). `(unset)` / `(removed)` / `(untagged)` rows are muted.
+    row a collapsible disclosure revealing the matching cases (all
+    collapsed by default; the `test report` render lock-in).
+    `(unset)` / `(removed)` / `(untagged)` rows are muted. Matching
+    cases are **grouped by folder** (filename-only items under a
+    folder badge heading) per tech-02 E2.
   - inventory (Type 4): two collapsible rows — `carrying @<tag>` and
-    `not carrying` — each with count / % and a matching-case bullet
-    list.
+    `not carrying` — each with count / % and a folder-grouped
+    matching-case list (tech-02 E2).
   - trend (Type 3): a table with one row per run (`created_at | run |
-    result`), result cells colour-coded by status; a tombstone banner
-    if the case is missing.
+    result`), result cells colour-coded by status via the shared
+    single-source `data-status` palette (tech-02 E4 / palette
+    foundation); a tombstone banner if the case is missing.
   All run-set detail views (Types 1–3) carry `hx-trigger="sse:change"`
   → re-`GET /ui/report/...` so an edit to the underlying runs /
   `.feature` data refreshes the open report live (D5); an empty run

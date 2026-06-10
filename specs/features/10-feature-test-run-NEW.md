@@ -445,23 +445,25 @@ visibility, refresh dirty).
 `_afterRowsChanged()`. Idempotent in the sense that the row
 disappears regardless of dirty state.
 
-**Path masking (test-case column).** Each results-table row
-splits `r.file_path` into two `<span data-role="…">`s inside
-the link: a muted folder prefix (`text-slate-400`,
-`truncate min-w-0` for ellipsis on overflow) followed by the
-emphasized filename (`text-slate-700`, `flex-none` so it is
-always shown in full). The `<a>` itself is a flex container
-(`flex items-center min-w-0 w-full font-mono text-xs`) so the
-folder span shrinks while the filename stays at the cell's
-right edge. The defensive `rsplit('/', 1)` / JS `lastIndexOf
-("/")` branch handles zero-slash file_paths (hand-edited
-YAML) by rendering an empty folder span and putting the
-whole string in filename. Three preservation surfaces keep
-the full path for non-display use: `<tr data-file-path>`
-(serialize / dirty-snapshot), `<td title>` (tooltip), and
+**Folder grouping + filename-only rows (test-case column).**
+_Superseded the original two-span path-masking by tech-02 E2
+(`specs/tech/02-tech-ui-styling-enhancement-NEW.md`)._ Rows
+are grouped by folder: the server emits one plain
+`run-group-head` heading row per folder (first-seen folder
+order, within-folder order preserved; folder shown as a
+badge), and each result row renders **filename-only** inside
+the link (`<span data-role="filename">`, `truncate min-w-0`),
+since the heading now carries the folder. The defensive
+`rsplit('/', 1)` / JS `lastIndexOf("/")` branch handles
+zero-slash file_paths (hand-edited YAML) by grouping them
+under an empty-folder heading and putting the whole string
+in the filename. Three preservation surfaces keep the full
+path for non-display use: `<tr data-file-path>` (serialize /
+dirty-snapshot), `<td title>` (tooltip), and
 `<a hx-get="/ui/file/…">` (click-through). The clone path
-(`_createResultRow`) mirrors the server-rendered shape so
-added rows render identically.
+(`_createResultRow` + `_insertResultRow`) mirrors the
+server-rendered shape — filename-only rows landing in their
+folder group, creating a heading when the folder is new.
 
 **Tombstone rendering.** Computed server-side in `ui_run`:
 each result dict gains `missing: bool` via
@@ -472,10 +474,9 @@ underlying cases vanish.
 When `r.missing`:
 
 - `<tr>` gains `run-row-missing` + `data-missing="1"`.
-- Only the **filename span** swaps to `line-through
-  text-slate-400`; the folder span stays muted but unstruck
-  so the path context still reads naturally and only the
-  case identity is marked as removed.
+- The **filename span** swaps to `line-through
+  text-slate-400` so the case identity reads as removed (the
+  folder context lives in the group heading, per tech-02 E2).
 - The remark cell shows a fixed override `<span
   class="run-remark-override">test case was removed</span>`;
   the `<textarea class="run-remark">` is hidden but **stays
