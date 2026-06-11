@@ -1,0 +1,61 @@
+{# enums_manager.html — per-project enums manager (main-pane view).
+
+   Consumed by GET /ui/enums/<project>, swapped into #main-pane when the
+   user clicks a project in the Enums sidebar tab.
+
+   Legacy projects (no enums.yaml) render the Initialize state; otherwise
+   the kinds -> entries editor is rendered by tmsEnumsManager from the
+   embedded TMS_ENUMS payload. Add/remove/edit are batched and persisted by
+   Save (PUT); rename-key and clear are dedicated server ops.
+
+   Spec: specs/features/13-feature-enums-crud-NEW.md. #}
+
+<div data-view="enums-manager" data-project="{{ project }}">
+  <div class="mb-4 flex items-start justify-between gap-4">
+    <div>
+      <h1 class="text-lg font-semibold text-slate-800">Enums &mdash; {{ project }}</h1>
+      <p class="text-sm text-slate-500 mt-0.5">
+        Project enum vocabulary (<code>{{ project }}/enums.yaml</code>).
+      </p>
+    </div>
+    {% if not missing %}
+    <div class="flex items-center gap-2 shrink-0">
+      <button type="button" id="enums-clear-btn"
+              class="px-2 py-1 text-xs border border-rose-300 text-rose-700 rounded hover:bg-rose-50"
+              title="Reset the vocabulary to a fresh start (blocked if any case still uses an enum)">
+        Clear (fresh start)
+      </button>
+      <button type="button" id="enums-save-btn"
+              class="px-3 py-1 text-sm bg-slate-800 text-white rounded hover:bg-slate-700">
+        Save
+      </button>
+    </div>
+    {% endif %}
+  </div>
+
+  {% if missing %}
+  <div id="enums-missing" class="text-sm text-slate-600 border border-slate-200 rounded p-4 bg-slate-50">
+    <p class="mb-2">This project has no <code>enums.yaml</code> yet.</p>
+    <button type="button" id="enums-init-btn"
+            class="px-2 py-1 text-xs border border-slate-300 rounded hover:bg-white">
+      Initialize enums file
+    </button>
+    <div id="enums-init-error" class="text-xs text-red-700 mt-2 hidden"></div>
+  </div>
+  {% else %}
+  <div id="enums-error" class="hidden text-sm text-red-700 border border-red-200 bg-red-50 rounded px-3 py-2 mb-3"></div>
+  <div id="enums-saved" class="hidden text-sm text-emerald-700 mb-3">Saved.</div>
+  <div id="enums-kinds" class="space-y-4"></div>
+  <button type="button" id="enums-add-kind-btn"
+          class="mt-4 text-sm text-slate-600 hover:text-slate-900">+ Add kind</button>
+  {% endif %}
+
+  <script>
+    window.TMS_ENUMS = {
+      project: {{ project | tojson }},
+      vocab: {{ (vocab or {}) | tojson }},
+      missing: {{ missing | tojson }}
+    };
+    if (typeof tmsEnumsManager !== "undefined") tmsEnumsManager.boot();
+  </script>
+</div>

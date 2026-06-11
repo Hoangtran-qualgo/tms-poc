@@ -92,7 +92,12 @@ function tmsOpenModal({
     overlay.remove();
   };
   const onKey = (e) => {
-    if (e.key === "Escape") close();
+    if (e.key === "Escape") {
+      close();
+    } else if (e.metaKey && e.key === "Enter") {
+      e.preventDefault();
+      triggerConfirm();
+    }
   };
   // Backdrop-only click closes; clicks inside the card do not bubble out.
   overlay.addEventListener("click", (e) => {
@@ -104,15 +109,20 @@ function tmsOpenModal({
   // in the card. `parentNode` flips to null after `.remove()`; `isConnected`
   // is unreliable here because the card itself isn't in the document yet.
   const hasConfirm = confirmBtn.parentNode !== null;
+  let confirmInFlight = false;
+  const triggerConfirm = async () => {
+    if (!hasConfirm || confirmBtn.disabled || confirmInFlight) return;
+    confirmInFlight = true;
+    try {
+      await onConfirm?.({ close });
+    } catch (_) {
+      /* caller is expected to surface its own errors */
+    } finally {
+      confirmInFlight = false;
+    }
+  };
   if (hasConfirm) {
-    confirmBtn.addEventListener("click", async () => {
-      if (confirmBtn.disabled) return;
-      try {
-        await onConfirm?.({ close });
-      } catch (_) {
-        /* caller is expected to surface its own errors */
-      }
-    });
+    confirmBtn.addEventListener("click", triggerConfirm);
   }
 
   document.addEventListener("keydown", onKey);

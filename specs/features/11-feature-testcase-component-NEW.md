@@ -259,11 +259,10 @@ New methods on `Storage`:
   bytes to `{"components": None}` which `read_project_enums`
   normalises to `{"components": {}}` per the empty-value rule.
   Raises `NameConflictError` if the file already exists.
-- _`write_project_enums(project: str, data: dict) -> None` is
-  **deferred to the CRUD-UI follow-up** — v1 has no caller
-  (hand-edit on disk + `init_project_enums` cover every
-  write path). Listed here for completeness; do **not**
-  implement in S2._
+- _`write_project_enums(project: str, data: dict) -> None` was
+  deferred to the CRUD-UI follow-up in v1. **SHIPPED Jun 11, 2026**
+  in `specs/features/13-feature-enums-crud-NEW.md` (S1), alongside
+  `rename_enum_key`, `clear_project_enums`, and `count_enum_key_usage`._
 - `_reject_reserved_typed_area` / `_validate_segment` extended
   to also forbid a depth-2 folder named `enums.yaml` (cheap
   belt-and-braces; folder names are already constrained but
@@ -576,13 +575,14 @@ under `enum.` to avoid collision with regular comments):
 - The Investigate item `Investigate new feature: test report` in
   `IN-PROGRESS.md` stays distinct (tag-based filtering, not
   enum-based).
-- **Deferred Investigate item: per-project `enums.yaml` CRUD
-  UI.** Add / remove a kind, add / remove entries within a
-  kind, rename a key with cascade across affected `.feature`
-  files. Also includes SSE-driven live refresh of in-session
-  picker caches once the CRUD UI exists (the two land
-  together). v1 ships with hand-edit-the-YAML + the
-  `Initialize enums file` action only.
+- **Per-project `enums.yaml` CRUD UI — SHIPPED Jun 11, 2026**
+  (`specs/features/13-feature-enums-crud-NEW.md`, DONE.md § Could
+  have). Add / remove a kind, add / remove entries, rename a key
+  with cascade across affected `.feature` files, and a Clear
+  (fresh start) action, via a new **Enums** sidebar tab; plus
+  SSE-driven refresh of the editor's in-session picker cache.
+  This supersedes the v1 "hand-edit-the-YAML + Initialize only"
+  note above.
 - A second enum kind (e.g. `priorities`) needs **zero code
   change** to ship — the editor renders the picker, the
   validator cross-checks values, the parser/serializer handles

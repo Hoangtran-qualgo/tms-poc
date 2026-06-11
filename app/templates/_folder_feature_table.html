@@ -1,0 +1,62 @@
+{# _folder_feature_table.html — the direct-children feature list table.
+
+   Shared by folder_module.html (depth 2) and folder_subfolder.html
+   (depths 3..MAX_FOLDER_DEPTH) so the markup stays in one place. The
+   caller must provide `folder_path` (the data-root-relative path of the
+   folder being listed) and `features` in scope. Each row navigates to the
+   file editor via hx-get; the file name is the leaf appended to
+   `folder_path`. Description column shows only the first line, truncated
+   (R2 / G3). #}
+<div data-bulk-root data-folder-path="{{ folder_path }}">
+  {# Bulk-action toolbar. Buttons are disabled until at least one case is
+     selected; the controller (10_bulk_actions.js) manages enable/disable,
+     the live count, and the all-or-nothing action flows. #}
+  <div class="flex items-center gap-2 mb-2" data-bulk-toolbar>
+    <span class="text-sm text-slate-500" data-role="count">0 selected</span>
+    <div class="flex-1"></div>
+    <button type="button" data-bulk-action="move" disabled
+            class="px-2.5 py-1 text-sm border border-slate-300 rounded hover:bg-slate-50 disabled:opacity-40 disabled:cursor-not-allowed">Move</button>
+    <button type="button" data-bulk-action="retag" disabled
+            class="px-2.5 py-1 text-sm border border-slate-300 rounded hover:bg-slate-50 disabled:opacity-40 disabled:cursor-not-allowed">Re-tag</button>
+    <button type="button" data-bulk-action="run" disabled
+            class="px-2.5 py-1 text-sm border border-slate-300 rounded hover:bg-slate-50 disabled:opacity-40 disabled:cursor-not-allowed">Run</button>
+    <button type="button" data-bulk-action="delete" disabled
+            class="px-2.5 py-1 text-sm border border-red-300 text-red-700 rounded hover:bg-red-50 disabled:opacity-40 disabled:cursor-not-allowed">Delete</button>
+  </div>
+  <table class="w-full text-sm border border-slate-200 rounded overflow-hidden bg-white table-fixed">
+  <thead class="bg-slate-100 text-slate-600">
+    <tr>
+      <th class="px-3 py-2 w-10" onclick="event.stopPropagation()">
+        <input type="checkbox" data-role="select-all" aria-label="Select all test cases"
+               onclick="event.stopPropagation()">
+      </th>
+      <th class="text-left px-3 py-2 font-medium w-1/4">File name</th>
+      <th class="text-left px-3 py-2 font-medium w-1/2">Description</th>
+      <th class="text-left px-3 py-2 font-medium w-1/4">Tags</th>
+    </tr>
+  </thead>
+  <tbody>
+    {% for f in features %}
+    <tr class="border-t border-slate-100 hover:bg-slate-50 cursor-pointer"
+        hx-get="/ui/file/{{ folder_path }}/{{ f.file_name }}"
+        hx-target="#main-pane"
+        hx-swap="innerHTML">
+      <td class="px-3 py-2 w-10" onclick="event.stopPropagation()">
+        <input type="checkbox" data-role="select"
+               data-case-path="{{ folder_path }}/{{ f.file_name }}"
+               aria-label="Select {{ f.file_name }}"
+               onclick="event.stopPropagation()">
+      </td>
+      <td class="px-3 py-2 text-slate-800 truncate">{{ f.file_name }}</td>
+      {# First-line-only, truncated. Multiple lines never expand the row. #}
+      <td class="px-3 py-2 text-slate-700 truncate" title="{{ f.description }}">
+        {{ f.description.splitlines()[0] if f.description else '' }}
+      </td>
+      <td class="px-3 py-2 truncate">
+        {% for t in f.tags %}<span class="inline-block px-1.5 py-0.5 mr-1 mb-0.5 text-xs rounded bg-slate-200 text-slate-700">@{{ t }}</span>{% endfor %}
+      </td>
+    </tr>
+    {% endfor %}
+  </tbody>
+  </table>
+</div>

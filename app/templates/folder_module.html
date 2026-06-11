@@ -45,32 +45,7 @@
   {% endif %}
 
   {% if features %}
-  <table class="w-full text-sm border border-slate-200 rounded overflow-hidden bg-white table-fixed">
-    <thead class="bg-slate-100 text-slate-600">
-      <tr>
-        <th class="text-left px-3 py-2 font-medium w-1/4">File name</th>
-        <th class="text-left px-3 py-2 font-medium w-1/2">Description</th>
-        <th class="text-left px-3 py-2 font-medium w-1/4">Tags</th>
-      </tr>
-    </thead>
-    <tbody>
-      {% for f in features %}
-      <tr class="border-t border-slate-100 hover:bg-slate-50 cursor-pointer"
-          hx-get="/ui/file/{{ module_path }}/{{ f.file_name }}"
-          hx-target="#main-pane"
-          hx-swap="innerHTML">
-        <td class="px-3 py-2 text-slate-800 truncate">{{ f.file_name }}</td>
-        {# First-line-only, truncated. Multiple lines never expand the row. #}
-        <td class="px-3 py-2 text-slate-700 truncate" title="{{ f.description }}">
-          {{ f.description.splitlines()[0] if f.description else '' }}
-        </td>
-        <td class="px-3 py-2 truncate">
-          {% for t in f.tags %}<span class="inline-block px-1.5 py-0.5 mr-1 mb-0.5 text-xs rounded bg-slate-200 text-slate-700">@{{ t }}</span>{% endfor %}
-        </td>
-      </tr>
-      {% endfor %}
-    </tbody>
-  </table>
+  {% with folder_path = module_path %}{% include "_folder_feature_table.html" %}{% endwith %}
   {% elif not folders %}
   <div class="text-center py-12 border border-dashed border-slate-200 rounded bg-white">
     <p class="text-slate-500 mb-4">No test cases in <span class="font-medium">{{ module }}</span> yet.</p>

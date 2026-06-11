@@ -1,9 +1,14 @@
 components:
-- login: Login by credential
-- login_SSO: Login by SSO
-- user_manager: User data manager
-- workspace_manager: Workspace data manager  but long long long long text
-sprint:
-- init: sprint 0
-- sprint_run: Development sprint
-- maintaince: Maintainance mode, no development sprint
+  - AI-chat: AI chat in desktop app
+  - ai-agents: AI & Agents in portal
+  - apps-automation: Apps & Automation in portal
+  - audit-logs: Audit Logs in portal
+  - connectors: Storage Providers in portal
+  - knowledge: Knowledge in desktop app
+  - people-access: People & Access in portal
+  - setting-portal: Settings in portal
+  - workspace: Workspace in portal
+knowledge:
+  - attachments-knowledge: Attachments in Knowledge
+  - connector-knowledge: Connectors in Knowledge
+  - content-knowledge: Content in Knowledge

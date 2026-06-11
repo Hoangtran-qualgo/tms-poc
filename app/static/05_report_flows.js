@@ -285,7 +285,7 @@ async function tmsCreateReport() {
       } catch (_) {}
       tmsFillSelect(
         widgets.caseSel,
-        features.map((f) => [f.path, f.path]),
+        features.map((f) => [f.path, f.rel_path != null ? f.rel_path : f.path]),
         { placeholder: features.length ? undefined : "(no test cases)" }
       );
       frag.appendChild(d);

@@ -1,9 +1,1 @@
 components:
-- login: Login by credential
-- login_SSO: Login by SSO
-- user_manager: User data manager
-- workspace_manager: Workspace data manager  but long long long long text
-sprint:
-- init: sprint 0
-- sprint_run: Development sprint
-- maintaince: Maintainance mode, no development sprint

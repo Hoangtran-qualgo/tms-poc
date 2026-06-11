@@ -30,8 +30,9 @@ class SearchMixin:
             ``"all"`` (default), ``"project:<name>"``, or ``"module:<proj>/<mod>"``.
         match:
             ``"text"`` — matches ``Feature.description`` only.
-            ``"tag"`` — matches ``Scenario.tags`` only. Other fields are not
-            searched in v1 per PLAN.md §13.
+            ``"tag"`` — substring-matches the union of ``Feature.tags`` and
+            ``Scenario.tags`` (D10). Other fields are not searched in v1 per
+            PLAN.md §13.
         case_sensitive:
             Default ``False`` (case-insensitive substring match).
 
@@ -84,7 +85,13 @@ class SearchMixin:
                         }
                     )
             else:  # match == "tag"
-                for tag in feature.scenario.tags:
+                # A case's tags are the union of feature-level and
+                # scenario-level tags (D10), order-preserving + de-duped so a
+                # tag carried at both levels yields a single hit.
+                case_tags = dict.fromkeys(
+                    [*feature.tags, *feature.scenario.tags]
+                )
+                for tag in case_tags:
                     tag_hay = tag if case_sensitive else tag.lower()
                     if needle in tag_hay:
                         hits.append(

@@ -113,7 +113,12 @@
        (no enums.yaml) collapse to the inline Initialize button. See
        specs/features/11-feature-testcase-component-NEW.md. #}
     <div id="feature-enums" data-section="enums">
-      <label class="block text-xs uppercase tracking-wider text-slate-500 mb-1">Enums</label>
+      <div class="flex items-center justify-between mb-1">
+        <label class="block text-xs uppercase tracking-wider text-slate-500">Enums</label>
+        <button type="button" id="feature-enums-manage"
+                class="text-xs text-slate-500 hover:text-slate-800 underline"
+                onclick="tmsEditor.openEnumsManager()">Manage&hellip;</button>
+      </div>
       <div id="feature-enums-missing" class="hidden text-xs text-slate-600">
         <span class="mr-2">This project has no <code>enums.yaml</code> yet.</span>
         <button type="button" id="feature-enums-init-btn"

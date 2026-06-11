@@ -144,7 +144,7 @@ with tempfile.TemporaryDirectory() as td:
 with tempfile.TemporaryDirectory() as td:
     e = _expect_parse_error(
         pathlib.Path(td),
-        b"components:\n  - bad-key: Bad\n",
+        b"components:\n  - bad.key: Bad\n",
         "bad-identifier key",
     )
     assert "Invalid enum key" in e.message, e.message

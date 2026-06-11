@@ -803,35 +803,63 @@ const tmsEditor = {
     const sourcePath = this.state.path;
     const segments = sourcePath.split("/");
     const currentParent = segments.slice(0, -1).join("/");
-    // Recursively walk the tree; collect every folder with 2..10 path
-    // segments — matches Storage.move_file's depth guard exactly.
+    const currentProject = segments[0];
+    // Recursively walk the tree once: projects are the depth-1 folders;
+    // destination candidates are every folder with 2..10 path segments —
+    // matches Storage.move_file's depth guard exactly. Candidates are
+    // filtered down to the selected project in fillFolders() below.
+    const projects = [];
     const candidates = [];
     const walk = (node) => {
       for (const child of node.children || []) {
         if (child.type !== "folder") continue;
         const depth = child.path.split("/").length;
+        if (depth === 1) projects.push(child.path);
         if (depth >= 2 && depth <= 10) candidates.push(child.path);
         walk(child);
       }
     };
     walk(tree);
+    projects.sort();
     candidates.sort();
 
+    // Project picker — defaults to the source file's current project.
+    const projectSelect = document.createElement("select");
+    projectSelect.className =
+      "w-full border border-slate-300 rounded px-2 py-1.5 text-sm bg-white";
+    for (const proj of projects) {
+      const opt = document.createElement("option");
+      opt.value = proj;
+      opt.textContent = proj;
+      projectSelect.appendChild(opt);
+    }
+    if (projects.includes(currentProject)) projectSelect.value = currentProject;
+
+    // Folder picker — scoped to the selected project. Option text is the
+    // project-relative path (project prefix stripped) to keep it short; the
+    // option value stays the full path the move PATCH needs.
     const select = document.createElement("select");
     select.className =
       "w-full border border-slate-300 rounded px-2 py-1.5 text-sm bg-white";
-    // Leading prompt so users have to make a deliberate pick.
-    const promptOpt = document.createElement("option");
-    promptOpt.value = "";
-    promptOpt.textContent = "— pick a destination folder —";
-    select.appendChild(promptOpt);
-    for (const path of candidates) {
-      const opt = document.createElement("option");
-      opt.value = path;
-      opt.textContent = path === currentParent ? path + "  (current)" : path;
-      if (path === currentParent) opt.disabled = true;
-      select.appendChild(opt);
-    }
+    const fillFolders = () => {
+      const proj = projectSelect.value;
+      select.innerHTML = "";
+      // Leading prompt so users have to make a deliberate pick.
+      const promptOpt = document.createElement("option");
+      promptOpt.value = "";
+      promptOpt.textContent = "— pick a destination folder —";
+      select.appendChild(promptOpt);
+      for (const path of candidates) {
+        if (path.split("/")[0] !== proj) continue;
+        const rel = path.split("/").slice(1).join("/");
+        const opt = document.createElement("option");
+        opt.value = path;
+        opt.textContent = path === currentParent ? rel + "  (current)" : rel;
+        if (path === currentParent) opt.disabled = true;
+        select.appendChild(opt);
+      }
+    };
+    fillFolders();
 
     const error = document.createElement("p");
     error.className = "hidden mt-2 text-sm text-red-600";
@@ -840,7 +868,16 @@ const tmsEditor = {
     const label = document.createElement("p");
     label.className = "text-sm text-slate-600 mb-2";
     label.textContent = "Move " + sourcePath + " to:";
+    const projectLabel = document.createElement("p");
+    projectLabel.className = "text-xs text-slate-500 mb-1";
+    projectLabel.textContent = "Project";
+    const folderLabel = document.createElement("p");
+    folderLabel.className = "text-xs text-slate-500 mt-3 mb-1";
+    folderLabel.textContent = "Folder";
     body.appendChild(label);
+    body.appendChild(projectLabel);
+    body.appendChild(projectSelect);
+    body.appendChild(folderLabel);
     body.appendChild(select);
     body.appendChild(error);
 
@@ -873,8 +910,10 @@ const tmsEditor = {
             return;
           }
           close();
-          // Navigate to the file at its new path; the tree refreshes on
-          // the SSE `change` event the server publishes after the move.
+          // Refresh the directory tree deterministically rather than relying
+          // solely on the server's SSE `change` event, then navigate to the
+          // file at its new path.
+          tmsRefreshTreePane("tree-pane");
           const newPath = destParent + "/" + segments[segments.length - 1];
           htmx.ajax("GET", "/ui/file/" + newPath, {
             target: "#main-pane",
@@ -887,7 +926,12 @@ const tmsEditor = {
       },
     });
 
-    // Confirm is gated on a real destination being picked.
+    // Confirm is gated on a real destination being picked. Changing the
+    // project repopulates the folder list and resets the gate.
+    projectSelect.addEventListener("change", () => {
+      fillFolders();
+      modal.setConfirmDisabled(!select.value);
+    });
     select.addEventListener("change", () => {
       modal.setConfirmDisabled(!select.value);
     });
@@ -1106,6 +1150,35 @@ const tmsEditor = {
     btn.addEventListener("click", () => this._initEnumsFile());
   },
 
+  /**
+   * Open the Enums sidebar tab and load the manager for this file's project
+   * into the main pane (the editor's "Manage…" deep-link).
+   */
+  openEnumsManager() {
+    const project = this.state && this.state.enumsProject;
+    if (!project) return;
+    if (window.tmsSwitchSidebarTab) tmsSwitchSidebarTab("enums");
+    if (window.htmx) {
+      htmx.ajax("GET", "/ui/enums/" + encodeURIComponent(project), {
+        target: "#main-pane",
+        swap: "innerHTML",
+      });
+    }
+  },
+
+  /**
+   * D6: drop the session vocab cache for this project and re-resolve it, so
+   * an external `enums.yaml` edit (or an in-app manager write in another
+   * pane) is reflected in the open editor's pickers via `sse:change`.
+   */
+  _refreshEnumsFromDisk() {
+    const project = this.state && this.state.enumsProject;
+    if (!project) return;
+    delete tmsEditor._vocabCache[project];
+    this.state.enumsStatus = "loading";
+    this._loadEnums();
+  },
+
   /** POST /api/enums/<project> → hydrate cache + re-render on 201. */
   async _initEnumsFile() {
     const project = this.state.enumsProject;
@@ -1272,6 +1345,10 @@ const tmsEditor = {
    */
   async onExternalChange() {
     if (!this.state) return;
+    // D6: an external enums.yaml edit (or an in-app manager write) should be
+    // reflected in the pickers without a manual reload. The watcher fans a
+    // coarse change, so re-resolve the vocab here too.
+    this._refreshEnumsFromDisk();
     let diskFeature, diskRaw, removed = false;
     try {
       const r = await fetch("/api/files/" + this.state.path);

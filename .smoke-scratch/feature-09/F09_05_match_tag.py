@@ -1,14 +1,18 @@
 # Pattern: see .smoke-scratch/README.md
 """feature-09 / search / ST3 + MS6 + TG1 + HS1 (tag mode).
 
-ST3: match='tag' substrings against each Scenario.tags value; a file
-     with multiple matching tags emits ONE hit PER matching tag.
+ST3: match='tag' substrings against each tag value; a file with multiple
+     matching tags emits ONE hit PER matching tag. The haystack is the
+     UNION of Feature.tags and Scenario.tags (D10).
 MS6: the substring is against each tag value already stripped of '@';
      one hit per matching tag.
 TG1: users type the bare value (no '@'); 'needle' matches the stored
      'needle1' / 'needle2' values, not the rendered '@needle1' chip.
 HS1: tag-mode hit shape — matched_field='tag', match_value carries the
      matched tag value (without '@').
+
+Union coverage (D10): feature-level tags are searched, and a tag carried
+at BOTH the feature and scenario level yields exactly one hit.
 
 Re-owns Storage.search tag mode end-to-end through /api/search
 (cross-credit: feature-02/F02_07 SR2/SR4).
@@ -85,4 +89,38 @@ with tempfile.TemporaryDirectory() as td:
         "description, no tags) must not appear"
     )
 
-print("PASS  ST3 + MS6 + TG1 + HS1(tag): one hit per matching tag, bare-value match (no '@'), matched_field='tag' carries the tag value")
+    # --- D10 union: feature-level tags are searched, and a tag carried at
+    #     BOTH the feature and scenario level yields exactly ONE hit. ---
+    feat_raw = (
+        "@needle3 @shared\n"
+        "Feature: feature-level tags\n"
+        "\n"
+        "  @shared @scn1\n"
+        "  Scenario: y\n"
+        "    Given a step\n"
+    )
+    s.create_file(["Alpha", "Mod", "featlevel.feature"], "placeholder")
+    s.write_raw(["Alpha", "Mod", "featlevel.feature"], feat_raw)
+
+    # A purely feature-level tag must now be found (the bug fix).
+    n3 = client.get("/api/search?q=needle3&match=tag").get_json()["hits"]
+    n3_files = [h["file_path"] for h in n3]
+    assert n3_files == ["Alpha/Mod/featlevel.feature"], (
+        "UNION: a feature-level tag (@needle3) must be searchable; "
+        f"got hits {n3_files}"
+    )
+
+    # '@shared' sits at BOTH levels → de-duped to a single hit.
+    shared = [
+        h for h in client.get("/api/search?q=shared&match=tag").get_json()["hits"]
+        if h["file_path"] == "Alpha/Mod/featlevel.feature"
+    ]
+    assert len(shared) == 1, (
+        "UNION: a tag carried at both feature- and scenario-level must yield "
+        f"exactly one hit (de-duped), got {len(shared)}"
+    )
+    assert shared[0]["match_value"] == "shared", (
+        f"UNION: de-duped hit must carry 'shared', got {shared[0]['match_value']!r}"
+    )
+
+print("PASS  ST3 + MS6 + TG1 + HS1(tag) + UNION: one hit per matching tag over the feature+scenario union (de-duped), bare-value match (no '@')")

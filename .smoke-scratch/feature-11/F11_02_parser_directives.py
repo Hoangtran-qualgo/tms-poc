@@ -8,9 +8,10 @@ Asserts:
 4. Comments after `Feature:` line are NOT extracted.
 5. Duplicate `# enum.<kind>:` raises GherkinParseError on the second line.
 6. Malformed kind name (e.g. `# enum.bad-kind: x`) raises GherkinParseError.
-7. Malformed key (e.g. `# enum.priority: bad-key`) raises GherkinParseError.
+7. Malformed key (e.g. `# enum.priority: bad.key`) raises GherkinParseError.
 8. Empty key (`# enum.priority:`) raises GherkinParseError.
 9. Pre-existing files with no directives parse with enums == {}.
+10. A dashed key (e.g. `# enum.component: knowledge-base`) parses fine.
 """
 from app.errors import GherkinParseError
 from app.gherkin_io import parse_feature
@@ -103,8 +104,9 @@ else:
 print("PASS  Malformed kind name raises GherkinParseError")
 
 # --- 7. Malformed key raises ----------------------------------------------
+# (A dash is now legal in keys — see section 10 — so use a dotted key here.)
 src = (
-    "# enum.priority: bad-key\n"
+    "# enum.priority: bad.key\n"
     "Feature: F\n"
     "  Scenario: s\n"
     "    Given x\n"
@@ -113,7 +115,7 @@ try:
     _parse(src)
 except GherkinParseError as e:
     assert e.line == 1, e.line
-    assert "key 'bad-key'" in e.message, e.message
+    assert "key 'bad.key'" in e.message, e.message
 else:
     raise AssertionError("malformed key should have raised")
 print("PASS  Malformed key raises GherkinParseError")
@@ -145,3 +147,14 @@ src = (
 f = _parse(src)
 assert f.enums == {}, f.enums
 print("PASS  Pre-existing files parse with enums == {}")
+
+# --- 10. A dashed key parses fine -----------------------------------------
+src = (
+    "# enum.component: knowledge-base\n"
+    "Feature: F\n"
+    "  Scenario: s\n"
+    "    Given x\n"
+)
+f = _parse(src)
+assert f.enums == {"component": "knowledge-base"}, f.enums
+print("PASS  Dashed key (knowledge-base) parses from the directive")

@@ -26,6 +26,7 @@ from ..errors import ValidationError
 from ._common import (
     CANONICAL_KEYWORDS,
     ENUM_IDENTIFIER_RE,
+    ENUM_KEY_RE,
     SCENARIO_KINDS,
     _is_single_line,
 )
@@ -318,12 +319,12 @@ def _validate_enums(enums: dict[str, str]) -> None:
                     f"{ENUM_IDENTIFIER_RE.pattern}."
                 ),
             )
-        if key != "" and not ENUM_IDENTIFIER_RE.fullmatch(key):
+        if key != "" and not ENUM_KEY_RE.fullmatch(key):
             raise ValidationError(
                 field=f"enums[{kind}]",
                 message=(
                     f"Invalid enum key: {key!r}. Keys must match "
-                    f"{ENUM_IDENTIFIER_RE.pattern} or be empty (= unset)."
+                    f"{ENUM_KEY_RE.pattern} or be empty (= unset)."
                 ),
             )
 

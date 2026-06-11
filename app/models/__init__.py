@@ -15,6 +15,7 @@ from __future__ import annotations
 from ._common import (
     CANONICAL_KEYWORDS,
     ENUM_IDENTIFIER_RE,
+    ENUM_KEY_RE,
     FOLDER_TYPES,
     REPORT_TYPES,
     RUN_RESULTS,
@@ -46,6 +47,7 @@ __all__ = [
     "SCENARIO_KINDS",
     "RUN_RESULTS",
     "ENUM_IDENTIFIER_RE",
+    "ENUM_KEY_RE",
     "RUN_SET_TYPES",
     "FOLDER_TYPES",
     "REPORT_TYPES",

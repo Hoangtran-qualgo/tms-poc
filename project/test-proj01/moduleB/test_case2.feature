@@ -1,5 +1,6 @@
 # enum.components: user_manager
 # enum.sprint: maintaince
+@regression @test @regr
 Feature: test case 2
 
   @test @regression

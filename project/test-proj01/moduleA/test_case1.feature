@@ -1,5 +1,6 @@
-# enum.components: login
+# enum.components: login_account
 # enum.sprint: init
+@demo @test @reg @regress
 Feature: test case 1
 
   Scenario:

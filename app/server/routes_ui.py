@@ -50,6 +50,42 @@ def ui_reports_tree() -> str:
     )
 
 
+@ui.get("/enums-tree")
+def ui_enums_tree() -> str:
+    """Render the Enums sidebar tab as a fresh HTML partial.
+
+    Lists every project (depth-0 folders) with a flag marking those whose
+    ``enums.yaml`` is missing (legacy). Lazily fetched on the user's first
+    click on the Enums tab; once mounted it listens to ``sse:change`` like
+    the other sidebar panes.
+    """
+    s = _storage()
+    projects = [
+        {"name": name, "missing": not s.has_project_enums(name)}
+        for name in s.list_root()
+    ]
+    return render_template("enums_sidebar.html", projects=projects)
+
+
+@ui.get("/enums/<project>")
+def ui_enums(project: str):
+    """Render the per-project enums manager into the main pane.
+
+    Legacy projects (no ``enums.yaml``) render the Initialize state; a
+    malformed file propagates as 422 ``enums_parse_error``.
+    """
+    s = _storage()
+    try:
+        vocab = s.read_project_enums(project)
+    except FileNotFoundError:
+        return render_template(
+            "enums_manager.html", project=project, vocab=None, missing=True
+        )
+    return render_template(
+        "enums_manager.html", project=project, vocab=vocab, missing=False
+    )
+
+
 @ui.get("/folder/")
 @ui.get("/folder/<path:p>")
 def ui_folder(p: str = ""):
@@ -247,7 +283,8 @@ def ui_search():
 
     - 0 hits → "No matches"
     - 1 hit  → inline ``<script>`` that auto-navigates to the file editor
-    - ≥2 hits → list view with file_path + first-line description + badge
+    - ≥2 hits → list view grouped by project (collapsible), each row showing
+      the project-relative path + first-line description + match badge
     """
     q = request.args.get("q", "").strip()
     scope = request.args.get("scope", "all")
@@ -264,6 +301,23 @@ def ui_search():
     hits = _storage().search(
         q, scope=scope, match=match, case_sensitive=case_sensitive
     )
+    # Group hits by project (first path segment) for the >=2-hit list view:
+    # projects sorted, hit order within a project preserved. Each hit also
+    # carries a project-relative path for display; the row navigation still
+    # uses the full file_path.
+    by_project: dict[str, list[dict]] = {}
+    for hit in hits:
+        project, _, rest = hit["file_path"].partition("/")
+        hit["rel_path"] = rest or hit["file_path"]
+        by_project.setdefault(project, []).append(hit)
+    groups = [
+        {"project": project, "hits": by_project[project]}
+        for project in sorted(by_project)
+    ]
     return render_template(
-        "search_results.html", hits=hits, query=q, show_empty_state=False
+        "search_results.html",
+        hits=hits,
+        groups=groups,
+        query=q,
+        show_empty_state=False,
     )
