@@ -47,12 +47,15 @@ function tmsSwitchSidebarTab(target) {
   const treePane = document.getElementById("tree-pane");
   const runPane = document.getElementById("test-run-pane");
   const reportsPane = document.getElementById("reports-pane");
+  const enumsPane = document.getElementById("enums-pane");
   if (treePane) treePane.classList.toggle("hidden", target !== "tree");
   if (runPane) runPane.classList.toggle("hidden", target !== "test-run");
   if (reportsPane) reportsPane.classList.toggle("hidden", target !== "reports");
+  if (enumsPane) enumsPane.classList.toggle("hidden", target !== "enums");
 
   if (target === "test-run") tmsActivateTestRunPane();
   if (target === "reports") tmsActivateReportsPane();
+  if (target === "enums") tmsActivateEnumsPane();
 }
 
 /**
@@ -87,6 +90,24 @@ function tmsActivateReportsPane() {
   if (window.htmx) {
     htmx.process(pane);
     htmx.ajax("GET", "/ui/reports-tree", { target: "#reports-pane", swap: "innerHTML" });
+  }
+}
+
+/**
+ * Mount the Enums panel on first activation. Mirrors
+ * tmsActivateReportsPane: lazy hx-get + sse:change refresh. The pane lists
+ * projects; clicking one loads its manager into #main-pane.
+ */
+function tmsActivateEnumsPane() {
+  const pane = document.getElementById("enums-pane");
+  if (!pane || pane.dataset.mounted === "1") return;
+  pane.dataset.mounted = "1";
+  pane.setAttribute("hx-get", "/ui/enums-tree");
+  pane.setAttribute("hx-trigger", "sse:change");
+  pane.setAttribute("hx-swap", "innerHTML");
+  if (window.htmx) {
+    htmx.process(pane);
+    htmx.ajax("GET", "/ui/enums-tree", { target: "#enums-pane", swap: "innerHTML" });
   }
 }
 

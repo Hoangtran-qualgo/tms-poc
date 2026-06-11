@@ -10,6 +10,7 @@ Asserts:
 from app.errors import ValidationError
 from app.models import (
     ENUM_IDENTIFIER_RE,
+    ENUM_KEY_RE,
     Feature,
     Scenario,
     Step,
@@ -67,7 +68,9 @@ for bad_kind in ["1priorities", "has-dash", "has space", "", "with.dot"]:
 print("PASS  validate_feature rejects invalid kind names")
 
 # --- 5. validate rejects invalid key value --------------------------------
-for bad_key in ["bad-key", "1leading", "has space", "with.dot", "x@y"]:
+# NB: a dash is now legal in keys (see section 6) — only a leading digit,
+# whitespace, dot, or symbol remain invalid.
+for bad_key in ["1leading", "has space", "with.dot", "x@y"]:
     try:
         validate_feature(_ok_feature(components=bad_key))
     except ValidationError as e:
@@ -77,8 +80,25 @@ for bad_key in ["bad-key", "1leading", "has space", "with.dot", "x@y"]:
         raise AssertionError(f"bad key {bad_key!r} should have been rejected")
 print("PASS  validate_feature rejects invalid enum key values")
 
-# Sanity check the exported regex
+# --- 6. validate accepts a dashed key (knowledge-base); kinds stay strict -
+validate_feature(_ok_feature(components="knowledge-base"))
+f_bad = _ok_feature()
+f_bad.enums["has-dash"] = "login"  # dash in a KIND is still rejected
+try:
+    validate_feature(f_bad)
+except ValidationError as e:
+    assert e.field == "enums" and "Invalid enum kind" in e.message, e.message
+else:
+    raise AssertionError("a dashed kind name must still be rejected")
+print("PASS  validate_feature accepts dashed keys but still rejects dashed kinds")
+
+# Sanity check the exported regexes
 assert ENUM_IDENTIFIER_RE.fullmatch("login_by_SSO")
 assert ENUM_IDENTIFIER_RE.fullmatch("_x9")
 assert not ENUM_IDENTIFIER_RE.fullmatch("9x")
-print("PASS  ENUM_IDENTIFIER_RE accepts identifiers and rejects digit-leading")
+assert not ENUM_IDENTIFIER_RE.fullmatch("has-dash"), "kinds must not allow a dash"
+assert ENUM_KEY_RE.fullmatch("knowledge-base")
+assert ENUM_KEY_RE.fullmatch("_x9")
+assert not ENUM_KEY_RE.fullmatch("9x"), "keys must still reject a leading digit"
+assert not ENUM_KEY_RE.fullmatch("has space"), "keys must still reject whitespace"
+print("PASS  ENUM_IDENTIFIER_RE (kinds, no dash) + ENUM_KEY_RE (keys, dash ok)")

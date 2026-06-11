@@ -57,8 +57,12 @@ function tmsSlugifyForFilename(name) {
 
 /**
  * Fetch the full directory tree from /api/tree and return a flat array
- * of {path, file_name, folder_path} for every .feature file under the
- * given project, sorted by folder_path ASC then file_name ASC.
+ * of {path, file_name, folder_path, rel_path, rel_folder} for every
+ * .feature file under the given project, sorted by folder_path ASC then
+ * file_name ASC. `path`/`folder_path` are full (from the data root) and
+ * used as stored values; `rel_path`/`rel_folder` drop the redundant
+ * `<project>/` prefix for display (the project is already chosen in the
+ * modal). A file directly under the project root has `rel_folder === ""`.
  */
 async function tmsFetchProjectFeaturePaths(project) {
   const r = await fetch("/api/tree", { headers: { Accept: "application/json" } });
@@ -68,16 +72,25 @@ async function tmsFetchProjectFeaturePaths(project) {
     (c) => c.type === "folder" && c.name === project
   );
   if (!projectNode) return [];
+  const prefix = project + "/";
   const out = [];
   const walk = (node) => {
     if (!node) return;
     if (node.type === "feature") {
       const path = node.path;
       const slash = path.lastIndexOf("/");
+      const folder_path = slash === -1 ? "" : path.slice(0, slash);
       out.push({
         path,
         file_name: slash === -1 ? path : path.slice(slash + 1),
-        folder_path: slash === -1 ? "" : path.slice(0, slash),
+        folder_path,
+        rel_path: path.startsWith(prefix) ? path.slice(prefix.length) : path,
+        rel_folder:
+          folder_path === project
+            ? ""
+            : folder_path.startsWith(prefix)
+            ? folder_path.slice(prefix.length)
+            : folder_path,
       });
     } else if (Array.isArray(node.children)) {
       for (const c of node.children) walk(c);
@@ -160,8 +173,9 @@ function tmsBuildCasePicker(features, opts = {}) {
     for (const f of visible) {
       const tr = document.createElement("tr");
       tr.className = "border-t border-slate-100 hover:bg-slate-50";
+      const relFolder = f.rel_folder != null ? f.rel_folder : f.folder_path;
       tr.dataset.path = f.path;
-      tr.dataset.folder = (f.folder_path || "").toLowerCase();
+      tr.dataset.folder = (relFolder || "").toLowerCase();
       tr.dataset.file = f.file_name.toLowerCase();
       tr.innerHTML =
         '<td class="px-2 py-1.5 align-top">' +
@@ -169,7 +183,7 @@ function tmsBuildCasePicker(features, opts = {}) {
         "</td>" +
         '<td class="px-2 py-1.5 text-slate-500"></td>' +
         '<td class="px-2 py-1.5 text-slate-800"></td>';
-      tr.children[1].textContent = f.folder_path;
+      tr.children[1].textContent = relFolder;
       tr.children[2].textContent = f.file_name;
       tbody.appendChild(tr);
     }

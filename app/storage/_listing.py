@@ -246,7 +246,11 @@ class ListingMixin:
             try:
                 feature = self.read_feature([*segments, name])
                 description = feature.description
-                tags = list(feature.scenario.tags)
+                # A case's tags are the union of feature-level and
+                # scenario-level tags (D10), order-preserving + de-duped.
+                tags = list(
+                    dict.fromkeys([*feature.tags, *feature.scenario.tags])
+                )
             except (GherkinParseError, OSError, UnicodeDecodeError):
                 description = ""
                 tags = []

@@ -10,6 +10,11 @@ Static inspection of tmsEditor.move() body:
   MV4: success branch navigates via htmx.ajax to /ui/file/<newpath>.
   MV5: failure branch writes the error inline in the modal (modal NOT
        closed).
+  MV6: a project <select> defaults to the source file's current project.
+  MV7: the folder <select> is scoped to the selected project; option text
+       is the project-relative path while the value stays the full path.
+  MV8: success branch refreshes the directory tree deterministically
+       (tmsRefreshTreePane), not only via the SSE `change` event.
 
 Cross-credit (MV3): feature-05/F05_02_ui_triggers.py UI3 owns the
 endpoint+verb+body shape.
@@ -127,4 +132,38 @@ assert "return" in nonok, (
     "MV5: failure branch must return after surfacing the error"
 )
 
-print("PASS  MV1 + MV2 + MV3 + MV4 + MV5: dirty-confirm; /api/tree walk depth 2..10 + modal; PATCH /move; success htmx.ajax to new path; failure stays in modal")
+# --- MV6: project picker defaults to the current project. ---
+assert re.search(r'currentProject\s*=\s*segments\[\s*0\s*\]', BODY), (
+    "MV6: move() must derive currentProject from segments[0]"
+)
+# Walker also collects depth-1 folders (projects).
+assert re.search(r'depth\s*===?\s*1\s*\)\s*projects\.push', BODY), (
+    "MV6: walker must collect depth-1 folders as projects"
+)
+assert re.search(
+    r'projects\.includes\(\s*currentProject\s*\)\s*\)\s*projectSelect\.value\s*=\s*currentProject',
+    BODY,
+), "MV6: the project <select> must default to the current project"
+
+
+# --- MV7: folder options scoped to project; relative label, full value. ---
+assert re.search(
+    r'path\.split\(\s*"/"\s*\)\[\s*0\s*\]\s*!==?\s*proj', BODY
+), "MV7: folder list must be filtered to the selected project"
+assert re.search(
+    r'rel\s*=\s*path\.split\(\s*"/"\s*\)\.slice\(\s*1\s*\)\.join\(\s*"/"\s*\)',
+    BODY,
+), "MV7: folder option label must be the project-relative path (prefix stripped)"
+assert re.search(r'opt\.value\s*=\s*path', BODY), (
+    "MV7: the folder option VALUE must stay the full path the PATCH needs"
+)
+
+
+# --- MV8: success branch refreshes the tree deterministically. ---
+assert re.search(
+    r'close\(\s*\)\s*;[\s\S]{0,400}?tmsRefreshTreePane\(\s*"tree-pane"\s*\)',
+    BODY,
+), "MV8: success branch must call tmsRefreshTreePane('tree-pane') after close()"
+
+
+print("PASS  MV1-MV8: dirty-confirm; /api/tree walk depth 2..10 + modal; PATCH /move; success htmx.ajax to new path + tree refresh; failure stays in modal; project default + relative folder labels")

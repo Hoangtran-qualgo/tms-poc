@@ -403,6 +403,51 @@ Items fixed during v1 manual verification.
     navigation context without locking the comment to
     entry-title drift.
 
+- **Folder-detail test-case list — bulk selection + actions (Move /
+  Re-tag / Run / Delete), direct children only.** _Investigate + Plan +
+  Do shipped Jun 11, 2026; spec
+  `root/specs/tech/03-tech-folder-bulk-actions-NEW.md`._
+  - A multi-select toolbar above the folder-detail features table lets the
+    user select the folder's **direct** test cases and apply one of four
+    bulk actions. Scope is one level only — sub-folder cases are never in
+    the table (the listing already returns only direct `features`), so the
+    "direct children only" rule falls out of the existing data shape.
+  - **Shared partial**: the duplicated `features` table in
+    `root/app/templates/folder_module.html` (depth 2) and
+    `folder_subfolder.html` (depth 3..MAX) was factored into
+    `root/app/templates/_folder_feature_table.html` (parameterised on
+    `folder_path`). It adds a select-all header checkbox, a per-row
+    checkbox carrying the canonical key `data-case-path="<folder>/<file>"`,
+    and a toolbar (Move / Re-tag / Run / Delete + live count). The checkbox
+    `<td>` and input both `event.stopPropagation()` so toggling never fires
+    the row's `hx-get` (same technique as `tree.html`); the `<tr>` hx-get is
+    unchanged so the feature-07 contract holds.
+  - **Controller**: new `root/app/static/08_bulk_actions.js` (loads before
+    `08_enums_manager.js`, keeping `09_bootstrap.js` last per the `T01_01`
+    script-order contract). Binds idempotently on `htmx:load` via a
+    `data-bulk-bound` guard (NOT `htmx:afterSwap`, which the editor/tree/
+    run-editor wiring smokes assume is a single body-level listener).
+    Selection is per-render; select-all reflects all/none/indeterminate;
+    action buttons disable on empty selection.
+  - **All-or-nothing (D3)**: each action runs a read-only pre-flight over
+    every selected case and only fans out (sequential, one request per case
+    over the existing single-item endpoints — no new HTTP surface) if all
+    pass. Any pre-flight failure aborts before a single write and lists the
+    blocked case(s) in the modal. Move pre-flights name-conflict via
+    `GET /api/folders/<dest>/contents` + same-parent; Run de-dups via the
+    run read; Re-tag validates the tag grammar. Move is same-project only
+    (D4); Re-tag overwrites feature-level `tags` only and leaves
+    `scenario.tags` untouched (D1); Run adds to an existing run only (D2).
+  - **Verified**: 6 `tech-03/` smokes (toolbar present at depth 2 + 3;
+    per-row checkbox + double stopPropagation + canonical key with the
+    `<tr>` hx-get intact; scope = direct-children-only; toolbar only when
+    features exist; controller static inspection of the four actions +
+    pre-flight endpoints + idempotent bind + D1 tags). feature-07 stayed
+    green after both the verbatim extraction and the checkbox/toolbar add.
+    Full suite: **272/272 PASS / 0 FAIL**. The fan-out interaction itself
+    is client JS (browser-level), verified by static inspection per the
+    standing Phase-2 lock-in.
+
 ## Should have
 
 - **Review `DONE.md` doc and refine content.**
@@ -976,3 +1021,217 @@ Items fixed during v1 manual verification.
     re-pointed from inline `text-rose-600` to `data-status="FAILED"`. No
     assertion was weakened — each preserved its original intent.
   - **Verified**: full suite **245/245 PASS / 0 FAIL** (237 + 8 new tech-02).
+
+## Could have
+
+- **Per-project `enums.yaml` CRUD UI** (`specs/features/13-feature-enums-crud-NEW.md`).
+  Shipped the full create/edit/rename/clear surface for a project's enum
+  vocabulary, replacing the prior hand-edit-the-YAML-only flow. Decisions
+  D1–D12 resolved up front (sign-offs: D3 block-in-use, D5 sidebar tab, D11
+  clear=block, D2 verbs); built slice by slice S1→S5.
+  - **S1 — storage write + canonical serializer** (`app/storage/_enums.py`):
+    `write_project_enums(project, data)` round-trips the payload through
+    `_parse_project_enums` **before** writing (bad payload 422s untouched),
+    then atomic-write + `_mark_write` + cache-invalidate;
+    `_serialize_project_enums` emits canonical block YAML (insertion order
+    preserved, empty kind byte-matches the seed `components:\n`, labels
+    PyYAML-quoted so YAML-special content round-trips). Legacy projects (no
+    file) raise `FileNotFoundError` → 404.
+  - **S2 — whole-document API + usage guard**: `count_enum_key_usage` (count
+    + ≤5 sample paths); in-use removal guard `_block_in_use_removals` raises
+    the new `EnumInUseError` (HTTP **409** `enum_in_use`, details
+    `{kind,key,count,sample}`) so a `PUT` can never silently orphan a case
+    (D3). Routes: `PUT /api/enums/<project>`, `GET /api/enums/<project>/usage`.
+  - **S3 — rename + cascade**: `rename_enum_key` is alias-first + crash-safe
+    (D4) under a project-scoped lock: validate → dry-run-parse every feature
+    (abort before any write) → write alias (both keys) → rewrite referencing
+    features → drop `old_key` in its slot. Reuses `write_project_enums` for
+    both YAML writes (the final drop passes the in-use guard naturally since
+    usage is already 0 — no bypass needed). Route: `POST .../rename` →
+    `{renamed:<count>}`; `new_key` conflict → 409, unknown/invalid → 422,
+    unparseable feature → 422 `parse_error`.
+  - **S4 — Enums sidebar tab + manager view + Clear + SSE**: 4th sidebar tab
+    (`base.html`, `02_sidebar.js` `tmsActivateEnumsPane`), `enums_sidebar.html`
+    (projects via `Storage.list_root()` + legacy "no file" badge),
+    `enums_manager.html` + `08_enums_manager.js` (`tmsEnumsManager`: add/remove
+    kind+entry, edit label, Save=PUT, Rename, Clear, Initialize), routes
+    `GET /ui/enums-tree` + `GET /ui/enums/<project>`. `clear_project_enums`
+    (D11) resets to the seed but **blocks** with a detailed 409 if any case
+    is still in use (never deletes the file, D8). Editor wiring (D6):
+    `08_file_editor.js` gains an `openEnumsManager()` deep-link and refreshes
+    its vocab cache on `sse:change` (`_refreshEnumsFromDisk`); the manager
+    keeps `tmsEditor._vocabCache` in lock-step on writes. Users clear a case's
+    enum via the existing picker "— not set —" / orphan Clear affordance.
+  - **S5 — one-time backfill** (`scripts/backfill_enums.py`): idempotent CLI
+    that initialises `enums.yaml` for every legacy project (skips initialised
+    ones via `NameConflictError`); `--data-root` defaults to `./project`.
+    Auto-init on project create (D9) and one-file-per-project (D12) were
+    already shipped — pinned by a regression smoke.
+  - **Smoke impact**: 17 new smokes `.smoke-scratch/feature-13/`
+    (`F13_01`/`02` write+serialize · `F13_03`–`06` PUT/usage/in-use ·
+    `F13_07`–`10` rename cascade/dry-run/alias/errors · `F13_11`–`15` tab +
+    manager + clear + SSE wiring · `F13_16` backfill · `F13_17` D9 auto-init).
+    `08_enums_manager.js` placed before `08_file_editor.js` to keep the
+    `base.html` script tags in sorted `NN_` order (tech-01 invariant).
+  - **Verified**: full suite **262/262 PASS / 0 FAIL** (245 + 17 new).
+
+## Should have
+
+- **Shorten the test-case directory path in the picker modals** (Jun 11, 2026;
+  filed same day in `IN-PROGRESS.md`). The project is already chosen in the
+  create-report / create-run / add-case modals, so the test-case pickers
+  repeated the redundant `<project>/` prefix on every row. Now they show the
+  path from the **module level down**, while the stored value stays the full
+  data-root `path`.
+  - `app/static/04_run_create.js`: `tmsFetchProjectFeaturePaths` now also
+    derives `rel_path` / `rel_folder` (the `<project>/` prefix stripped;
+    `rel_folder === ""` for a file directly under the project root). The full
+    `folder_path` + the folder-then-file ASC sort are untouched (CP1/`F10_70`).
+    `tmsBuildCasePicker` displays + filters on `rel_folder` (Folder column),
+    keeping `tr.dataset.path = f.path` as the stored value — so the run
+    editor's **+ Add test case** modal shortens.
+  - `app/static/05_report_flows.js`: the `case_trend` Test-case `<select>`
+    labels each option with `rel_path` while the option **value** stays the
+    full `f.path` (the persisted `case_path`).
+  - **Smoke impact**: 2 new static-inspection smokes — `F10_82`
+    (picker shows `rel_folder`, value stays full path) and `F12_26`
+    (`case_trend` labels with `rel_path`, value stays full path).
+  - **`+ Add test case` button moved to the top of the Results table**
+    (`app/templates/run_editor.html`): relocated from the bottom of the run
+    editor into the `Results` header row (right-aligned). Wired by `id`, so
+    behaviour is unchanged (`F10_16`/`F10_28` still pass).
+  - **Verified**: full suite **264/264 PASS / 0 FAIL** (262 + 2 new); both
+    shortened pickers confirmed live in the browser after reload (the initial
+    "still full path" report was stale in-memory JS in the open tab).
+
+- **Confirm modal actions with a keyboard shortcut** (Jun 11, 2026; filed
+  same day in `IN-PROGRESS.md`). Every in-app create / update / add modal is
+  built by the single `tmsOpenModal` primitive, so the shortcut was added
+  once there and all modals inherit it — Create test run, Create report,
+  Add/remove runs, Edit scope, Create test case, Add test cases, Move test
+  case. (The folder/file/enum `window.prompt` flows are native dialogs and
+  already Enter-capable; out of scope.)
+  - `app/static/03_folder_actions.js`: the confirm action was factored into a
+    shared `triggerConfirm()` that respects the disabled gate, skips
+    information-only modals (`!hasConfirm`), and guards against double-submit
+    with a `confirmInFlight` flag — used by both the Confirm button click and
+    the keyboard path. The modal's document-level `keydown` handler now fires
+    `triggerConfirm()` on **macOS `Cmd+Return`** (`e.metaKey && e.key === "Enter"`,
+    with `preventDefault`), alongside the existing Escape-to-close.
+  - **Scope note**: keyboard shortcut is `Cmd+Return` only, per the backlog
+    spec (clicking the primary button is unchanged on all OSes). `Ctrl+Enter`
+    for Windows/Linux was deliberately not added.
+  - **Smoke impact**: 1 new static-inspection smoke `tech-03/T03_01`
+    (shared guarded confirm path + Cmd+Return wiring; Escape regression).
+  - **Verified**: full suite **265/265 PASS / 0 FAIL** (264 + 1 new).
+
+- **Allow a dash (`-`) in enum entry keys** (Jun 11, 2026; filed same day in
+  `IN-PROGRESS.md`). A natural key like `knowledge-base` was rejected at every
+  layer because keys reused the strict identifier regex. Relaxed **keys only**;
+  enum **kinds** (and the `enum_ranking` report `kind`) stay strict. Built
+  PDCA: plan → do → check (suite green) → act.
+  - **New validator** `ENUM_KEY_RE = ^[A-Za-z_][A-Za-z0-9_-]*$`
+    (`app/models/_common.py`), exported from `app/models`. Distinct from
+    `ENUM_IDENTIFIER_RE` (unchanged, still used for kinds).
+  - **Server key call sites switched to `ENUM_KEY_RE`**: `Feature.enums`
+    validation (`app/models/_feature.py`), the `enums.yaml` schema parser +
+    rename `new_key` guard (`app/storage/_enums.py`), and the on-disk
+    `# enum.<kind>: <key>` directive parser (`app/gherkin_io.py`). Kind call
+    sites and `enum_ranking` `report.kind` (`app/models/_report.py`) left on
+    `ENUM_IDENTIFIER_RE`.
+  - **Client** (`app/static/08_enums_manager.js`): added `ENUM_KEY_RE` for the
+    add-entry prompt; `_addKind` keeps `ENUM_ID_RE`. (Rename has no client-side
+    regex — the server now validates `new_key` with `ENUM_KEY_RE`.)
+  - **Smoke impact**: 1 new end-to-end smoke `feature-13/F13_18`
+    (PUT/GET round-trip · validate + serialise/parse · rename cascade
+    dashed→dashed · client `ENUM_KEY_RE` wiring). Re-pinned 6 boundary smokes
+    that used `bad-key` as the canonical invalid key to a dotted key
+    (`F11_01`, `F11_02`, `F11_05`, `F13_02`, `F13_03`, `F13_10`) and added
+    positive dashed-key coverage to the model + parser + schema smokes.
+  - **Verified**: full suite **266/266 PASS / 0 FAIL** (265 + 1 new).
+
+- **Move test case modal — project/folder defaults + tree refresh**
+  (Jun 11, 2026; filed same day in `IN-PROGRESS.md`). The move picker was a
+  single destination `<select>` spanning every project, with no default and a
+  full-path label per option. Reworked `tmsEditor.move()`
+  (`app/static/08_file_editor.js`) into a two-step picker:
+  - **Project select** defaults to the source file's current project
+    (`segments[0]`); the tree walker now also collects depth-1 folders as the
+    project list.
+  - **Folder select** is scoped to the chosen project and repopulates when the
+    project changes; option **labels are project-relative** (prefix stripped,
+    e.g. `moduleA/sub`) while the option **value stays the full path** the
+    `PATCH /api/files/<p>/move` contract needs. The current parent is still
+    rendered disabled with a `(current)` marker, and the prompt option keeps
+    Confirm gated until a real destination is picked.
+  - **Deterministic tree refresh on success**: added
+    `tmsRefreshTreePane("tree-pane")` after a successful move (was relying
+    solely on the server's SSE `change` event), mirroring `tmsCreateFile`'s
+    E5 refresh.
+  - **Unchanged**: dirty-buffer confirm, the `PATCH .../move` endpoint/verb/
+    body (`{parent: destParent}`), and the post-move navigation to the file's
+    new path.
+  - **Smoke impact**: extended `feature-08/F08_16_move.py` with **MV6**
+    (project default), **MV7** (project-scoped, relative label, full-path
+    value), **MV8** (explicit tree refresh); added MV6–MV8 rows to
+    `feature-08/COVERAGE.md`. MV1–MV5 invariants preserved.
+  - **Verified**: full suite **266/266 PASS / 0 FAIL** (no net file count
+    change — MV6–MV8 fold into the existing move smoke).
+
+- **Search results grouped by project (collapsible)** (Jun 11, 2026; filed
+  same day in `IN-PROGRESS.md`). The ≥2-hit search view was a single flat
+  table spanning every project with full project-prefixed paths. Reworked the
+  list into collapsed-by-default per-project groups:
+  - **Server-side grouping** in `ui_search` (`app/server/routes_ui.py`):
+    hits are bucketed by their first path segment (project), **projects
+    sorted**, hit order within a project preserved, and each hit gains a
+    `rel_path` (project prefix stripped) for display. The route now passes a
+    `groups` list (`[{project, hits}]`) alongside the existing `hits`.
+  - **Template** (`app/templates/search_results.html`): the ≥2-hit branch
+    renders one `<details>` per group (no `open` ⇒ **collapsed by default**),
+    a `<summary>` with the project name + a hit-count badge, and a table whose
+    File column shows `hit.rel_path` (full path in `title`). The 0-hit and
+    1-hit (auto-navigate) variants are unchanged.
+  - **Navigation unchanged**: each row still `hx-get`s `/ui/file/<full_path>`
+    into `#main-pane` — only the *displayed* path is shortened.
+  - **Smoke impact**: 1 new smoke `feature-09/F09_20_results_grouped.py`
+    (UX5: collapsed sorted per-project groups + count badge; rel-path display
+    with full-path `hx-get`); added a UX5 row to `feature-09/COVERAGE.md`.
+    The UX4 list-view smoke (`F09_19`) still passes unchanged.
+  - **Verified**: full suite **267/267 PASS / 0 FAIL** (266 + 1 new).
+
+- **Folder-detail Tags column empty for feature-level tags** (Jun 11, 2026;
+  investigated + approved same day). The folder test-case list rendered no
+  tags for cases tagged at the **feature level** (the common case — the
+  editor exposes a *Feature tags* field and most `.feature` files carry their
+  tags above the `Feature:` line).
+  - **Root cause**: `Storage.list_folder` (`app/storage/_listing.py`) built
+    each row's `tags` from `feature.scenario.tags` only, ignoring
+    `feature.tags`. This diverged from the domain convention `_case_tags`
+    (D10, `app/reporting.py`), which is the union of both levels.
+  - **Fix**: the listing now emits the order-preserving, de-duped **union**
+    `list(dict.fromkeys([*feature.tags, *feature.scenario.tags]))`.
+  - **Smoke impact**: re-pinned `feature-07/F07_04c_tags_column.py` (FT3) —
+    it previously placed tags on the Scenario line to satisfy the old
+    scenario-only behavior; it now seeds a feature-level `@regression` plus
+    scenario-level `@smoke @critical` and asserts all three chips render.
+    Updated the FT3 row + per-rule note in `feature-07/COVERAGE.md`.
+  - **Verified**: full suite **267/267 PASS / 0 FAIL**.
+
+- **Search-by-tag ignored feature-level tags** (Jun 11, 2026). Tag-mode
+  search (`match=tag`) already did a **substring (contains)** match, but it
+  only looked at `Scenario.tags`. Test cases tagged at the **feature level**
+  (the common case) returned no hits at all — e.g. `search("demo", match=tag)`
+  found nothing despite `@demo` on the `Feature:` line.
+  - **Root cause**: `Storage.search` tag branch iterated
+    `feature.scenario.tags` only (`app/storage/_search.py`).
+  - **Fix**: the tag branch now substring-matches each tag in the
+    order-preserving, de-duped **union** of `feature.tags` + `feature.scenario.tags`
+    (D10) — `dict.fromkeys([*feature.tags, *feature.scenario.tags])`. A tag
+    carried at both levels still yields a single hit; substring "contains"
+    semantics are unchanged.
+  - **Smoke impact**: extended `feature-09/F09_05_match_tag.py` (ST3) to pin
+    that a purely feature-level tag is searchable and that a both-levels tag
+    de-dupes to one hit; updated the ST3 row + per-file note in
+    `feature-09/COVERAGE.md`.
+  - **Verified**: full suite **267/267 PASS / 0 FAIL**.

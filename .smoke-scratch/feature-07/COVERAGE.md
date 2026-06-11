@@ -74,7 +74,7 @@ Step 1 audit of the smoke tests against
 | DP5 | `len(segments) > MAX_FOLDER_DEPTH` \u2192 400 `bad_request` from `Storage.list_folder` (handled by the UI blueprint's `ValueError` handler). | Invariants \u2192 Dispatch | `F07_02_dispatch.py` + `F07_10_acceptance.py` AC3 | covered |
 | FT1 | `File name` shown as-is. Click \u2192 `/ui/file/<path>`. | Invariants \u2192 Features-table columns | `F07_04_features_table.py` | covered |
 | FT2 | `Description`: **first line only**, truncated; full description in `title=` attribute for hover. Multi-line descriptions never expand the row. | Invariants \u2192 Features-table columns | `F07_04_features_table.py` | covered |
-| FT3 | `Tags`: chips rendered with `@` prefix, single line, truncated. | Invariants \u2192 Features-table columns | `F07_04_features_table.py` | covered |
+| FT3 | `Tags`: chips rendered with `@` prefix, single line, truncated. Column shows the **union** of feature-level + scenario-level tags (D10). | Invariants \u2192 Features-table columns | `F07_04_features_table.py` | covered |
 | ST1 | Sub-folder table: one column `Sub-folder` with a folder icon (\ud83d\udcc1). Click \u2192 `/ui/folder/<path>`. | Invariants \u2192 Sub-folder-table column | `F07_05_subfolder_table.py` | covered |
 | BD1 | Depth 0 (root) \u2192 `+ New project` button. | Invariants \u2192 Buttons by depth | `F07_06_buttons.py` | covered |
 | BD2 | Depth 1 (project) \u2192 `+ New module` button. | Invariants \u2192 Buttons by depth | `F07_06_buttons.py` | covered |
@@ -146,7 +146,7 @@ executed for feature-07:
   - `F07_04b_description_column.py` covers FT2 (split,
     multi-line `\n`-encoded description).
   - `F07_04c_tags_column.py` covers FT3 (split,
-    scenario-level tags per the storage extraction).
+    union of feature-level + scenario-level tags).
   - `F07_05_subfolder_table.py` covers ST1.
   - `F07_06a/b/c/d_buttons_*` cover BD1, BD2, BD3, BD4
     (split per depth so each button-set's failure is
@@ -180,11 +180,12 @@ executed for feature-07:
     template alignment. Same shape as feature-04 UI3,
     feature-05 RR1c.
 - **Per-rule notes:**
-  - **FT3 (tag chips)** initially failed: tags were
-    placed at the feature level. `Storage.list_folder`
-    extracts `feature.scenario.tags` (not
-    `feature.tags`) for the column. Fixed by placing
-    `@smoke @critical` on the Scenario line.
+  - **FT3 (tag chips)**: `Storage.list_folder` now shows
+    the **union** of feature-level + scenario-level tags
+    (D10), matching `_case_tags` in `reporting.py`. (Bug
+    fix Jun 11, 2026 — the listing previously read
+    `feature.scenario.tags` only, so feature-level tags
+    never appeared in the column.)
   - **F07_02 / F07_10d** initial failures were due to
     the `with tempfile.TemporaryDirectory()` block
     closing before later `client.get(...)` calls. Fix:

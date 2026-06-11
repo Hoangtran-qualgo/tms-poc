@@ -18,6 +18,7 @@ from flask import current_app
 from werkzeug.exceptions import HTTPException
 
 from ..errors import (
+    EnumInUseError,
     EnumsParseError,
     GherkinParseError,
     NameConflictError,
@@ -80,6 +81,21 @@ def _handle_report_parse(e: ReportParseError):
         e.message,
         422,
         details={"line": e.line, "column": e.column},
+    )
+
+
+@api.errorhandler(EnumInUseError)
+def _handle_enum_in_use(e: EnumInUseError):
+    return _error(
+        "enum_in_use",
+        e.message,
+        409,
+        details={
+            "kind": e.kind,
+            "key": e.key,
+            "count": e.count,
+            "sample": e.sample,
+        },
     )
 
 

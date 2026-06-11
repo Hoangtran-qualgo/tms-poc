@@ -47,7 +47,7 @@ A row is `covered` when:
 | RT2 | `GET /ui/search` accepts the same query args, renders `search_results.html`. Empty/whitespace `q` → partial with `show_empty_state=True`, `hits=[]`, `query=""` (server short-circuits before calling `Storage.search`). | Public surface → Routes | `F09_02_ui_search_render.py` | covered |
 | ST1 | `Storage.search(query, *, scope="all", match="text", case_sensitive=False) -> list[dict]`; invalid `match` (not in {text,tag}) → `ValueError`. | Public surface → Storage | `F09_03_search_errors.py` (invalid-match → 400 via API) (+ cross-credit `F02_07_search.py`) | covered |
 | ST2 | `match="text"`: substring against `Feature.description`; at most one hit per file. | Public surface → Storage | `F09_04_match_text.py` (+ cross-credit `F02_07` SR1) | covered |
-| ST3 | `match="tag"`: substring against each `Scenario.tags` value; one hit per matching tag, each carrying the matched tag value. | Public surface → Storage | `F09_05_match_tag.py` (+ cross-credit `F02_07` SR2) | covered |
+| ST3 | `match="tag"`: substring against each tag in the **union** of `Feature.tags` and `Scenario.tags` (D10, de-duped); one hit per matching tag, each carrying the matched tag value. | Public surface → Storage | `F09_05_match_tag.py` (+ cross-credit `F02_07` SR2) | covered |
 | ST4 | `scope`: `all` \| `project:<name>` \| `module:<proj>/<mod>`. | Public surface → Storage | `F09_07/08/09_scope_*.py` (+ cross-credit `F02_07` SR3) | covered |
 | ST5 | `case_sensitive` defaults `False`; case-insensitive via `str.lower()` on both sides (NOT `casefold()`) — German ß and similar fold edge cases round-trip as-is. | Public surface → Storage | `F09_06_case.py` (incl. ß quirk) | covered |
 | HS1 | Hit shape `{file_path, description, matched_field, match_value}`; `matched_field ∈ {"description","tag"}`; text mode echoes the query as `match_value`, tag mode carries the matched tag. | Public surface → Hit shape | `F09_04` (text mode) + `F09_05` (tag mode) (+ cross-credit `F02_07` SR4) | covered |
@@ -71,6 +71,7 @@ A row is `covered` when:
 | UX2 | `len(hits) == 0` → "No matches for &ldquo;{{query}}&rdquo;" + hint. | Invariants → Result UX | `F09_17_results_no_matches.py` | covered |
 | UX3 | `len(hits) == 1` → inline `<script>` runs `htmx.ajax("GET", "/ui/file/<file_path>", {target:"#main-pane", swap:"innerHTML"})` — auto-navigates. | Invariants → Result UX | `F09_18_results_single_autonav.py` | covered |
 | UX4 | `len(hits) >= 2` → table (File / first-line Description / Matched badge); each row `hx-get="/ui/file/<path>"`, `hx-target="#main-pane"`, `hx-swap="innerHTML"`; tag badges prefix `@`. | Invariants → Result UX | `F09_19_results_list_view.py` | covered |
+| UX5 | `len(hits) >= 2` → one collapsible `<details>` group per project (collapsed by default, projects sorted), each summary showing the project name + hit-count badge; rows display the project-relative path while the row `hx-get` keeps the full `file_path`. | Search results grouped-by-project enhancement (Jun 11, 2026) | `F09_20_results_grouped.py` | covered |
 | IF1 | Empty queries never fire from the input (client skips to avoid stale-flash); server still accepts them (empty-state variant). | Invariants → Input firing | `F09_14_wire_change_refire.py` (static: guard on `q.value.trim()`) + `F09_02` (server accepts) | covered |
 | IF2 | Enter cancels any pending debounce and fires immediately. | Invariants → Input firing | `F09_12_wire_enter.py` (static) | covered |
 | IF3 | 300 ms is the only debounce; not configurable. | Invariants → Input firing | `F09_13_wire_debounce.py` (static: literal `300`, single timer) | covered |
@@ -143,8 +144,9 @@ boilerplate is accepted).
   (malformed `scope` → 400 on both `/api/search` and `/ui/search`).
 - `F09_04_match_text.py` — ST2 (≤1 hit/file), MS1 (substring not
   regex), MS5 (real-newline description), HS1 (text-mode shape).
-- `F09_05_match_tag.py` — ST3 (one hit per matching tag), MS6, TG1
-  (bare-value match), HS1 (tag-mode shape).
+- `F09_05_match_tag.py` — ST3 (one hit per matching tag over the
+  feature+scenario union, de-duped), MS6, TG1 (bare-value match), HS1
+  (tag-mode shape).
 - `F09_06_case.py` — ST5 + MS2 (`str.lower()` default; `case=true`
   sensitivity; ß `lower()`-vs-`casefold()` quirk pinned).
 - `F09_07_scope_all.py` — SF1 (all files under root).
@@ -162,6 +164,7 @@ boilerplate is accepted).
 - `F09_17_results_no_matches.py` — UX2.
 - `F09_18_results_single_autonav.py` — UX3.
 - `F09_19_results_list_view.py` — UX4.
+- `F09_20_results_grouped.py` — UX5.
 
 ## Step 1 — sign-off (Jun 9, 2026)
 

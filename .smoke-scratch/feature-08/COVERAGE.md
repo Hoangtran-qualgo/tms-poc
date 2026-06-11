@@ -80,6 +80,9 @@ A row is `covered` when:
 | MV3 | PATCH `/api/files/<p>/move` with `{parent}`. | Invariants → Move | `F08_16_move.py` (+ cross-credit `F05_02_ui_triggers.py` UI3) | covered |
 | MV4 | On success, navigates to the file at its new path via `htmx.ajax('GET', '/ui/file/<newpath>', ...)`. | Invariants → Move | `F08_16_move.py` | covered |
 | MV5 | On failure, error renders inline in the modal so the user can correct + retry. | Invariants → Move | `F08_16_move.py` | covered |
+| MV6 | A project `<select>` defaults to the source file's current project (`segments[0]`); the walker also collects depth-1 folders as projects. | Move modal enhancement (Jun 11, 2026) | `F08_16_move.py` | covered |
+| MV7 | The folder `<select>` is scoped to the selected project; option text is the project-relative path (prefix stripped) while the option value stays the full path. | Move modal enhancement (Jun 11, 2026) | `F08_16_move.py` | covered |
+| MV8 | On success, the directory tree is refreshed deterministically via `tmsRefreshTreePane('tree-pane')` (not only the SSE `change` event). | Move modal enhancement (Jun 11, 2026) | `F08_16_move.py` | covered |
 | RL1 | `reload()` confirms when `state.dirty` (`"Discard unsaved changes and reload from disk?"`). | Invariants → Reload | `F08_17_reload.py` | covered |
 | RL2 | Calls `_refreshFromDisk()` (shared with the post-save reload). | Invariants → Reload | `F08_17_reload.py` | covered |
 | RL3 | Clears banner, raw-error region, lingering `Saved` badge. | Invariants → Reload | `F08_17_reload.py` | covered |

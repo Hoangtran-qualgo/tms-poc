@@ -36,6 +36,7 @@ from .errors import GherkinParseError
 from .models import (
     CANONICAL_KEYWORDS,
     ENUM_IDENTIFIER_RE,
+    ENUM_KEY_RE,
     Background,
     ExamplesTable,
     Feature,
@@ -46,8 +47,9 @@ from .models import (
 
 # Loose matcher for an ``# enum.<kind>: <key>`` directive. Anything matching
 # the ``# enum.<…>:`` prefix is treated as a directive intent and then
-# strict-validated against :data:`ENUM_IDENTIFIER_RE` for both ``<kind>`` and
-# ``<key>``; failures surface as :class:`GherkinParseError`. Non-matching
+# strict-validated against :data:`ENUM_IDENTIFIER_RE` for ``<kind>`` and
+# :data:`ENUM_KEY_RE` for ``<key>``; failures surface as
+# :class:`GherkinParseError`. Non-matching
 # comments (e.g. ``# todo: refactor``, ``# note: see PR_47``) flow through
 # unchanged and are discarded by the existing comments-are-dropped
 # invariant. See ``specs/features/11-feature-testcase-component-NEW.md``.
@@ -177,13 +179,13 @@ def _extract_enum_directives(
                     f"{ENUM_IDENTIFIER_RE.pattern}."
                 ),
             )
-        if not ENUM_IDENTIFIER_RE.fullmatch(key):
+        if not ENUM_KEY_RE.fullmatch(key):
             raise GherkinParseError(
                 line=line,
                 column=column,
                 message=(
                     f"Invalid enum directive: key {key!r} for kind "
-                    f"{kind!r} must match {ENUM_IDENTIFIER_RE.pattern}."
+                    f"{kind!r} must match {ENUM_KEY_RE.pattern}."
                 ),
             )
         if kind in enums:

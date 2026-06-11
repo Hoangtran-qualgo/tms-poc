@@ -103,6 +103,36 @@ class ReportParseError(Exception):
         self.message = message
 
 
+class EnumInUseError(Exception):
+    """A would-be enum removal/clear is blocked because a case still uses it.
+
+    Raised by ``storage.write_project_enums`` (incidental removal) and
+    ``storage.clear_project_enums`` when dropping a ``(kind, key)`` that at
+    least one ``.feature`` still references. Carries the offending pair, the
+    usage ``count``, and a small ``sample`` of referencing case paths so the
+    UI can tell the user exactly which case to clear. Maps to HTTP ``409``
+    ``enum_in_use`` at the API layer.
+    """
+
+    __slots__ = ("kind", "key", "count", "sample", "message")
+
+    def __init__(
+        self,
+        *,
+        kind: str,
+        key: str,
+        count: int,
+        sample: list[str],
+        message: str,
+    ) -> None:
+        super().__init__(message)
+        self.kind = kind
+        self.key = key
+        self.count = count
+        self.sample = sample
+        self.message = message
+
+
 class EnumsParseError(Exception):
     """A project's ``enums.yaml`` is malformed or violates the schema.
 

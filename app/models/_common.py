@@ -28,6 +28,11 @@ SCENARIO_KINDS: tuple[str, ...] = ("scenario", "outline")
 #: ``storage`` both reuse this constant.
 ENUM_IDENTIFIER_RE: re.Pattern[str] = re.compile(r"^[A-Za-z_][A-Za-z0-9_]*$")
 
+#: Validator for enum entry **keys** (the values selected by a test case),
+#: which additionally permit an internal/trailing dash (e.g. ``knowledge-base``).
+#: Enum **kind** names stay strict :data:`ENUM_IDENTIFIER_RE` identifiers.
+ENUM_KEY_RE: re.Pattern[str] = re.compile(r"^[A-Za-z_][A-Za-z0-9_-]*$")
+
 #: Valid values for :attr:`RunResult.result`. Order is meaningful only to
 #: the UI (rendered left-to-right in the result `<select>`); on disk any
 #: of these strings is accepted. Default for a newly-added case is

@@ -12,10 +12,6 @@ is explicitly designated as such.
 
 _(empty)_
 
-_The five UI/UX styling + detailing enhancements (E1–E5) specced in
-`specs/tech/02-tech-ui-styling-enhancement-NEW.md` shipped Jun 10, 2026 —
-see `DONE.md` for the as-built breakdown._
-
 ## Should have
 
 _(empty)_
@@ -43,17 +39,3 @@ _(empty)_
   - Investigate the UX (chip-based filter bar vs. modal), the query
     surface (extension of `GET /api/search` vs. a new endpoint), and
     how it interacts with the existing tree / folder views.
-
-- **Investigate: per-project `enums.yaml` CRUD UI.**
-  _Deferred from `11-feature-testcase-component` v1 (Jun 8, 2026)._
-  - Add / remove an enum kind, add / remove entries within a
-    kind, rename a key with cascade across affected `.feature`
-    files (rewrite every `# enum.<kind>: <old_key>` directive
-    to `# enum.<kind>: <new_key>` atomically).
-  - SSE-driven live refresh of in-session picker caches —
-    lands together with the CRUD UI since the two share the
-    invalidation path.
-  - Out of scope until v1 of `11-feature-testcase-component`
-    ships and teams start hitting the limits of the
-    hand-edit-the-YAML flow.
-
