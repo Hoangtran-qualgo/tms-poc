@@ -133,6 +133,28 @@ class EnumInUseError(Exception):
         self.message = message
 
 
+class ImportValidationError(Exception):
+    """One or more imported scenarios failed pre-flight validation.
+
+    Raised by ``storage.import_feature_cases`` when the all-or-nothing
+    pre-flight finds any blocking reason. ``reasons`` collects **every**
+    blocking reason (content rules, name/scenario conflicts, invalid file
+    names) so the user can fix them all in one pass; ``message`` is a short
+    human-readable summary. Maps to HTTP ``422`` ``import_validation_error``
+    at the API layer. No files are written when this is raised.
+    """
+
+    __slots__ = ("reasons", "message")
+
+    def __init__(self, *, reasons: list[str], message: str | None = None) -> None:
+        summary = message or (
+            f"Import aborted: {len(reasons)} problem(s) found."
+        )
+        super().__init__(summary)
+        self.reasons = reasons
+        self.message = summary
+
+
 class EnumsParseError(Exception):
     """A project's ``enums.yaml`` is malformed or violates the schema.
 

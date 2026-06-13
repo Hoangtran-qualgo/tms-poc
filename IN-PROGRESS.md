@@ -29,7 +29,9 @@ search), `tech-05` (run detail), and `tech-06` (report detail) are all
     and `n more…`.
   - `Tags` column displays top 2 and `n more…`.
 
-- **Investigate new feature: import test cases.**
+- **Investigate new feature: import test cases.** _Planned Jun 13, 2026 —
+  see `specs/features/14-feature-import-test-cases-NEW.md` (grounded plan +
+  decisions IM-1..6 + phased PDCA). Awaiting decision sign-off before DO._
   - User can upload a `.feature` file; validate invalid file type, format,
     and content.
   - One feature file may contain one or more scenarios — split each

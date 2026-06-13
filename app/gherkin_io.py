@@ -57,7 +57,12 @@ _ENUM_DIRECTIVE_RE: re.Pattern[str] = re.compile(
     r"^#\s*enum\.([^:\s]+)\s*:\s*(.*?)\s*$"
 )
 
-__all__ = ["parse_feature", "serialize_feature"]
+__all__ = [
+    "parse_feature",
+    "serialize_feature",
+    "split_feature_source",
+    "source_has_enum_directives",
+]
 
 
 # ---------------------------------------------------------------------------
@@ -93,7 +98,18 @@ def parse_feature(source: str) -> Feature:
         feature_ast,
     )
 
-    background_ast, scenario_ast = _split_children(feature_ast.get("children") or [])
+    background_ast, scenario_asts = _collect_children(feature_ast.get("children") or [])
+    if len(scenario_asts) > 1:
+        loc = (scenario_asts[1] or {}).get("location") or {}
+        raise GherkinParseError(
+            line=int(loc.get("line", 0) or 0),
+            column=int(loc.get("column", 0) or 0),
+            message=(
+                "More than one scenario in the file. "
+                "TMS requires exactly one scenario per .feature file."
+            ),
+        )
+    scenario_ast = scenario_asts[0] if scenario_asts else None
 
     description = _assemble_description(
         name=feature_ast.get("name") or "",
@@ -122,6 +138,89 @@ def parse_feature(source: str) -> Feature:
     )
 
 
+def split_feature_source(source: str) -> list[Feature]:
+    """Split a multi-scenario ``.feature`` source into one :class:`Feature` per scenario.
+
+    Pure (text in / models out): the import splitter. Unlike
+    :func:`parse_feature` it accepts files with **more than one** scenario
+    and returns a separate :class:`Feature` for each, all **sharing** the
+    file-level ``description``, feature-level ``tags`` and ``background``.
+    Each :class:`Feature` keeps **its own** scenario-level tags. Enum
+    directives are **dropped** (``enums`` is always emptied).
+
+    Behavior:
+
+    - ``Rule:`` blocks raise :class:`~app.errors.GherkinParseError` (same as
+      :func:`parse_feature`).
+    - A missing ``Feature:`` header is repaired by synthesizing a blank one
+      (the produced features share a blank description); a deterministic
+      pre-scan decides this so genuine syntax errors are not masked. Parse
+      error positions are corrected for the synthesized line.
+    - A header with **zero** scenarios returns ``[]`` (the caller turns this
+      into a "no scenarios to import" content error).
+    """
+    source = _normalize_newlines(source)
+    prepared, line_offset = _ensure_feature_header(source)
+
+    try:
+        gherkin_doc: dict[str, Any] = Parser().parse(prepared)
+    except CompositeParserException as e:
+        raise _wrap_parser_exception(e, line_offset=line_offset) from e
+
+    feature_ast = gherkin_doc.get("feature")
+    if feature_ast is None:
+        # Should not happen after synthesis, but guard rather than crash.
+        raise GherkinParseError(
+            line=1,
+            column=1,
+            message="No 'Feature:' header found in the file.",
+        )
+
+    background_ast, scenario_asts = _collect_children(
+        feature_ast.get("children") or []
+    )
+
+    description = _assemble_description(
+        name=feature_ast.get("name") or "",
+        body=feature_ast.get("description") or "",
+    )
+    tags = [_strip_at(t) for t in (feature_ast.get("tags") or [])]
+
+    features: list[Feature] = []
+    for scenario_ast in scenario_asts:
+        # A fresh Background per case (independent Step objects) so the
+        # shared steps are never aliased between produced features.
+        background = Background(
+            steps=_extract_steps(
+                background_ast.get("steps") if background_ast else None
+            )
+        )
+        features.append(
+            Feature(
+                description=description,
+                tags=list(tags),
+                background=background,
+                scenario=_build_scenario(scenario_ast),
+                enums={},
+            )
+        )
+    return features
+
+
+def source_has_enum_directives(source: str) -> bool:
+    """Return ``True`` if ``source`` contains any ``# enum.<kind>: <key>`` line.
+
+    Used by the import preview to warn that enum directives will be dropped
+    (:func:`split_feature_source` always empties ``enums``). Scans every line
+    for the directive shape; a loose match is intentional (over-warning is
+    harmless — the user just confirms the drop).
+    """
+    for raw in _normalize_newlines(source).split("\n"):
+        if _ENUM_DIRECTIVE_RE.match(raw.strip()):
+            return True
+    return False
+
+
 # ---------------------------------------------------------------------------
 # Helpers
 # ---------------------------------------------------------------------------
@@ -130,6 +229,34 @@ def parse_feature(source: str) -> Feature:
 def _normalize_newlines(source: str) -> str:
     """Convert CRLF and lone CR to LF per PLAN.md \u00a75.1."""
     return source.replace("\r\n", "\n").replace("\r", "\n")
+
+
+# Matches a ``Feature:`` header line (optional leading whitespace). English
+# keyword only — localized ``# language:`` files are out of scope for import.
+_FEATURE_HEADER_RE: re.Pattern[str] = re.compile(r"^\s*Feature\s*:")
+
+
+def _ensure_feature_header(source: str) -> tuple[str, int]:
+    """Synthesize a blank ``Feature:`` header when the source lacks one.
+
+    Returns ``(prepared_source, line_offset)`` where ``line_offset`` is the
+    number of lines prepended (``1`` when synthesized, else ``0``) so callers
+    can correct reported parse-error line numbers.
+
+    A deterministic pre-scan finds the first *significant* line (skipping
+    blank lines, ``#`` comments and ``@tag`` lines). If that line is not a
+    ``Feature:`` header, ``Feature:\\n`` is prepended. Using a pre-scan
+    rather than catching parse exceptions avoids masking genuine syntax
+    errors elsewhere in the file.
+    """
+    for raw in source.split("\n"):
+        line = raw.strip()
+        if not line or line.startswith("#") or line.startswith("@"):
+            continue
+        if _FEATURE_HEADER_RE.match(raw):
+            return source, 0
+        break
+    return "Feature:\n" + source, 1
 
 
 def _extract_enum_directives(
@@ -200,11 +327,18 @@ def _extract_enum_directives(
     return enums
 
 
-def _wrap_parser_exception(exc: CompositeParserException) -> GherkinParseError:
+def _wrap_parser_exception(
+    exc: CompositeParserException, *, line_offset: int = 0
+) -> GherkinParseError:
     """Convert a ``CompositeParserException`` into our domain error type.
 
     Surfaces the *first* inner error's line/column so the UI can highlight
     a single position. The remaining errors are summarized in the message.
+
+    ``line_offset`` is subtracted from the reported line so that positions
+    stay correct for callers that synthesized a leading ``Feature:`` line
+    (see :func:`split_feature_source`); the reported line is clamped to a
+    minimum of 1.
     """
     inner_errors = getattr(exc, "errors", None) or []
     if inner_errors:
@@ -212,6 +346,8 @@ def _wrap_parser_exception(exc: CompositeParserException) -> GherkinParseError:
         loc = getattr(first, "location", None) or {}
         line = int(loc.get("line", 0) or 0)
         column = int(loc.get("column", 0) or 0)
+        if line_offset and line:
+            line = max(1, line - line_offset)
         message = getattr(first, "message", None) or str(first)
         if len(inner_errors) > 1:
             message = f"{message} (and {len(inner_errors) - 1} more parse error(s))"
@@ -219,16 +355,18 @@ def _wrap_parser_exception(exc: CompositeParserException) -> GherkinParseError:
     return GherkinParseError(line=0, column=0, message=str(exc))
 
 
-def _split_children(
+def _collect_children(
     children: list[dict[str, Any]],
-) -> tuple[dict[str, Any] | None, dict[str, Any] | None]:
-    """Walk the feature's children, returning (background, scenario).
+) -> tuple[dict[str, Any] | None, list[dict[str, Any]]]:
+    """Walk the feature's children, returning (background, [scenario_ast]).
 
-    Raises :class:`GherkinParseError` if a ``rule`` child is encountered or
-    if more than one scenario is present.
+    Collects **every** scenario child in document order; the caller decides
+    the single-vs-multi policy (``parse_feature`` rejects ``len > 1``,
+    :func:`split_feature_source` keeps them all). Raises
+    :class:`GherkinParseError` if a ``rule`` child is encountered.
     """
     background_ast: dict[str, Any] | None = None
-    scenario_ast: dict[str, Any] | None = None
+    scenario_asts: list[dict[str, Any]] = []
 
     for child in children:
         if "rule" in child:
@@ -244,19 +382,9 @@ def _split_children(
             # but guard defensively.
             background_ast = child["background"]
         elif "scenario" in child:
-            if scenario_ast is not None:
-                loc = (child["scenario"] or {}).get("location") or {}
-                raise GherkinParseError(
-                    line=int(loc.get("line", 0) or 0),
-                    column=int(loc.get("column", 0) or 0),
-                    message=(
-                        "More than one scenario in the file. "
-                        "TMS requires exactly one scenario per .feature file."
-                    ),
-                )
-            scenario_ast = child["scenario"]
+            scenario_asts.append(child["scenario"])
 
-    return background_ast, scenario_ast
+    return background_ast, scenario_asts
 
 
 def _strip_at(tag: dict[str, Any]) -> str:

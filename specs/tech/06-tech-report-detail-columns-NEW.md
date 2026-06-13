@@ -129,5 +129,3 @@ itself, and any change to report config/storage.
   per-case keys (RP-5). Full suite **282/282 PASS** (was 279).
 - **ACT.** `DONE.md` entry added; backlog item cleared from
   `IN-PROGRESS.md`; this spec marked shipped.
-</CodeContent>
-<parameter name="EmptyFile">false

@@ -4,10 +4,10 @@ from __future__ import annotations
 
 import os
 
-from ..errors import NameConflictError
+from ..errors import ImportValidationError, NameConflictError, ValidationError
 from ..gherkin_io import parse_feature, serialize_feature
-from ..models import Feature, Scenario
-from ._core import PartsLike, _normalize_filename
+from ..models import Feature, Scenario, validate_feature
+from ._core import MAX_FOLDER_DEPTH, PartsLike, _normalize_filename
 
 
 class FeaturesMixin:
@@ -79,6 +79,186 @@ class FeaturesMixin:
             text = serialize_feature(feature)
             self._atomic_write_bytes(target, text.encode("utf-8"))
             self._mark_write(target)
+
+    def create_feature_file(self, parts: PartsLike, feature: Feature) -> None:
+        """Create a new ``.feature`` file from a full :class:`Feature`.
+
+        Like :meth:`create_file` but persists an arbitrary ``feature``
+        (serialised in one shot) rather than a placeholder scenario. Used by
+        the import flow. Runs the same gates as :meth:`create_file`:
+        leaf normalisation, per-segment validation, reserved-area rejection,
+        name-conflict guard, enum cross-check, and serializer validation.
+
+        Raises :class:`NameConflictError` if a file already exists at the
+        resolved path; :class:`FileNotFoundError` if the parent folder is
+        missing; :class:`~app.errors.ValidationError` on any serializer
+        invariant.
+        """
+        segments = self._split(parts)
+        if not segments:
+            raise ValueError("create_feature_file requires a non-empty path.")
+
+        leaf = _normalize_filename(segments[-1])
+        final_segments = [*segments[:-1], leaf]
+        for seg in final_segments:
+            self._validate_segment(seg)
+        self._reject_reserved_typed_area(final_segments)
+
+        target = self._resolve(final_segments)
+        key = self._key(final_segments)
+        with self._lock_for(key):
+            if target.exists():
+                raise NameConflictError(
+                    path=key,
+                    message=f"A file named {leaf!r} already exists.",
+                )
+            self._cross_check_enums(final_segments[0], feature)
+            text = serialize_feature(feature)
+            self._atomic_write_bytes(target, text.encode("utf-8"))
+            self._mark_write(target)
+
+    def import_feature_cases(
+        self,
+        parent_parts: PartsLike,
+        items: list[tuple[str, Feature]],
+    ) -> list[str]:
+        """Import split scenarios as new ``.feature`` files (all-or-nothing).
+
+        ``items`` pairs a **user-supplied** ``file_name`` with the
+        :class:`Feature` for one scenario (produced by
+        :func:`~app.gherkin_io.split_feature_source`).
+
+        Runs a full **pre-flight** with no writes, collecting **every**
+        blocking reason (so the user fixes them in one pass) and raising
+        :class:`~app.errors.ImportValidationError` if any are found:
+
+        - each ``file_name`` normalises + passes segment validation;
+        - scenario ``name`` is required (non-empty) and ``steps`` is required;
+        - :func:`validate_feature` serializer invariants hold;
+        - **1-level-folder-scope uniqueness** (case-insensitive): no two
+          imported file names or scenario names collide with each other or
+          with an existing direct child of the destination folder.
+
+        On a clean pre-flight, writes each case via
+        :meth:`create_feature_file`. If a write fails mid-batch, the
+        already-written files are deleted (compensating rollback) so the
+        operation is all-or-nothing. Returns the created paths on success.
+
+        Raises :class:`FileNotFoundError` if the destination folder is
+        missing, :class:`ValueError` / :class:`NameConflictError` for an
+        invalid or reserved destination, and
+        :class:`~app.errors.ImportValidationError` for content / conflict
+        problems.
+        """
+        parent_segments = self._split(parent_parts)
+
+        # --- structural destination checks (must pass to proceed) --------
+        for seg in parent_segments:
+            self._validate_segment(seg)
+        if not (2 <= len(parent_segments) <= MAX_FOLDER_DEPTH):
+            raise ValueError(
+                "Import destination must be a module or sub-folder "
+                f"(2..{MAX_FOLDER_DEPTH} segments); got {len(parent_segments)}."
+            )
+        # Reserve-area check (probe with a dummy leaf so depth-2 reservation
+        # is evaluated against the destination, matching create_file).
+        self._reject_reserved_typed_area([*parent_segments, "_probe.feature"])
+        parent_dir = self._resolve(parent_segments)
+        if not parent_dir.is_dir():
+            raise FileNotFoundError(f"Folder not found: {parent_dir}")
+
+        if not items:
+            raise ImportValidationError(reasons=["No scenarios to import."])
+
+        # --- existing direct children (file + scenario names, folders) ----
+        listing = self.list_folder(parent_segments)
+        existing_files = {
+            f["file_name"].lower() for f in listing.get("features", [])
+        }
+        existing_files |= {n.lower() for n in listing.get("folders", [])}
+        existing_scenarios = {
+            f["scenario_name"].casefold()
+            for f in listing.get("features", [])
+            if f["scenario_name"]
+        }
+
+        # --- per-item collect-all validation -----------------------------
+        reasons: list[str] = []
+        seen_files: set[str] = set()
+        seen_scenarios: set[str] = set()
+        planned: list[tuple[list[str], Feature]] = []
+
+        for idx, (raw_name, feature) in enumerate(items):
+            scen_name = feature.scenario.name
+            label = scen_name.strip() or f"scenario #{idx + 1}"
+
+            leaf: str | None = None
+            try:
+                leaf = _normalize_filename(raw_name)
+                self._validate_segment(leaf)
+            except ValueError as e:
+                reasons.append(f"{label}: {e}")
+
+            if not scen_name.strip():
+                reasons.append(f"scenario #{idx + 1}: scenario name is required.")
+            if not feature.scenario.steps:
+                reasons.append(f"{label}: scenario must have at least one step.")
+
+            try:
+                validate_feature(feature)
+            except ValidationError as e:
+                reasons.append(f"{label}: {e.message}")
+
+            if leaf is not None:
+                lkey = leaf.lower()
+                if lkey in existing_files:
+                    reasons.append(
+                        f"{label}: a file named {leaf!r} already exists in "
+                        f"the destination."
+                    )
+                elif lkey in seen_files:
+                    reasons.append(
+                        f"{label}: duplicate file name {leaf!r} within this "
+                        f"import."
+                    )
+                else:
+                    seen_files.add(lkey)
+                planned.append(([*parent_segments, leaf], feature))
+
+            if scen_name.strip():
+                skey = scen_name.casefold()
+                if skey in existing_scenarios:
+                    reasons.append(
+                        f"{label}: a case with scenario name "
+                        f"{scen_name.strip()!r} already exists in the "
+                        f"destination."
+                    )
+                elif skey in seen_scenarios:
+                    reasons.append(
+                        f"{label}: duplicate scenario name "
+                        f"{scen_name.strip()!r} within this import."
+                    )
+                else:
+                    seen_scenarios.add(skey)
+
+        if reasons:
+            raise ImportValidationError(reasons=reasons)
+
+        # --- write phase: all-or-nothing with compensating rollback -------
+        written: list[list[str]] = []
+        try:
+            for final_segments, feature in planned:
+                self.create_feature_file(final_segments, feature)
+                written.append(final_segments)
+        except BaseException:
+            for seg in written:
+                try:
+                    self.delete_file(seg)
+                except Exception:
+                    pass
+            raise
+
+        return [self._key(seg) for seg in written]
 
     def write_feature(self, parts: PartsLike, feature: Feature) -> None:
         """Serialise and atomically write an existing file's :class:`Feature`.

@@ -21,6 +21,7 @@ from ..errors import (
     EnumInUseError,
     EnumsParseError,
     GherkinParseError,
+    ImportValidationError,
     NameConflictError,
     ReportParseError,
     RunParseError,
@@ -96,6 +97,16 @@ def _handle_enum_in_use(e: EnumInUseError):
             "count": e.count,
             "sample": e.sample,
         },
+    )
+
+
+@api.errorhandler(ImportValidationError)
+def _handle_import_validation(e: ImportValidationError):
+    return _error(
+        "import_validation_error",
+        e.message,
+        422,
+        details={"reasons": e.reasons},
     )
 
 
