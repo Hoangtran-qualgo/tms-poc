@@ -1,18 +1,17 @@
 # 14 · Import test cases (upload a `.feature`, split into cases)
 
-_Build phase. Status: **DO-1–DO-4 shipped Jun 13, 2026 — awaiting manual
-walkthrough + ACT cleanup.** Splitter (`split_feature_source` +
+_**SHIPPED Jun 13, 2026.** Splitter (`split_feature_source` +
 `_collect_children`) in `app/gherkin_io.py`; storage (`create_feature_file` +
 `import_feature_cases`, all-or-nothing with compensating rollback, collect-all
 `ImportValidationError`) in `app/storage/_features.py`; API
 (`POST /api/files/import/preview` + `POST /api/files/import`, 3 MB cap on both)
-in `app/server/routes_files.py` + `app/server/errors.py`; UI (`tmsImportFile`
-modal + Import button) in `app/static/03_folder_actions.js`,
-`folder_module.html`, `folder_subfolder.html`. Covered by `F14_01`..`F14_04`
-smokes; full suite 286/286. Decisions IM-1..H + the three DO-2 decisions signed
-off Jun 13, 2026 (see §5, §8). Filed from the `IN-PROGRESS.md` Must-have
-"Investigate new feature: import test cases". Grounded against live code
-Jun 13, 2026._
+in `app/server/routes_files.py` + `app/server/errors.py`; UI (top-bar
+`tmsImportFile()` modal) in `app/static/03_folder_actions.js` +
+`app/templates/base.html`. Covered by `F14_01`..`F14_04` smokes
+(`.smoke-scratch/feature-14/COVERAGE.md`); full suite 286/286. Decisions
+IM-1..H + the three DO-2 decisions signed off Jun 13, 2026 (see §5, §8).
+Filed from the `IN-PROGRESS.md` Must-have "Investigate new feature: import
+test cases" (now in `DONE.md`). Grounded against live code Jun 13, 2026._
 
 > [!IMPORTANT]
 > **VERY IMPORTANT NOTE (as of feature 14): the TMS tool supports only
@@ -331,20 +330,25 @@ insensitive**, mirroring the file-name rule (G7).
    project/parent mismatch, in-scope conflict abort (reasons), no-scenario
    content error. Full suite 285/285.
 4. **DO-4 (UI) — DONE Jun 13, 2026.** Global `Import test cases` button in
-   the **top bar** (`base.html`) → `tmsImportFile()` modal (moved out of the
-   folder views per USER). Modal: project selector + destination-folder
-   selector (built from `/api/tree`, folders shown **relative to the chosen
-   project**), `.feature` file picker (outstanding border style) with
-   client-side type + 3 MB gating, dry-run preview, per-scenario read-only
-   name + editable filename input (slug-prefilled), enum-drop
-   acknowledgement gate, Confirm gated on a chosen folder + every filename
-   filled + enum ack; server `import_validation_error` reasons rendered as a
-   list; success refreshes the destination folder + tree. **CHECK (done):**
-   `F14_04_import_ui.py` (top-bar button, removed-from-folder-views,
-   relative folder display, styled picker, preview/commit wiring, gating,
-   reasons). Manual walkthrough pending USER. Full suite 286/286.
-5. **ACT:** `DONE.md`, `feature-14/COVERAGE.md`, clear the backlog item,
-   mark this spec shipped.
+   the **top bar** (`base.html`) → `tmsImportFile()` modal (`xl` width).
+   Modal: project selector + destination-folder selector (built from
+   `/api/tree`, folders shown **relative to the chosen project**), `.feature`
+   file picker (outstanding border style) with client-side type + 3 MB
+   gating, dry-run preview rendered as a bordered table
+   (**Scenario name** truncated to 30 chars · **Feature tag** · **Scenario
+   tag**, tags as top-2 `@`-prefixed + `+N more` · **File name** input with
+   placeholder `file name`, no pre-fill), enum-drop acknowledgement gate,
+   Confirm gated on a chosen folder + every filename filled + enum ack;
+   server `import_validation_error` reasons rendered as a list; success
+   refreshes the destination folder + tree. **CHECK (done):**
+   `F14_04_import_ui.py` (top-bar button, removed-from-folder-views, relative
+   folder display, styled picker, table columns + truncation + tag format +
+   placeholder + wide modal, preview/commit wiring, gating, reasons). Full
+   suite 286/286.
+5. **ACT — DONE Jun 13, 2026.** `DONE.md` entry added;
+   `.smoke-scratch/feature-14/COVERAGE.md` written; the `IN-PROGRESS.md`
+   Must-have item moved to `DONE.md`; this spec marked shipped. Dead
+   `parent` arg dropped from `tmsImportFile` (top-bar launch passes none).
 
 ## 9. Out of scope (v1)
 

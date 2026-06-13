@@ -4,6 +4,42 @@ Items fixed during v1 manual verification.
 
 ## Must have
 
+- **Import test cases (upload a `.feature`, split into cases) — `feature-14`
+  (shipped Jun 13, 2026).** Spec:
+  `specs/features/14-feature-import-test-cases-NEW.md`. Upload one `.feature`
+  file; each scenario is split into a single test case (the one-file =
+  one-scenario model invariant), all sharing the source feature description,
+  feature tags, and `Background`.
+  - **Splitter (DO-1).** `split_feature_source` + a shared `_collect_children`
+    helper in `app/gherkin_io.py`; `parse_feature` (exactly-one) rebuilt on
+    top so feature-01's error/line-col contracts stay byte-identical. Missing
+    `Feature:` header is synthesized with a blank description (IM-A); enum
+    directives are always dropped (IM-2).
+  - **Storage (DO-2).** `create_feature_file` + `import_feature_cases` in
+    `app/storage/_features.py` — **all-or-nothing** with a pre-flight
+    (collect-all `ImportValidationError`) and compensating-delete rollback on
+    any mid-write failure. Uniqueness (file + scenario names) is scoped to the
+    destination folder's direct children, **case-insensitive**, and also
+    enforced within the batch.
+  - **API (DO-3).** `POST /api/files/import/preview` (shared header +
+    per-scenario `{scenario_name, step_count, scenario_tags}` + `enums_present`)
+    and `POST /api/files/import` (`{project, parent, source, names}`), both
+    capped at **3 MB**; text body (no multipart, mirrors `PUT /files/<p>/raw`).
+    `ImportValidationError` → 422 `import_validation_error {reasons}`
+    (`app/server/routes_files.py`, `app/server/errors.py`).
+  - **UI (DO-4).** Global **Import test cases** button in the top bar
+    (`app/templates/base.html`) → `tmsImportFile()` modal
+    (`app/static/03_folder_actions.js`): project + destination-folder pickers
+    (built from `/api/tree`, folders shown relative to the chosen project),
+    `.feature` picker with client type + 3 MB gating, a bordered preview table
+    (Scenario name 30-char truncate · Feature tag · Scenario tag as top-2
+    `@`+N-more · File name input, placeholder-only), enum-drop acknowledgement
+    gate, and collect-all reason list on abort.
+  - **NOTE:** only **feature + scenario** tags are supported; `Examples:`-level
+    tags are not a first-class concept yet (they round-trip verbatim but are
+    not surfaced). Documented in the spec + `README.md`.
+  - Tests: new `feature-14/F14_01..04` + `COVERAGE.md`. Full suite **286/286**.
+
 - **Revamp test-case detail (editor) + search display — `tech-04`
   (shipped Jun 13, 2026).** Spec:
   `specs/tech/04-tech-testcase-detail-revamp-NEW.md`.

@@ -280,20 +280,16 @@ function tmsCreateFile(parent) {
 
 /**
  * Open the "Import test cases" modal (feature-14). Launched from the global
- * top-bar button (no argument). Upload a single `.feature` file, preview the
- * split scenarios, name each output file, then commit. The destination is
- * chosen via a project selector + a destination-folder selector that lists
- * folders **relative to the chosen project** (module level and below).
- * `parent` is optional: when provided (legacy folder-view launch) it pre-
- * selects that folder. Enum directives are dropped on import; when the file
- * contains any, the user must acknowledge the drop before Confirm enables.
- * All blocking validation (duplicate file / scenario names, content rules)
- * is delegated to the server, whose `import_validation_error` reasons are
- * rendered as a list.
+ * top-bar button. Upload a single `.feature` file, preview the split
+ * scenarios, name each output file, then commit. The destination is chosen
+ * via a project selector + a destination-folder selector that lists folders
+ * **relative to the chosen project** (module level and below). Enum
+ * directives are dropped on import; when the file contains any, the user
+ * must acknowledge the drop before Confirm enables. All blocking validation
+ * (duplicate file / scenario names, content rules) is delegated to the
+ * server, whose `import_validation_error` reasons are rendered as a list.
  */
-async function tmsImportFile(parent) {
-  const defaultProject = (parent || "").split("/")[0] || "";
-
+async function tmsImportFile() {
   let tree;
   try {
     const r = await fetch("/api/tree", { headers: { Accept: "application/json" } });
@@ -377,9 +373,7 @@ async function tmsImportFile(parent) {
     opt.textContent = p;
     projectSel.appendChild(opt);
   }
-  projectSel.value = foldersByProject.has(defaultProject)
-    ? defaultProject
-    : projects[0];
+  projectSel.value = projects[0];
 
   const populateFolders = () => {
     folderSel.innerHTML = "";
@@ -403,7 +397,6 @@ async function tmsImportFile(parent) {
         opt.textContent = f.startsWith(prefix) ? f.slice(prefix.length) : f;
         folderSel.appendChild(opt);
       }
-      if (parent && list.includes(parent)) folderSel.value = parent;
     }
   };
   populateFolders();

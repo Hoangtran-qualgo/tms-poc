@@ -42,11 +42,11 @@ with tempfile.TemporaryDirectory() as td:
     print("PASS  U2: Import button removed from folder views (now top-bar only)")
 
 
-# --- U3: tmsImportFile is defined --------------------------------------------
-m = re.search(r"async function tmsImportFile\(parent\)\s*\{", JS)
-assert m, "U3: tmsImportFile(parent) must be defined"
+# --- U3: tmsImportFile is defined (no-arg, top-bar launcher) -----------------
+m = re.search(r"async function tmsImportFile\(\)\s*\{", JS)
+assert m, "U3: tmsImportFile() must be defined as a no-argument top-bar launcher"
 body = JS[m.start():]
-print("PASS  U3: tmsImportFile(parent) controller is defined")
+print("PASS  U3: tmsImportFile() controller is defined")
 
 
 # --- U4: builds destination picker from /api/tree (relative display) ---------
