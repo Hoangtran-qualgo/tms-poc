@@ -1,3 +1,3 @@
 Feature: user can filter shared file
 
-  Scenario:
+  Scenario: user can filter shared file

@@ -115,7 +115,7 @@ with tempfile.TemporaryDirectory() as td:
         h for h in s.search("needle", match="text")
         if h["file_path"] == "Alpha/mod1/hit.feature"
     )
-    assert set(text_hit) == {"file_path", "description", "matched_field", "match_value"}, (
+    assert set(text_hit) == {"file_path", "description", "scenario_name", "matched_field", "match_value"}, (
         f"SR4: unexpected keys {set(text_hit)}"
     )
     assert text_hit["matched_field"] == "description", (
@@ -129,7 +129,7 @@ with tempfile.TemporaryDirectory() as td:
     )
 
     tag_hit = next(iter(s.search("needle", match="tag")))
-    assert set(tag_hit) == {"file_path", "description", "matched_field", "match_value"}, (
+    assert set(tag_hit) == {"file_path", "description", "scenario_name", "matched_field", "match_value"}, (
         f"SR4[tag]: unexpected keys {set(tag_hit)}"
     )
     assert tag_hit["matched_field"] == "tag", (

@@ -38,11 +38,11 @@ def compute_report(storage: Any, project: str, report: Report) -> dict[str, Any]
     if report.type == "enum_ranking":
         return _enum_ranking(storage, project, report)
     if report.type == "tag_ranking":
-        return _tag_ranking(storage, report)
+        return _tag_ranking(storage, project, report)
     if report.type == "case_trend":
         return _case_trend(storage, report)
     if report.type == "tag_inventory":
-        return _tag_inventory(storage, report)
+        return _tag_inventory(storage, project, report)
     raise ValueError(f"Unknown report type: {report.type!r}")
 
 
@@ -140,6 +140,41 @@ def _case_tags(feature: Feature) -> set[str]:
     return set(feature.tags) | set(feature.scenario.tags)
 
 
+def _read_vocab(storage: Any, project: str) -> dict[str, Any]:
+    """Best-effort project enum vocab; ``{}`` when missing / unreadable.
+
+    Used by the tag-ranking / tag-inventory per-case enum display (tech-06
+    RP-2). Degrades silently to key-only display rather than adding a
+    warning, since enums are a secondary dimension on those report types.
+    """
+    try:
+        return storage.read_project_enums(project)
+    except (FileNotFoundError, EnumsParseError):
+        return {}
+
+
+def _case_enums(feature: Feature, vocab: dict[str, Any]) -> list[dict[str, str]]:
+    """Per-case enum display rows ``{kind, key, label}``, sorted by kind.
+
+    ``label`` is the human label from ``vocab`` when one exists and differs
+    from the key; otherwise it is left empty so the template shows the key
+    alone (avoids a redundant ``p1 : p1``). tech-06 RP-2: ``key : label``.
+    """
+    out: list[dict[str, str]] = []
+    for kind, key in sorted(feature.enums.items()):
+        if not key:
+            continue
+        label = vocab.get(kind, {}).get(key, "")
+        out.append(
+            {
+                "kind": kind,
+                "key": key,
+                "label": label if label and label != key else "",
+            }
+        )
+    return out
+
+
 def _qualifying_cases(runs: list[tuple[str, Any]], status: str) -> list[str]:
     """Distinct case ``file_path``s that recorded ``status`` in >=1 run (D7).
 
@@ -205,38 +240,60 @@ def _enum_ranking(storage: Any, project: str, report: Report) -> dict[str, Any]:
             value,
             {"value": value, "label": label, "synthetic": synthetic, "cases": []},
         )
-        g["cases"].append({"file_path": path})
+        # tech-06 ask 3: enum-ranking per-case detail gains scenario name + tags.
+        g["cases"].append(
+            {
+                "file_path": path,
+                "scenario_name": feature.scenario.name if feature else "",
+                "tags": sorted(_case_tags(feature)) if feature else [],
+            }
+        )
 
     buckets = _finalize_buckets(groups, total)
     return _envelope(report, total, buckets=buckets, warnings=warnings)
 
 
-def _tag_ranking(storage: Any, report: Report) -> dict[str, Any]:
+def _tag_ranking(storage: Any, project: str, report: Report) -> dict[str, Any]:
     runs, warnings = _ordered_runs(storage, report)
     cases = _qualifying_cases(runs, report.status)
     total = len(cases)
 
+    vocab = _read_vocab(storage, project)
     cache: dict[str, Optional[Feature]] = {}
     groups: dict[str, dict[str, Any]] = {}
 
-    def bucket(value: str, label: str, synthetic: bool, path: str) -> None:
+    def bucket(
+        value: str, label: str, synthetic: bool, case: dict[str, Any]
+    ) -> None:
         g = groups.setdefault(
             value,
             {"value": value, "label": label, "synthetic": synthetic, "cases": []},
         )
-        g["cases"].append({"file_path": path})
+        g["cases"].append(case)
 
     for path in cases:
         feature = _read_feature(storage, cache, path)
         if feature is None:
-            bucket(REMOVED, REMOVED, True, path)
+            # tech-06 ask 2: tag-ranking per-case gains scenario name + enums.
+            bucket(
+                REMOVED,
+                REMOVED,
+                True,
+                {"file_path": path, "scenario_name": "", "enums": []},
+            )
             continue
+        case = {
+            "file_path": path,
+            "scenario_name": feature.scenario.name,
+            "enums": _case_enums(feature, vocab),
+        }
         tags = _case_tags(feature)
         if not tags:
-            bucket(UNTAGGED, UNTAGGED, True, path)
+            bucket(UNTAGGED, UNTAGGED, True, case)
             continue
+        # RP-6: a multi-tagged case repeats (the same case dict) per bucket.
         for tag in tags:
-            bucket(tag, tag, False, path)
+            bucket(tag, tag, False, case)
 
     buckets = _finalize_buckets(groups, total)
     return _envelope(report, total, buckets=buckets, warnings=warnings)
@@ -254,9 +311,13 @@ def _case_trend(storage: Any, report: Report) -> dict[str, Any]:
             if r.file_path == target:
                 result = r.result
                 break
+        # tech-06 ask 1: surface the human run name alongside the file name.
+        # Runs are guaranteed a non-empty name at write time (validate_run),
+        # so no fallback is needed (RP-3).
         trend.append(
             {
                 "run": file_name,
+                "run_name": run.name,
                 "run_path": path,
                 "created_at": run.created_at,
                 "result": result,
@@ -282,7 +343,7 @@ def _case_trend(storage: Any, report: Report) -> dict[str, Any]:
     )
 
 
-def _tag_inventory(storage: Any, report: Report) -> dict[str, Any]:
+def _tag_inventory(storage: Any, project: str, report: Report) -> dict[str, Any]:
     warnings: list[str] = []
     try:
         paths = list(storage.iter_feature_paths(report.scope))
@@ -294,18 +355,25 @@ def _tag_inventory(storage: Any, report: Report) -> dict[str, Any]:
             warnings=[f"Scope folder not found: {report.scope}"],
         )
 
+    vocab = _read_vocab(storage, project)
     cache: dict[str, Optional[Feature]] = {}
-    carrying: list[dict[str, str]] = []
-    missing: list[dict[str, str]] = []
+    carrying: list[dict[str, Any]] = []
+    missing: list[dict[str, Any]] = []
     for path in paths:
         feature = _read_feature(storage, cache, path)
         if feature is None:
             warnings.append(f"Unreadable feature skipped: {path}")
             continue
+        # tech-06 ask 4: tag-inventory per-case gains scenario name + enums.
+        case = {
+            "file_path": path,
+            "scenario_name": feature.scenario.name,
+            "enums": _case_enums(feature, vocab),
+        }
         if report.tag in _case_tags(feature):
-            carrying.append({"file_path": path})
+            carrying.append(case)
         else:
-            missing.append({"file_path": path})
+            missing.append(case)
 
     total = len(carrying) + len(missing)
     buckets = [

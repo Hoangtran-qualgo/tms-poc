@@ -1,3 +1,3 @@
 Feature: user can create new page
 
-  Scenario:
+  Scenario: user can create new page

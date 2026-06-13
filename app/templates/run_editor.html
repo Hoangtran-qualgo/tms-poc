@@ -77,9 +77,10 @@
          class="w-full text-sm border border-slate-200 rounded overflow-hidden bg-white table-fixed{% if not run.results %} hidden{% endif %}">
     <thead class="bg-slate-100 text-slate-600">
       <tr>
-        <th class="text-left px-3 py-2 font-medium w-2/5">Test case</th>
+        <th class="text-left px-3 py-2 font-medium w-1/4">Test case</th>
+        <th class="text-left px-3 py-2 font-medium">Scenario name</th>
         <th class="text-left px-3 py-2 font-medium w-40">Result</th>
-        <th class="text-left px-3 py-2 font-medium">Remark</th>
+        <th class="text-left px-3 py-2 font-medium w-1/4">Remark</th>
         <th class="text-left px-3 py-2 font-medium w-10"></th>
       </tr>
     </thead>
@@ -99,7 +100,7 @@
       {% endfor %}
       {% for folder in ns.folders %}
       <tr class="run-group-head bg-slate-50 border-t border-slate-200" data-group-folder="{{ folder }}">
-        <td colspan="4" class="px-3 py-1.5"><span class="inline-block font-mono text-xs font-semibold text-slate-700 bg-slate-200 rounded px-1.5 py-0.5">{{ folder if folder else '(ungrouped)' }}</span></td>
+        <td colspan="5" class="px-3 py-1.5"><span class="inline-block font-mono text-xs font-semibold text-slate-700 bg-slate-200 rounded px-1.5 py-0.5">{{ folder if folder else '(ungrouped)' }}</span></td>
       </tr>
       {% for r in run.results %}
         {% set _parts = r.file_path.rsplit('/', 1) %}
@@ -122,6 +123,9 @@
             <span data-role="filename" class="truncate min-w-0 {% if r.missing %}line-through text-slate-400{% else %}text-slate-700{% endif %}">{{ _filename }}</span>
           </a>
         </td>
+        {# tech-05: scenario name is display-only — a plain text cell (NOT an
+           input) so the DOM dirty-snapshot in tmsRunEditor never picks it up. #}
+        <td class="run-scenario-name px-3 py-2 text-slate-600 truncate" title="{{ r.scenario_name }}">{{ r.scenario_name }}</td>
         <td class="px-3 py-2">
           <select class="run-result-select w-full border border-slate-300 rounded px-1.5 py-1 text-sm bg-white font-medium" data-status="{{ r.result }}">
             {% for opt in results_options %}
@@ -131,7 +135,7 @@
         </td>
         <td class="px-3 py-2">
           {% if r.missing %}<span class="run-remark-override italic text-slate-400 text-sm">test case was removed</span>{% endif %}
-          <textarea class="run-remark w-full border border-slate-300 rounded px-2 py-1 text-sm bg-white resize-y{% if r.missing %} hidden{% endif %}" rows="1">{{ r.remark }}</textarea>
+          <textarea class="run-remark w-full border border-slate-300 rounded px-2 py-1 text-sm bg-white resize-y h-10 overflow-y-auto{% if r.missing %} hidden{% endif %}" rows="1">{{ r.remark }}</textarea>
         </td>
         <td class="px-3 py-2 text-center">
           <button type="button" class="run-row-remove text-slate-400 hover:text-rose-600"
@@ -160,6 +164,8 @@
           <span data-role="filename" class="truncate min-w-0 text-slate-700"></span>
         </a>
       </td>
+      {# tech-05: display-only scenario name; populated async on add (RD-1b). #}
+      <td class="run-scenario-name px-3 py-2 text-slate-600 truncate"></td>
       <td class="px-3 py-2">
         <select class="run-result-select w-full border border-slate-300 rounded px-1.5 py-1 text-sm bg-white font-medium">
           {% for opt in results_options %}
@@ -168,7 +174,7 @@
         </select>
       </td>
       <td class="px-3 py-2">
-        <textarea class="run-remark w-full border border-slate-300 rounded px-2 py-1 text-sm bg-white resize-y" rows="1"></textarea>
+        <textarea class="run-remark w-full border border-slate-300 rounded px-2 py-1 text-sm bg-white resize-y h-10 overflow-y-auto" rows="1"></textarea>
       </td>
       <td class="px-3 py-2 text-center">
         <button type="button" class="run-row-remove text-slate-400 hover:text-rose-600"
@@ -183,7 +189,7 @@
      server-rendered `run-group-head` row so client + server markup match. #}
   <template id="run-group-head-template">
     <tr class="run-group-head bg-slate-50 border-t border-slate-200">
-      <td colspan="4" class="px-3 py-1.5"><span class="inline-block font-mono text-xs font-semibold text-slate-700 bg-slate-200 rounded px-1.5 py-0.5"></span></td>
+      <td colspan="5" class="px-3 py-1.5"><span class="inline-block font-mono text-xs font-semibold text-slate-700 bg-slate-200 rounded px-1.5 py-0.5"></span></td>
     </tr>
   </template>
 

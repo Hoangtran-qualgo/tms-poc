@@ -1,3 +1,3 @@
 Feature: user can create new folder
 
-  Scenario:
+  Scenario: user can create new folder

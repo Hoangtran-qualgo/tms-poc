@@ -1,3 +1,3 @@
 Feature: user can delete existing page
 
-  Scenario:
+  Scenario: user can delete existing page

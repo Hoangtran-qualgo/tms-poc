@@ -9,8 +9,8 @@ verify that the rendered editor:
   - includes the disabled-state Tailwind classes on #btn-save so the
     visual disabled state can render once JS sets the attribute
 
-The "Save disabled until description is non-empty" half of AC1 is
-co-asserted by F08_10b which inspects updateSaveButton().
+The "Save disabled until the scenario name is non-empty" half of AC1
+(tech-04 RG1) is co-asserted by F08_10b which inspects updateSaveButton().
 """
 import html as html_lib
 import json
@@ -27,14 +27,15 @@ with tempfile.TemporaryDirectory() as td:
     client = app.test_client()
     client.post("/api/folders", json={"name": "Alpha"})
     client.post("/api/folders", json={"parent": "Alpha", "name": "Mod"})
-    # Seed with non-empty description so create succeeds (description is required).
+    # Seed a case (scenario_name optional at the API per tech-04 Option B).
     client.post(
         "/api/files",
-        json={"parent": "Alpha/Mod", "file_name": "case", "description": "x"},
+        json={"parent": "Alpha/Mod", "file_name": "case",
+              "scenario_name": "Pay", "description": "x"},
     )
     # Now clear the description via PATCH so the editor opens on an
-    # empty-description feature. The server allows the patched value;
-    # only POST /api/files requires non-empty.
+    # empty-description feature. Description is optional (tech-04 D1), so
+    # the PATCH is accepted.
     body = client.get("/api/files/Alpha/Mod/case.feature").get_json()
     body["description"] = ""
     r = client.patch("/api/files/Alpha/Mod/case.feature", json=body)

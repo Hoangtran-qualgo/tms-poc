@@ -1,3 +1,4 @@
 Feature: user can share media file to chat
 
-  Scenario:
+  @regr
+  Scenario: user can share media file to chat

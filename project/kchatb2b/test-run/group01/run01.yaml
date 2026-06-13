@@ -4,7 +4,13 @@ description: ''
 results:
 - file_path: kchatb2b/desktop-app/API/workspace/create_workspace.feature
   result: SKIPPED
-  remark: ''
+  remark: 'asdas
+
+    asdas
+
+    asd
+
+    '
 - file_path: kchatb2b/desktop-app/API/workspace/update_workspace_name.feature
   result: FAILED
   remark: ''

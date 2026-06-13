@@ -141,9 +141,11 @@ const tmsEditor = {
 
   updateSaveButton() {
     const btn = document.getElementById("btn-save");
-    // R3: Save disabled when description is empty/whitespace-only.
-    const desc = (this.state?.feature?.description || "").trim();
-    btn.disabled = !desc;
+    // RG1 (tech-04): Save disabled when the scenario name is
+    // empty/whitespace-only. Scenario name is the case identity; the
+    // feature description is now optional and never gates Save.
+    const name = (this.state?.feature?.scenario?.name || "").trim();
+    btn.disabled = !name;
   },
 
   // ---- Structured render --------------------------------------------
@@ -1029,70 +1031,174 @@ const tmsEditor = {
     if (Object.keys(vocab).length === 0) {
       emptyEl.classList.remove("hidden");
     } else {
-      for (const kind of Object.keys(vocab)) {
-        pickersEl.appendChild(this._buildEnumPicker(kind, vocab[kind] || {}));
-      }
+      this._renderEnumRows(vocab);
     }
     this._renderEnumOrphans();
   },
 
-  _buildEnumPicker(kind, entries) {
-    const row = document.createElement("div");
-    row.className = "flex items-center gap-2 text-sm";
-    row.dataset.kind = kind;
-
-    const label = document.createElement("label");
-    label.className = "w-32 text-xs text-slate-600 truncate";
-    label.textContent = kind;
-    label.setAttribute("for", "feature-enum-" + kind);
-    row.appendChild(label);
-
-    const select = document.createElement("select");
-    select.id = "feature-enum-" + kind;
-    select.className = "border border-slate-300 rounded px-2 py-0.5 text-sm bg-white";
-    select.dataset.kind = kind;
-    select.dataset.field = "enum";
+  /**
+   * Render the Enums editor as an up-to-3-column grid of (kind, value) rows
+   * (tech-04 D5). Each row pairs a kind <select> with a value <select> that
+   * stays disabled until a kind is chosen. Assigned, in-vocab entries
+   * pre-fill as rows; "+ Add enum" appends a blank row. Orphan entries (kind
+   * not in vocab) are surfaced separately by _renderEnumOrphans.
+   */
+  _renderEnumRows(vocab) {
+    const pickersEl = document.getElementById("feature-enums-pickers");
+    pickersEl.innerHTML = "";
 
     const enumsMap = this.state.feature.enums || {};
-    const selectedKey = enumsMap[kind] || "";
-    const keys = Object.keys(entries);
+    const rows = Object.keys(enumsMap)
+      .filter((kind) => enumsMap[kind] && kind in vocab)
+      .map((kind) => ({ kind, value: enumsMap[kind] }));
+    if (rows.length === 0) rows.push({ kind: "", value: "" });
+    this._enumRows = rows;
 
-    const noneOpt = document.createElement("option");
-    noneOpt.value = "";
-    noneOpt.textContent = "\u2014 not set \u2014";
-    if (!selectedKey) noneOpt.selected = true;
-    select.appendChild(noneOpt);
+    const grid = document.createElement("div");
+    grid.className =
+      "grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-2";
+    grid.dataset.role = "enum-grid";
+    pickersEl.appendChild(grid);
+    this._renderEnumGrid(vocab);
+
+    const addBtn = document.createElement("button");
+    addBtn.type = "button";
+    addBtn.dataset.action = "add-enum";
+    addBtn.className = "mt-2 text-xs text-slate-600 hover:text-slate-900";
+    addBtn.textContent = "+ Add enum";
+    addBtn.addEventListener("click", () => {
+      this._enumRows.push({ kind: "", value: "" });
+      this._renderEnumGrid(vocab);
+    });
+    pickersEl.appendChild(addBtn);
+  },
+
+  /** Re-render just the grid rows from the current this._enumRows. */
+  _renderEnumGrid(vocab) {
+    const grid = document
+      .getElementById("feature-enums-pickers")
+      ?.querySelector('[data-role="enum-grid"]');
+    if (!grid) return;
+    grid.innerHTML = "";
+    for (const row of this._enumRows) {
+      grid.appendChild(this._buildEnumRow(row, vocab));
+    }
+  },
+
+  /** Build one (kind <select> + value <select> + remove) enum row. */
+  _buildEnumRow(row, vocab) {
+    const wrap = document.createElement("div");
+    wrap.className = "flex items-center gap-1.5 text-sm";
+    wrap.dataset.role = "enum-row";
+    wrap.dataset.kind = row.kind;
+
+    // Kind <select>: every vocab kind not used by ANOTHER row, plus this
+    // row's own current kind (OQ6 — a kind never appears in two rows).
+    const usedByOthers = new Set(
+      this._enumRows.filter((r) => r !== row && r.kind).map((r) => r.kind)
+    );
+    const kindSel = document.createElement("select");
+    kindSel.dataset.field = "enum-kind";
+    kindSel.className =
+      "border border-slate-300 rounded px-1.5 py-0.5 text-sm bg-white max-w-[45%]";
+    const kindNone = document.createElement("option");
+    kindNone.value = "";
+    kindNone.textContent = "\u2014 kind \u2014";
+    if (!row.kind) kindNone.selected = true;
+    kindSel.appendChild(kindNone);
+    for (const kind of Object.keys(vocab)) {
+      if (usedByOthers.has(kind)) continue;
+      const opt = document.createElement("option");
+      opt.value = kind;
+      opt.textContent = kind;
+      if (kind === row.kind) opt.selected = true;
+      kindSel.appendChild(opt);
+    }
+    kindSel.addEventListener("change", (e) => {
+      row.kind = e.target.value;
+      row.value = ""; // value belonged to the old kind; reset it
+      this._renderEnumGrid(vocab); // refresh other rows' available kinds
+      this._commitEnumRows();
+    });
+    wrap.appendChild(kindSel);
+
+    // Value <select>: disabled until a kind is chosen.
+    const valSel = document.createElement("select");
+    valSel.dataset.field = "enum-value";
+    valSel.className =
+      "border border-slate-300 rounded px-1.5 py-0.5 text-sm bg-white flex-1 min-w-0";
+    const entries = row.kind ? vocab[row.kind] || {} : {};
+    const keys = Object.keys(entries);
+    const valNone = document.createElement("option");
+    valNone.value = "";
+    valNone.textContent = "\u2014 not set \u2014";
+    if (!row.value) valNone.selected = true;
+    valSel.appendChild(valNone);
     for (const key of keys) {
       const opt = document.createElement("option");
       opt.value = key;
       opt.textContent = entries[key];
-      if (key === selectedKey) opt.selected = true;
-      select.appendChild(opt);
+      if (key === row.value) opt.selected = true;
+      valSel.appendChild(opt);
     }
+    valSel.addEventListener("change", (e) => {
+      row.value = e.target.value;
+      this._commitEnumRows();
+    });
+    wrap.appendChild(valSel);
 
-    if (keys.length === 0) {
-      select.disabled = true;
-      row.appendChild(select);
+    if (!row.kind) {
+      valSel.disabled = true;
+    } else if (keys.length === 0) {
+      // ED11: a kind with no defined entries -> disabled value + hint.
+      valSel.disabled = true;
       const hint = document.createElement("span");
       hint.className = "text-xs text-slate-500";
       hint.textContent =
-        "No " + kind + " entries defined yet \u2014 edit enums.yaml to add some.";
-      row.appendChild(hint);
-    } else {
-      row.appendChild(select);
+        "No " + row.kind + " entries defined yet \u2014 edit enums.yaml to add some.";
+      wrap.appendChild(hint);
     }
 
-    select.addEventListener("change", (e) => {
-      if (!this.state.feature.enums) this.state.feature.enums = {};
-      this.state.feature.enums[kind] = e.target.value;
-      this.markDirty(true);
-      // Picker change can never CREATE an orphan (we only offer known
-      // keys + "unset"), but clearing a kind back to unset may remove an
-      // orphan banner if it had been there from a previous YAML edit.
-      this._renderEnumOrphans();
+    // Remove (×) the row.
+    const rm = document.createElement("button");
+    rm.type = "button";
+    rm.dataset.action = "remove-enum";
+    rm.className = "text-slate-400 hover:text-red-600 text-sm shrink-0";
+    rm.title = "remove";
+    rm.innerHTML = "&times;";
+    rm.addEventListener("click", () => {
+      const i = this._enumRows.indexOf(row);
+      if (i >= 0) this._enumRows.splice(i, 1);
+      if (this._enumRows.length === 0) this._enumRows.push({ kind: "", value: "" });
+      this._renderEnumGrid(vocab);
+      this._commitEnumRows();
     });
+    wrap.appendChild(rm);
 
-    return row;
+    return wrap;
+  },
+
+  /**
+   * Rebuild feature.enums from the visible rows (a row commits only when it
+   * has both a kind and a value). Orphan entries (kind not in the current
+   * vocab) are preserved so a transient enums.yaml edit doesn't silently
+   * drop them. Marks dirty only when the committed map actually changed.
+   */
+  _commitEnumRows() {
+    const vocab = this.state.enumsVocab || {};
+    const next = {};
+    for (const row of this._enumRows) {
+      if (row.kind && row.value) next[row.kind] = row.value;
+    }
+    for (const [kind, key] of Object.entries(this.state.feature.enums || {})) {
+      if (key && !(kind in vocab)) next[kind] = key; // keep orphans intact
+    }
+    const norm = (o) =>
+      JSON.stringify(Object.keys(o).sort().map((k) => [k, o[k]]));
+    const changed = norm(next) !== norm(this.state.feature.enums || {});
+    this.state.feature.enums = next;
+    if (changed) this.markDirty(true);
+    this._renderEnumOrphans();
   },
 
   /**

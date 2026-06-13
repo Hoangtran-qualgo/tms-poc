@@ -1,3 +1,3 @@
 Feature: user can see connected sources
 
-  Scenario:
+  Scenario: user can see connected sources

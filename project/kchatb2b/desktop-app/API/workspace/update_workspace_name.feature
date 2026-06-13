@@ -1,3 +1,3 @@
 Feature: Update workspace name
 
-  Scenario:
+  Scenario: Update workspace name

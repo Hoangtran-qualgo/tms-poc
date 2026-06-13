@@ -72,7 +72,7 @@ with tempfile.TemporaryDirectory() as td:
 
     # --- HS1: tag-mode hit shape + description still carried. ---
     h = tagged[0]
-    assert set(h) == {"file_path", "description", "matched_field", "match_value"}, (
+    assert set(h) == {"file_path", "description", "scenario_name", "matched_field", "match_value"}, (
         f"HS1: tag hit keys must be the SearchHit shape, got {set(h)}"
     )
     assert h["matched_field"] == "tag", (

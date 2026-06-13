@@ -60,10 +60,12 @@ with tempfile.TemporaryDirectory() as td:
 
     # smoke ranks first (highest count); (untagged) is muted + pinned last.
     assert view["buckets"][0]["value"] == "smoke", view["buckets"]
+    # tech-06: per-case entries now also carry scenario_name + enums (an
+    # untagged case has no enums here, so enums == []).
     assert view["buckets"][-1] == {
         "value": "(untagged)", "label": "(untagged)", "synthetic": True,
         "count": 1, "pct": view["buckets"][-1]["pct"],
-        "cases": [{"file_path": "Alpha/mod/c.feature"}],
+        "cases": [{"file_path": "Alpha/mod/c.feature", "scenario_name": "", "enums": []}],
     }, view["buckets"][-1]
 
 print("PASS  F12_02: tag_ranking multi-valued buckets + untagged + >100% sum")

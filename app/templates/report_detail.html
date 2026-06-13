@@ -86,8 +86,12 @@
           <span class="w-4 text-slate-300 group-open:rotate-90 transition-transform">&#9654;</span>
           <span class="flex-1 min-w-0 truncate {% if not b.synthetic %}font-medium{% endif %}">{{ b.label }}</span>
           <span class="shrink-0 w-40 hidden sm:block">
-            <span class="block h-2 rounded bg-slate-100 overflow-hidden">
-              <span class="block h-2 {% if b.synthetic %}bg-slate-300{% else %}bg-slate-600{% endif %}" style="width: {{ '%.1f'|format(b.pct * 100) }}%"></span>
+            {# Bar contrast (tech-06 follow-up): the track is the total
+               (dark grey); the fill is dark green for real ("valid")
+               buckets and orange for synthetic ("invalid") ones —
+               (unset) / (removed) / (untagged). #}
+            <span class="block h-2 rounded bg-slate-400 overflow-hidden">
+              <span class="block h-2 {% if b.synthetic %}bg-orange-500{% else %}bg-green-600{% endif %}" style="width: {{ '%.1f'|format(b.pct * 100) }}%"></span>
             </span>
           </span>
           <span class="shrink-0 tabular-nums text-right w-12">{{ b.count }}</span>
@@ -117,9 +121,18 @@
                   {% set _folder = _parts[0] if _parts|length == 2 else '' %}
                   {% set _filename = _parts[1] if _parts|length == 2 else _parts[0] %}
                   {% if _folder == folder %}
-                <li>
-                  <a class="font-mono text-xs text-slate-600 hover:underline cursor-pointer"
+                {# tech-06: per-case row gains the scenario name plus the
+                   type's extra dimension — tags (enum_ranking) or enums
+                   rendered `key : label` (tag_ranking / tag_inventory). #}
+                <li class="flex items-baseline gap-2 min-w-0">
+                  {# Scenario name is the prominent human identity; the case
+                     path is a muted, mono link separated by a divider. #}
+                  {% if c.scenario_name %}<span class="text-sm font-medium text-slate-800 truncate min-w-0" title="{{ c.scenario_name }}">{{ c.scenario_name }}</span>
+                  <span class="shrink-0 text-slate-300" aria-hidden="true">&middot;</span>{% endif %}
+                  <a class="font-mono text-xs text-slate-400 hover:text-slate-700 hover:underline cursor-pointer shrink-0"
                      hx-get="/ui/file/{{ c.file_path }}" hx-target="#main-pane" hx-swap="innerHTML">{{ _filename }}</a>
+                  {% if c.tags %}<span class="text-xs shrink-0 space-x-1">{% for t in c.tags %}<span class="font-mono text-slate-400">@{{ t }}</span>{% endfor %}</span>{% endif %}
+                  {% if c.enums %}<span class="text-xs shrink-0 flex flex-wrap gap-x-2">{% for e in c.enums %}<span><span class="text-slate-400">{{ e.kind }}</span> <span class="font-mono text-slate-500">{{ e.key }}{% if e.label %} : {{ e.label }}{% endif %}</span></span>{% endfor %}</span>{% endif %}
                 </li>
                   {% endif %}
                 {% endfor %}
@@ -166,6 +179,7 @@
       <thead class="bg-slate-100 text-slate-600">
         <tr>
           <th class="text-left px-3 py-2 font-medium">Run</th>
+          <th class="text-left px-3 py-2 font-medium">Run name</th>
           <th class="text-left px-3 py-2 font-medium w-48">When</th>
           <th class="text-left px-3 py-2 font-medium w-40">Result</th>
         </tr>
@@ -174,10 +188,11 @@
         {% for t in view.trend %}
         <tr class="border-t border-slate-100">
           <td class="px-3 py-2">
-            <a class="hover:underline cursor-pointer"
+            <a class="hover:underline cursor-pointer font-mono text-xs"
                hx-get="/ui/run/{{ t.run_path.split('/')[0] }}/{{ t.run_path.split('/')[2] }}/{{ t.run_path.split('/')[3] }}"
                hx-target="#main-pane" hx-swap="innerHTML">{{ t.run }}</a>
           </td>
+          <td class="px-3 py-2 text-slate-700 truncate" title="{{ t.run_name }}">{{ t.run_name }}</td>
           <td class="px-3 py-2 text-slate-500 text-xs font-mono">{{ t.created_at }}</td>
           <td class="px-3 py-2 font-mono text-xs font-medium {% if t.result == '\u2014' %}text-slate-300{% endif %}"{% if t.result != '\u2014' %} data-status="{{ t.result }}"{% endif %}>{{ t.result }}</td>
         </tr>

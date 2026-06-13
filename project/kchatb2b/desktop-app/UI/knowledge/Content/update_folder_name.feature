@@ -1,3 +1,3 @@
 Feature: user can update folder name
 
-  Scenario:
+  Scenario: user can update folder name

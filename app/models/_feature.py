@@ -334,15 +334,11 @@ def validate_feature(feature: Feature) -> None:
 
     The checks performed here correspond to the "Pre-write validation" block
     in PLAN.md §5.2. The serializer calls this before producing any output.
-    """
 
-    # Feature description (multi-line allowed in the model; must be non-empty
-    # after strip — empty/whitespace-only is not a meaningful name).
-    if not feature.description.strip():
-        raise ValidationError(
-            field="description",
-            message="Feature description must not be empty.",
-        )
+    Feature description is optional (revamp tech-04, D1): the case identity
+    moved to ``scenario.name``, so an empty/whitespace-only description is
+    legal and round-trips as a bare ``Feature:`` line.
+    """
 
     _validate_tags(feature.tags, "tags")
     _validate_enums(feature.enums)
