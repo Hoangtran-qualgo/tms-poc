@@ -1,3 +1,3 @@
 Feature: user can filter shared media
 
-  Scenario:
+  Scenario: user can filter shared media

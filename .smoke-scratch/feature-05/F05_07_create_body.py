@@ -13,61 +13,58 @@ with tempfile.TemporaryDirectory() as td:
     client.post("/api/folders", json={"name": "Alpha"})
     client.post("/api/folders", json={"parent": "Alpha", "name": "Mod"})
 
-    # --- CB1: description required non-empty (API-layer rejection) --------
-    # Missing field entirely -> 400 bad_request.
+    # --- CB1: file_name required; scenario_name + description OPTIONAL ----
+    # tech-04 Option B: the API permits an empty scenario name (model V5);
+    # the create modal enforces "required" client-side. Hard API enforcement
+    # is a separate Must-have ("Require scenario_name at API").
+    # Missing file_name -> 400 bad_request.
     r = client.post(
         "/api/files",
-        json={"parent": "Alpha/Mod", "file_name": "a"},
+        json={"parent": "Alpha/Mod", "scenario_name": "x", "description": "d"},
     )
     assert r.status_code == 400, (
-        f"CB1: missing description must return 400, got {r.status_code}"
+        f"CB1: missing file_name must return 400, got {r.status_code}"
     )
     assert r.get_json()["error"]["code"] == "bad_request"
 
-    # Empty string -> 400.
-    r = client.post(
-        "/api/files",
-        json={"parent": "Alpha/Mod", "file_name": "b", "description": ""},
-    )
-    assert r.status_code == 400, (
-        f"CB1: empty description must return 400, got {r.status_code}"
-    )
-    assert r.get_json()["error"]["code"] == "bad_request"
-
-    # Whitespace-only -> 400 (the API layer strips).
-    for ws in ("   ", "\t", "\n", " \t \n "):
+    # Non-string scenario_name / description -> 400 (type guard).
+    for field, bad in (
+        ("scenario_name", 123), ("scenario_name", []),
+        ("description", 123), ("description", []),
+    ):
         r = client.post(
             "/api/files",
-            json={"parent": "Alpha/Mod", "file_name": "ws", "description": ws},
+            json={"parent": "Alpha/Mod", "file_name": "bad", field: bad},
         )
         assert r.status_code == 400, (
-            f"CB1: whitespace-only description {ws!r} must return 400, got {r.status_code}"
-        )
-        assert r.get_json()["error"]["code"] == "bad_request"
-        assert not (root / "Alpha" / "Mod" / "ws.feature").exists(), (
-            f"CB1: rejected description {ws!r} must NOT create file on disk"
+            f"CB1: non-string {field}={bad!r} must return 400, got {r.status_code}"
         )
 
-    # Non-string description (number, list, null) -> 400.
-    for bad in (123, [], None, True):
-        r = client.post(
-            "/api/files",
-            json={"parent": "Alpha/Mod", "file_name": "nonstr", "description": bad},
-        )
-        assert r.status_code == 400, (
-            f"CB1: non-string description {bad!r} must return 400, got {r.status_code}"
-        )
-
-    # Valid description -> 201.
+    # Both scenario_name and description omitted -> 201 (both optional).
     r = client.post(
         "/api/files",
-        json={"parent": "Alpha/Mod", "file_name": "ok", "description": "valid desc"},
+        json={"parent": "Alpha/Mod", "file_name": "bare"},
     )
     assert r.status_code == 201, (
-        f"CB1: valid description must succeed, got {r.status_code}"
+        f"CB1: omitting scenario_name + description must succeed, got {r.status_code}"
+    )
+    bare = client.get("/api/files/Alpha/Mod/bare.feature").get_json()
+    assert bare["description"] == "", f"bare description must be '', got {bare['description']!r}"
+    assert bare["scenario"]["name"] == "", (
+        f"bare scenario name must be '', got {bare['scenario']['name']!r}"
     )
 
-    # --- CB1: created file shape -- one empty scenario, no extras ----------
+    # Valid create with both fields -> 201; scenario.name carries identity.
+    r = client.post(
+        "/api/files",
+        json={"parent": "Alpha/Mod", "file_name": "ok",
+              "scenario_name": "Pay with card", "description": "valid desc"},
+    )
+    assert r.status_code == 201, (
+        f"CB1: valid create must succeed, got {r.status_code}"
+    )
+
+    # --- CB1: created file shape -- scenario.name carries the identity -----
     body = client.get("/api/files/Alpha/Mod/ok.feature").get_json()
     assert body["description"] == "valid desc", (
         f"CB1: created file's description must echo the supplied value, "
@@ -86,8 +83,8 @@ with tempfile.TemporaryDirectory() as td:
     assert scenario.get("kind") == "scenario", (
         f"CB1: created scenario kind must be 'scenario', got {scenario.get('kind')!r}"
     )
-    assert scenario.get("name") == "", (
-        f"CB1: created scenario name must be empty string, got {scenario.get('name')!r}"
+    assert scenario.get("name") == "Pay with card", (
+        f"CB1: created scenario name must echo scenario_name, got {scenario.get('name')!r}"
     )
     assert scenario.get("steps") == [], (
         f"CB1: created scenario must have no steps, got {scenario.get('steps')!r}"
@@ -96,6 +93,6 @@ with tempfile.TemporaryDirectory() as td:
         f"CB1: created scenario must have no tags, got {scenario.get('tags')!r}"
     )
 print(
-    "PASS  CB1: description required non-empty (whitespace rejected at API); "
-    "created file holds Feature(description=…, scenario=Scenario(kind='scenario', name=''))"
+    "PASS  CB1: file_name required; scenario_name + description optional at API "
+    "(non-string rejected); scenario.name carries the identity when provided"
 )

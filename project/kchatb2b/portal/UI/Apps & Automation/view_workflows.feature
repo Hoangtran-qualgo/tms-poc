@@ -1,3 +1,3 @@
 Feature: User can see the workflows
 
-  Scenario:
+  Scenario: User can see the workflows

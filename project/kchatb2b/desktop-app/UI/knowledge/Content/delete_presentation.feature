@@ -1,3 +1,3 @@
 Feature: user can delete existing presentation
 
-  Scenario:
+  Scenario: user can delete existing presentation

@@ -4,7 +4,7 @@
 Feature: test case 2
 
   @test @regression
-  Scenario Outline:
+  Scenario Outline: test case 2
     Given I not login
       | col1 | col2 |
       | ewq  | zasd |

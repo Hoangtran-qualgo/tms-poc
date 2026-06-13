@@ -1,14 +1,10 @@
 # Pattern: see .smoke-scratch/README.md
-"""feature-07 / folder-views / Features-table FT2 (Description column).
+"""feature-07 / folder-views / Features-table FT2 (Scenario-name column).
 
-Description column shows the **first line only**, truncated; the full
-description (with real newlines) goes into the `title=` attribute for
-hover. Multi-line descriptions never expand the row.
-
-Multi-line descriptions are encoded on the `Feature:` line via the
-literal two-character sequence `\\n` (decoded by the parser to a real
-newline). See `app.gherkin_io._encode_description` /
-`_assemble_description`.
+tech-04: the folder-detail test-case list's middle column shows the
+SCENARIO NAME (not the feature description). The cell is `truncate`d so a
+long name never expands the row (R2 / G3), and the full name rides along
+in the `title=` attribute for hover.
 """
 import pathlib
 import re
@@ -22,28 +18,20 @@ with tempfile.TemporaryDirectory() as td:
     client = app.test_client()
     client.post("/api/folders", json={"name": "Alpha"})
     client.post("/api/folders", json={"parent": "Alpha", "name": "Mod"})
-    client.post(
+    # A case whose scenario name differs from the feature description, so
+    # the column content is unambiguous about which field it renders.
+    r = client.post(
         "/api/files",
-        json={"parent": "Alpha/Mod", "file_name": "case", "description": "seed"},
+        json={
+            "parent": "Alpha/Mod",
+            "file_name": "case",
+            "scenario_name": "Checkout with a saved card",
+            "description": "DESCRIPTION-SHOULD-NOT-APPEAR",
+        },
     )
-    # PUT-raw with a multi-line description (canonical create path only
-    # accepts a single-line description string).
-    raw = (
-        "Feature: First line of description."
-        "\\nSecond line should NOT appear in the column."
-        "\\nThird line either.\n"
-        "\n"
-        "  Scenario: s\n"
-        "    Given a step\n"
-    )
-    r = client.put(
-        "/api/files/Alpha/Mod/case.feature/raw",
-        data=raw.encode("utf-8"),
-        headers={"Content-Type": "text/plain; charset=utf-8"},
-    )
-    assert r.status_code == 200, (
-        f"FT2 setup: PUT raw with multi-line description must succeed, "
-        f"got {r.status_code} {r.get_data(as_text=True)!r}"
+    assert r.status_code in (200, 201), (
+        f"FT2 setup: create must succeed, got {r.status_code} "
+        f"{r.get_data(as_text=True)!r}"
     )
 
     html = client.get("/ui/folder/Alpha/Mod").get_data(as_text=True)
@@ -55,57 +43,35 @@ row = re.search(
     re.DOTALL,
 ).group(1)
 
-# Description cell: <td ... title="..." class="...truncate...">first line</td>.
-desc_cell = re.search(r'<td([^>]*)>([^<]*)</td>', row, re.DOTALL)
-# That regex catches the first <td> (filename); iterate to find the one with title=.
-desc_cell = None
-for m in re.finditer(r'<td([^>]*?)>([^<]*)</td>', row, re.DOTALL):
-    attrs = m.group(1)
-    if 'title="' in attrs:
-        desc_cell = m
+# The middle column cell carries title= (the scenario name); find it.
+cell = None
+for m in re.finditer(r'<td([^>]*?)>(.*?)</td>', row, re.DOTALL):
+    if 'title="' in m.group(1):
+        cell = m
         break
-assert desc_cell, (
-    "FT2: features table row must contain a Description <td> with a title= attribute"
+assert cell, (
+    "FT2: features table row must contain a Scenario-name <td> with a title= attribute"
 )
-attrs = desc_cell.group(1)
-body = desc_cell.group(2).strip()
+attrs = cell.group(1)
+body = cell.group(2).strip()
 
-# Title attribute carries the FULL multi-line description.
+# tech-04: the column shows the scenario name, NOT the feature description.
+assert "Checkout with a saved card" in body, (
+    f"FT2: middle column body must show the scenario name; got {body!r}"
+)
+assert "DESCRIPTION-SHOULD-NOT-APPEAR" not in row, (
+    "FT2: the feature description must NOT appear in the folder list "
+    "(the scenario name replaced it)"
+)
+
+# Title attribute carries the full scenario name for hover.
 title_m = re.search(r'title="([^"]*)"', attrs)
-assert title_m, "FT2: Description <td> must carry title= attribute"
-title_value = title_m.group(1)
-assert "First line of description." in title_value, (
-    f"FT2: Description <td>'s title= must carry the first line of the full "
-    f"description; got {title_value!r}"
-)
-# Jinja escapes real newlines in attribute context as the literal sequence
-# `\n` characters? Actually Flask/Jinja autoescape only handles HTML special
-# chars (& < > " '), so real newlines become real newlines inside the
-# attribute. Browsers preserve them. We assert by looking for the second
-# line's text content anywhere in the attribute.
-assert "Second line should NOT appear in the column." in title_value, (
-    f"FT2: Description <td>'s title= must carry the FULL multi-line description "
-    f"(both lines for hover); got {title_value!r}"
-)
-assert "Third line either." in title_value, (
-    f"FT2: Description <td>'s title= must carry ALL lines; got {title_value!r}"
+assert title_m and "Checkout with a saved card" in title_m.group(1), (
+    f"FT2: Scenario-name <td> title= must carry the full name; got {attrs!r}"
 )
 
-# Cell body: first line only -- no second/third line, no row expansion.
-assert "First line of description." in body, (
-    f"FT2: Description cell body must show the first line; got {body!r}"
-)
-assert "Second line" not in body, (
-    f"FT2: Description cell body must NOT contain the second line "
-    f"(first-line-only rule); got {body!r}"
-)
-assert "Third line" not in body, (
-    f"FT2: Description cell body must NOT contain the third line; got {body!r}"
-)
-
-# `truncate` class enforces single-line / no row expansion.
+# `truncate` class keeps a long name from expanding the row (R2 / G3).
 assert "truncate" in attrs, (
-    f"FT2: Description <td> must carry the 'truncate' class so multi-line "
-    f"descriptions never expand the row; got attrs {attrs!r}"
+    f"FT2: Scenario-name <td> must carry the 'truncate' class; got {attrs!r}"
 )
-print("PASS  FT2: description first-line-only + full title=; truncate class prevents row expansion")
+print("PASS  FT2: folder list middle column shows the scenario name (tech-04), truncated + title= hover")

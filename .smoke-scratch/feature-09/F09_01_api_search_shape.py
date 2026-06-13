@@ -37,7 +37,7 @@ with tempfile.TemporaryDirectory() as td:
     assert isinstance(body["hits"], list), "RT1: 'hits' must be a list"
     assert len(body["hits"]) == 1, f"RT1: expected 1 hit, got {body['hits']!r}"
     hit = body["hits"][0]
-    assert set(hit) == {"file_path", "description", "matched_field", "match_value"}, (
+    assert set(hit) == {"file_path", "description", "scenario_name", "matched_field", "match_value"}, (
         f"RT1: hit keys must be the SearchHit shape, got {set(hit)}"
     )
     assert hit["file_path"] == "Alpha/Mod/hit.feature", (

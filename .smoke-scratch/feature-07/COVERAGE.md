@@ -73,7 +73,7 @@ Step 1 audit of the smoke tests against
 | DP4 | `len(segments) >= 3 and <= MAX_FOLDER_DEPTH` \u2192 `folder_subfolder.html`. | Invariants \u2192 Dispatch | `F07_02_dispatch.py` | covered |
 | DP5 | `len(segments) > MAX_FOLDER_DEPTH` \u2192 400 `bad_request` from `Storage.list_folder` (handled by the UI blueprint's `ValueError` handler). | Invariants \u2192 Dispatch | `F07_02_dispatch.py` + `F07_10_acceptance.py` AC3 | covered |
 | FT1 | `File name` shown as-is. Click \u2192 `/ui/file/<path>`. | Invariants \u2192 Features-table columns | `F07_04_features_table.py` | covered |
-| FT2 | `Description`: **first line only**, truncated; full description in `title=` attribute for hover. Multi-line descriptions never expand the row. | Invariants \u2192 Features-table columns | `F07_04_features_table.py` | covered |
+| FT2 | `Scenario name` (tech-04, replaced the feature description): single-line, truncated; full name in `title=` for hover; never expands the row. | Invariants \u2192 Features-table columns | `F07_04_features_table.py` | covered |
 | FT3 | `Tags`: chips rendered with `@` prefix, single line, truncated. Column shows the **union** of feature-level + scenario-level tags (D10). | Invariants \u2192 Features-table columns | `F07_04_features_table.py` | covered |
 | ST1 | Sub-folder table: one column `Sub-folder` with a folder icon (\ud83d\udcc1). Click \u2192 `/ui/folder/<path>`. | Invariants \u2192 Sub-folder-table column | `F07_05_subfolder_table.py` | covered |
 | BD1 | Depth 0 (root) \u2192 `+ New project` button. | Invariants \u2192 Buttons by depth | `F07_06_buttons.py` | covered |
@@ -90,7 +90,7 @@ Step 1 audit of the smoke tests against
 | AC3 | Visiting `/ui/folder/<path>` at depth `11` returns a 400 inline error snippet. | Acceptance criteria | `F07_10c_depth11_400.py` (split) | covered |
 | AC4 | Clicking a feature row opens that file in the editor. | Acceptance criteria | `F07_10d_feature_row_opens_editor.py` (split; round-trip) | covered |
 | AC5 | Clicking a sub-folder row navigates the main pane to that folder's view. | Acceptance criteria | `F07_10e_subfolder_row_navigates.py` (split; round-trip) | covered |
-| AC6 | Multi-line feature descriptions render only their first line in the table; full text appears on hover. | Acceptance criteria | `F07_10f_description_first_line.py` (split; strengthens FT2 end-to-end) | covered |
+| AC6 | The folder list's middle column shows the scenario name (tech-04), not the description; a name written via raw PUT round-trips into the cell. | Acceptance criteria | `F07_10f_description_first_line.py` (split; strengthens FT2 end-to-end) | covered |
 | AC7 | After a CRUD mutation, the main pane reflects the new state on the writing tab once `tmsRefreshFolder` runs. | Acceptance criteria | `F07_10g_tmsrefreshfolder_endtoend.py` (split; end-to-end POST + simulated tmsRefreshFolder GET at depths 0/1/2) | covered |
 
 ## Summary
@@ -144,7 +144,7 @@ executed for feature-07:
     render cross-check).
   - `F07_04a_filename_column.py` covers FT1 (split).
   - `F07_04b_description_column.py` covers FT2 (split,
-    multi-line `\n`-encoded description).
+    scenario-name column — tech-04).
   - `F07_04c_tags_column.py` covers FT3 (split,
     union of feature-level + scenario-level tags).
   - `F07_05_subfolder_table.py` covers ST1.
@@ -191,12 +191,10 @@ executed for feature-07:
     closing before later `client.get(...)` calls. Fix:
     keep all assertions inside the `with` block so the
     data root stays alive.
-  - **F07_04b (FT2 description)** uses the literal
-    two-character sequence `\n` on the `Feature:`
-    line (decoded by `_assemble_description` into a
-    real newline) to construct multi-line descriptions
-    via the raw PUT route (canonical create only
-    accepts single-line descriptions).
+  - **F07_04b (FT2)** asserts the folder list's middle
+    column renders the scenario name (tech-04), not the
+    feature description; a description set alongside the
+    name must not leak into the cell.
   - **F07_09 (RR1)** asserts THREE separate halves:
     (a) `<main id="main-pane">` does NOT carry
     `hx-trigger="sse:change"`; (b) `tmsRefreshFolder`

@@ -2,4 +2,4 @@
 @test
 Feature: admin profile can add new storage provider
 
-  Scenario:
+  Scenario: admin profile can add new storage provider

@@ -4,7 +4,7 @@ Feature: create new workspace
     Given Login as authen admin
 
   @test
-  Scenario Outline:
+  Scenario Outline: create new workspace
     When I send api request to create new workspace
       | authen      | body                      |
       | valid token | {"name": "new workspace"} |

@@ -156,7 +156,29 @@ const tmsRunEditor = {
     sel.value = "PENDING";
     sel.dataset.status = sel.value; // E3: colour hook for the shared palette
     tr.querySelector(".run-remark").value = "";
+    // tech-05 (RD-1b): scenario name is display-only and not carried by the
+    // case picker, so fetch it lazily from the feature read API and fill the
+    // cell once resolved. The cell is never read by _readCurrent(), so this
+    // async fill never affects dirty tracking.
+    this._fillScenarioName(tr.querySelector(".run-scenario-name"), file_path);
     return tr;
+  },
+
+  /** Populate a row's display-only scenario-name cell from the feature API. */
+  async _fillScenarioName(cell, file_path) {
+    if (!cell) return;
+    try {
+      const r = await fetch(`/api/files/${file_path}`, {
+        headers: { Accept: "application/json" },
+      });
+      if (!r.ok) return;
+      const data = await r.json();
+      const name = (data.scenario && data.scenario.name) || "";
+      cell.textContent = name;
+      cell.setAttribute("title", name);
+    } catch (_e) {
+      /* leave the cell blank on any failure (RD-4) */
+    }
   },
 
   /** Folder of a data-root-relative file_path ("" when zero-slash). */

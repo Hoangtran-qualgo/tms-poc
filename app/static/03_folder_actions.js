@@ -173,11 +173,12 @@ async function tmsCreateSubfolder(parent) {
 }
 
 /**
- * Open the single-form create-test-case modal. Replaces the previous
- * two-prompt flow. Both fields are required client-side as a "non-empty
- * after trim" check;
- * all other validation (regex, name conflicts, etc.) is delegated to the
- * server response so the client never drifts from `_validate_segment` /
+ * Open the single-form create-test-case modal (tech-04 D2/D3). Three
+ * fields, top-down: File name (required), Feature description (optional),
+ * Scenario name (required). Confirm is gated on File name + Scenario name
+ * being non-empty after trim; the description is optional. All other
+ * validation (regex, name conflicts, etc.) is delegated to the server
+ * response so the client never drifts from `_validate_segment` /
  * `NameConflictError`.
  */
 function tmsCreateFile(parent) {
@@ -187,15 +188,23 @@ function tmsCreateFile(parent) {
     '<input id="tms-cf-name" type="text" autocomplete="off"' +
     ' class="w-full border border-slate-300 rounded px-2 py-1.5 text-sm bg-white" />' +
     '<p class="text-xs text-slate-400 mt-1">.feature is added automatically.</p>' +
-    '<label class="block text-sm text-slate-600 mt-3 mb-1" for="tms-cf-desc">Description</label>' +
+    '<label class="block text-sm text-slate-600 mt-3 mb-1" for="tms-cf-desc">Feature description <span class="text-slate-400">(optional)</span></label>' +
     '<textarea id="tms-cf-desc" rows="2"' +
     ' class="w-full border border-slate-300 rounded px-2 py-1.5 text-sm bg-white resize-y"></textarea>' +
+    '<label class="block text-sm text-slate-600 mt-3 mb-1" for="tms-cf-scenario">Scenario name</label>' +
+    '<input id="tms-cf-scenario" type="text" autocomplete="off"' +
+    ' class="w-full border border-slate-300 rounded px-2 py-1.5 text-sm bg-white" />' +
     '<p data-role="error" class="hidden mt-2 text-sm text-red-600"></p>';
   const nameInput = body.querySelector("#tms-cf-name");
   const descInput = body.querySelector("#tms-cf-desc");
+  const scenarioInput = body.querySelector("#tms-cf-scenario");
   const error = body.querySelector('[data-role="error"]');
 
-  const trimmed = () => [nameInput.value.trim(), descInput.value.trim()];
+  const trimmed = () => [
+    nameInput.value.trim(),
+    descInput.value.trim(),
+    scenarioInput.value.trim(),
+  ];
 
   const modal = tmsOpenModal({
     title: "Create test case in " + parent,
@@ -203,13 +212,14 @@ function tmsCreateFile(parent) {
     confirmLabel: "Create",
     confirmDisabled: true,
     onConfirm: async ({ close }) => {
-      const [fileName, description] = trimmed();
-      if (!fileName || !description) return;
+      const [fileName, description, scenarioName] = trimmed();
+      if (!fileName || !scenarioName) return;
       error.classList.add("hidden");
       try {
         await tmsApiPost("/api/files", {
           parent,
           file_name: fileName,
+          scenario_name: scenarioName,
           description,
         });
         close();
@@ -222,17 +232,19 @@ function tmsCreateFile(parent) {
     },
   });
 
-  // Gate Confirm on both fields being non-empty after trim.
+  // Gate Confirm on File name + Scenario name being non-empty after trim
+  // (the description is optional).
   const refreshGate = () => {
-    const [n, d] = trimmed();
-    modal.setConfirmDisabled(!(n && d));
+    const [n, , sc] = trimmed();
+    modal.setConfirmDisabled(!(n && sc));
   };
   nameInput.addEventListener("input", refreshGate);
-  descInput.addEventListener("input", refreshGate);
+  scenarioInput.addEventListener("input", refreshGate);
 
-  // Keyboard ergonomics: Enter inside the single-line name input acts
-  // like Tab to the description; Ctrl/Cmd+Enter inside either field
-  // submits (calling the same path as the Confirm button click).
+  // Keyboard ergonomics: Enter in a single-line input advances focus down
+  // the field chain; Ctrl/Cmd+Enter in any field submits (same path as the
+  // Confirm button click). The description is a textarea, so plain Enter
+  // there inserts a newline.
   const submit = () => {
     const btn = body
       .closest('[role="dialog"]')
@@ -250,6 +262,12 @@ function tmsCreateFile(parent) {
   });
   descInput.addEventListener("keydown", (e) => {
     if (e.key === "Enter" && (e.ctrlKey || e.metaKey)) {
+      e.preventDefault();
+      submit();
+    }
+  });
+  scenarioInput.addEventListener("keydown", (e) => {
+    if (e.key === "Enter" && !e.shiftKey) {
       e.preventDefault();
       submit();
     }

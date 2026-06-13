@@ -1,3 +1,3 @@
 Feature: admin profile can login portal site
 
-  Scenario:
+  Scenario: admin profile can login portal site

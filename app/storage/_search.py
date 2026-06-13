@@ -29,7 +29,10 @@ class SearchMixin:
         scope:
             ``"all"`` (default), ``"project:<name>"``, or ``"module:<proj>/<mod>"``.
         match:
-            ``"text"`` — matches ``Feature.description`` only.
+            ``"text"`` — substring-matches ``Feature.description`` OR
+            ``Feature.scenario.name`` (either field; at most one hit per
+            file). ``matched_field`` is reported as ``"description"`` for
+            both (the badge is informational only).
             ``"tag"`` — substring-matches the union of ``Feature.tags`` and
             ``Scenario.tags`` (D10). Other fields are not searched in v1 per
             PLAN.md §13.
@@ -71,15 +74,17 @@ class SearchMixin:
                 continue
 
             if match == "text":
-                haystack = (
-                    feature.description if case_sensitive
-                    else feature.description.lower()
-                )
-                if needle in haystack:
+                if case_sensitive:
+                    desc_hay, name_hay = feature.description, feature.scenario.name
+                else:
+                    desc_hay = feature.description.lower()
+                    name_hay = feature.scenario.name.lower()
+                if needle in desc_hay or needle in name_hay:
                     hits.append(
                         {
                             "file_path": rel,
                             "description": feature.description,
+                            "scenario_name": feature.scenario.name,
                             "matched_field": "description",
                             "match_value": query,
                         }
@@ -98,6 +103,7 @@ class SearchMixin:
                             {
                                 "file_path": rel,
                                 "description": feature.description,
+                                "scenario_name": feature.scenario.name,
                                 "matched_field": "tag",
                                 "match_value": tag,
                             }

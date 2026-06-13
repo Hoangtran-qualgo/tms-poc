@@ -1,3 +1,3 @@
 Feature: user can update slide content by AI
 
-  Scenario:
+  Scenario: user can update slide content by AI

@@ -46,12 +46,14 @@ def _expect(f: Feature, field_prefix: str, rule_id: str) -> None:
 validate_feature(_good())
 
 
-# --- V1: empty Feature.description rejected -------------------------------
+# --- V1: empty Feature.description now ACCEPTED (tech-04 D1) ---------------
+# The case identity moved to scenario.name, so an empty/whitespace-only
+# feature description is legal and must validate cleanly.
 f = _good(); f.description = ""
-_expect(f, "description", "V1 (empty)")
+validate_feature(f)
 f = _good(); f.description = "   "
-_expect(f, "description", "V1 (whitespace-only)")
-print("PASS  V1: empty/whitespace-only Feature.description rejected")
+validate_feature(f)
+print("PASS  V1: empty/whitespace-only Feature.description accepted (tech-04 D1)")
 
 
 # --- V2: invalid tag values rejected --------------------------------------

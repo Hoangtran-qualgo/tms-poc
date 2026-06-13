@@ -5,8 +5,8 @@
    caller must provide `folder_path` (the data-root-relative path of the
    folder being listed) and `features` in scope. Each row navigates to the
    file editor via hx-get; the file name is the leaf appended to
-   `folder_path`. Description column shows only the first line, truncated
-   (R2 / G3). #}
+   `folder_path`. The middle column shows the scenario name (tech-04),
+   truncated to one line (R2 / G3). #}
 <div data-bulk-root data-folder-path="{{ folder_path }}">
   {# Bulk-action toolbar. Buttons are disabled until at least one case is
      selected; the controller (10_bulk_actions.js) manages enable/disable,
@@ -31,7 +31,7 @@
                onclick="event.stopPropagation()">
       </th>
       <th class="text-left px-3 py-2 font-medium w-1/4">File name</th>
-      <th class="text-left px-3 py-2 font-medium w-1/2">Description</th>
+      <th class="text-left px-3 py-2 font-medium w-1/2">Scenario name</th>
       <th class="text-left px-3 py-2 font-medium w-1/4">Tags</th>
     </tr>
   </thead>
@@ -48,9 +48,9 @@
                onclick="event.stopPropagation()">
       </td>
       <td class="px-3 py-2 text-slate-800 truncate">{{ f.file_name }}</td>
-      {# First-line-only, truncated. Multiple lines never expand the row. #}
-      <td class="px-3 py-2 text-slate-700 truncate" title="{{ f.description }}">
-        {{ f.description.splitlines()[0] if f.description else '' }}
+      {# Scenario name (single-line), truncated so it never expands the row. #}
+      <td class="px-3 py-2 text-slate-700 truncate" title="{{ f.scenario_name }}">
+        {{ f.scenario_name }}
       </td>
       <td class="px-3 py-2 truncate">
         {% for t in f.tags %}<span class="inline-block px-1.5 py-0.5 mr-1 mb-0.5 text-xs rounded bg-slate-200 text-slate-700">@{{ t }}</span>{% endfor %}

@@ -1,10 +1,13 @@
 # Pattern: see .smoke-scratch/README.md
-"""feature-08 / file-editor / D3 -- Save disabled when description empty.
+"""feature-08 / file-editor / D3 + tech-04 RG1 -- Save disabled when scenario name empty.
 
 Hybrid: static `updateSaveButton` body + end-to-end render check.
 
-Static: `updateSaveButton` reads `state.feature.description`, trims,
-and sets `btn-save.disabled = !desc`.
+tech-04 RG1 moved the Save-gate off the (now optional) feature
+description onto the scenario name (the case identity).
+
+Static: `updateSaveButton` reads `state.feature.scenario.name`, trims,
+and sets `btn-save.disabled = !name`.
 
 End-to-end: file_editor.html renders <button id='btn-save'> with the
 Tailwind `disabled:bg-slate-400 disabled:cursor-not-allowed` classes
@@ -42,14 +45,14 @@ assert 'getElementById("btn-save")' in BODY, (
     "D3: updateSaveButton must target #btn-save"
 )
 assert re.search(
-    r'this\.state\?\.\s*feature\?\.\s*description\s*\|\|\s*""', BODY
-), "D3: updateSaveButton must read state.feature.description with || '' fallback"
+    r'this\.state\?\.\s*feature\?\.\s*scenario\?\.\s*name\s*\|\|\s*""', BODY
+), "RG1: updateSaveButton must read state.feature.scenario.name with || '' fallback"
 assert ".trim()" in BODY, (
-    "D3: updateSaveButton must trim() the description before the empty check"
+    "RG1: updateSaveButton must trim() the scenario name before the empty check"
 )
-assert re.search(r'btn\.disabled\s*=\s*!\s*desc', BODY), (
-    "D3: updateSaveButton must set `btn.disabled = !desc` "
-    "(disabled when description is empty / whitespace-only)"
+assert re.search(r'btn\.disabled\s*=\s*!\s*name', BODY), (
+    "RG1: updateSaveButton must set `btn.disabled = !name` "
+    "(disabled when scenario name is empty / whitespace-only)"
 )
 
 
@@ -78,4 +81,4 @@ assert "disabled:cursor-not-allowed" in btn_cls, (
     "D3: #btn-save must carry `disabled:cursor-not-allowed` for affordance"
 )
 
-print("PASS  D3: Save button disabled when description empty (updateSaveButton body + Tailwind disabled-state classes on the rendered button)")
+print("PASS  D3/RG1: Save button disabled when scenario name empty (updateSaveButton body + Tailwind disabled-state classes on the rendered button)")

@@ -1,8 +1,10 @@
 # Pattern: see .smoke-scratch/README.md
 """feature-09 / search / ST2 + MS1 + MS5 + HS1 (text mode).
 
-ST2: match='text' substrings against Feature.description; at most one
-     hit per file even if the needle appears multiple times.
+ST2: match='text' substrings against Feature.description OR
+     Feature.scenario.name (either field); at most one hit per file even
+     if the needle appears multiple times. matched_field stays
+     'description' for both (the badge is informational; tech-04).
 MS1: substring only — no regex / fuzzy (a regex metachar query matches
      literally, and only where the literal chars appear).
 MS5: matches anywhere in the (real-newline) description, including text
@@ -40,6 +42,10 @@ with tempfile.TemporaryDirectory() as td:
     s.create_file(["Alpha", "Mod", "multiline.feature"], "first line here\nsecond WRAPTOKEN row")
     # Regex-metachar bait: literal 'a.c' present; 'abc' must not match it.
     s.create_file(["Alpha", "Mod", "regex.feature"], "literal a.c sequence")
+    # tech-04: text mode also searches the scenario name. This file's
+    # description has NO needle, but its scenario name carries the token.
+    s.create_file(["Alpha", "Mod", "byname.feature"], "no match in the body here",
+                  scenario_name="find the SCENARIOTOKEN please")
 
     # --- ST2: substring match, max one hit per file. ---
     h = hits(client, "needle")
@@ -74,6 +80,19 @@ with tempfile.TemporaryDirectory() as td:
         "real-newline description, not the on-disk \\n-escaped source"
     )
 
+    # --- tech-04: text mode matches the scenario name too. ---
+    by_name = hits(client, "SCENARIOTOKEN")
+    files_n = sorted(x["file_path"] for x in by_name)
+    assert files_n == ["Alpha/Mod/byname.feature"], (
+        f"text search must match the scenario name (not just description), got {files_n}"
+    )
+    assert by_name[0]["matched_field"] == "description", (
+        "text-mode matched_field stays 'description' even for a scenario-name match"
+    )
+    assert by_name[0]["scenario_name"] == "find the SCENARIOTOKEN please", (
+        "the hit must carry the matched scenario name for display"
+    )
+
     # --- HS1: text-mode hit shape. ---
     hit = hits(client, "needle")[0]
     assert hit["matched_field"] == "description", (
@@ -86,4 +105,4 @@ with tempfile.TemporaryDirectory() as td:
         f"HS1: hit must carry the full description, got {hit['description']!r}"
     )
 
-print("PASS  ST2 + MS1 + MS5 + HS1(text): substring (not regex), ≤1 hit/file, real-newline haystack, matched_field='description' echoes query")
+print("PASS  ST2 + MS1 + MS5 + HS1(text): substring (not regex), ≤1 hit/file over description+scenario-name, real-newline haystack, matched_field='description' echoes query")

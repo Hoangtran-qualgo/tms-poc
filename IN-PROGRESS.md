@@ -10,7 +10,31 @@ is explicitly designated as such.
 
 ## Must have
 
-_(empty)_
+_Planned & split into smaller plans Jun 13, 2026 — `tech-04` (editor +
+search), `tech-05` (run detail), and `tech-06` (report detail) are all
+**shipped Jun 13, 2026** (see `DONE.md`)._
+
+- **Investigate: require `scenario_name` at the create API.** Deferred
+  from `tech-04` (Jun 13, 2026). Today `POST /api/files` accepts an empty
+  scenario name (Option B — consistent with the model V5 + the UI-only
+  Save-gate RG1); the create modal enforces it client-side only. Decide
+  whether to also enforce it server-side (a stricter API + matching model
+  V-rule), which would re-pin the ~41 setup-only smokes that create files
+  via `POST /api/files` and gate the planned **import** feature too.
+
+- **Investigate: revamp test-case list.**
+  - ~~Rename the `description` column to `scenario name`.~~ **Done
+    Jun 13, 2026** (shipped with `tech-04`; see `DONE.md`).
+  - New `Enums` column displaying all enums of the scenario — show top 2
+    and `n more…`.
+  - `Tags` column displays top 2 and `n more…`.
+
+- **Investigate new feature: import test cases.**
+  - User can upload a `.feature` file; validate invalid file type, format,
+    and content.
+  - One feature file may contain one or more scenarios — split each
+    scenario; each scenario is saved as a single test case sharing the
+    same feature description and feature tags.
 
 ## Should have
 

@@ -3,4 +3,4 @@
 @test @demo @reg @regr
 Feature: test case 3
 
-  Scenario:
+  Scenario: scenario name

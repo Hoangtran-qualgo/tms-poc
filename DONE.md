@@ -4,6 +4,89 @@ Items fixed during v1 manual verification.
 
 ## Must have
 
+- **Revamp test-case detail (editor) + search display — `tech-04`
+  (shipped Jun 13, 2026).** Spec:
+  `specs/tech/04-tech-testcase-detail-revamp-NEW.md`.
+  - **Description optional (D1).** Dropped the non-empty rule in
+    `validate_feature` (`app/models/_feature.py`); an empty description
+    serialises to a bare `Feature:` line and round-trips. The editor's
+    description is a 1-line `textarea`.
+  - **Scenario name is the identity.** Create flow is a 3-field modal
+    (File name, Feature description optional, Scenario name) in
+    `tmsCreateFile` (`app/static/03_folder_actions.js`); the editor
+    Save-gate now keys on scenario name (RG1), not description, and the
+    `#scenario-name` placeholder reads "Scenario name" (was "(optional)").
+    `POST /api/files` + `create_file` accept an optional `scenario_name`
+    (**Option B** — required only client-side; hard API enforcement filed
+    as a separate Must-have). The file-name `<h2>` header is removed (D4).
+  - **One-time migration** `scripts/backfill_scenario_names.py` moves each
+    legacy `description` into `scenario.name` (newlines → `" / "`), skips
+    already-named/empty-description files, idempotent.
+  - **Enums redesign (D5).** Replaced the one-`<select>`-per-kind model
+    with an up-to-3-column (kind, value) row grid + `+ Add enum` /
+    per-row remove in `app/static/08_file_editor.js` (`_renderEnumRows` /
+    `_buildEnumRow` / `_commitEnumRows`); ED11/ED12 + orphan handling
+    preserved.
+  - **Search (OQ8).** Results list shows the scenario name instead of the
+    description; `SearchHit` carries `scenario_name`
+    (`app/storage/_search.py`, `app/templates/search_results.html`). Text
+    search now matches the `Feature.description` **OR** the scenario name
+    (either field; the `matched_field` badge stays `"description"`).
+  - **Folder-detail list.** The test-case list's middle column shows the
+    scenario name instead of the feature description; `Storage.list_folder`
+    now carries `scenario_name` per row (`app/storage/_listing.py`,
+    `app/templates/_folder_feature_table.html`).
+  - Tests: new `tech-04/T04_01..03`; re-pinned
+    feature-01/02/05/08/09/11 smokes. Full suite **275/275**.
+
+- **Run detail: scenario-name column + remark resize — `tech-05`
+  (shipped Jun 13, 2026).** Spec:
+  `specs/tech/05-tech-run-detail-scenario-name-NEW.md`. Builds on the
+  tech-04 migration.
+  - **Display-only Scenario name column.** The run editor table is now
+    `Test case | Scenario name | Result | Remark | ×`. `ui_run`
+    (`app/server/routes_ui.py`) reads each result's scenario name **live**
+    from the `.feature` (tolerant: tombstoned / unparseable → blank, RD-4);
+    it is rendered as a plain `run-scenario-name` `<td>` (not an input), so
+    it never enters the dirty snapshot or the run model / JSON API (RD-3).
+  - **Add-on-fetch (RD-1b).** Newly-added rows fetch their scenario name
+    from the existing `GET /api/files/<path>` via `_fillScenarioName`
+    (`app/static/06_run_editor.js`); no new endpoint and no per-feature
+    parsing added to the `list_tree` sidebar hot path.
+  - **Remark resize (RD-2a).** CSS-only: the textarea is a fixed ~1.5-line
+    height (`h-10`) + `overflow-y-auto` so a clipped 2nd line cues "there's
+    more"; column narrowed to `w-1/4`. Folder-group heading `colspan`
+    bumped 4→5 (server row + clone template).
+  - Tests: new `tech-05/T05_01..04` + `COVERAGE.md`; no feature-10 re-pin
+    needed. Full suite **279/279**.
+
+- **Quality-report detail: extra columns — `tech-06`
+  (shipped Jun 13, 2026).** Spec:
+  `specs/tech/06-tech-report-detail-columns-NEW.md`. Builds on the tech-04
+  migration; enhances `feature-12`.
+  - **Case trend (ask 1).** `_case_trend` (`app/reporting.py`) adds
+    `run_name`; the timeline table gains a **Run name** column →
+    `Run | Run name | When | Result`. RP-3: re-investigated and confirmed a
+    run always has a non-empty name (`POST /runs` requires it, `validate_run`
+    enforces it, all writes go through `_serialize_run`), so the column
+    renders `run.name` directly with no fallback.
+  - **Per-case enrichment (asks 2–4).** New `_read_vocab` + `_case_enums`
+    helpers; `compute_report` threads `project` into `_tag_ranking` /
+    `_tag_inventory`. Per-case entries gain `scenario_name` plus the type's
+    extra dimension: enum-ranking → `tags`; tag-ranking / tag-inventory →
+    `enums` rendered `key : label` (RP-2). Tombstoned `(removed)` cases
+    enrich to blanks. Since `write_feature` cross-checks enums against the
+    vocab, the only blank-label path is a missing/unreadable `enums.yaml` at
+    report time → key-only, no crash.
+  - **Per-case row layout.** Scenario name is the prominent identity
+    (`text-slate-800 font-medium`); the case path is a muted mono link
+    separated by a `·` divider (`app/templates/report_detail.html`).
+  - **Bucket bar contrast.** Track = total (dark grey `bg-slate-400`); fill
+    = dark green (`bg-green-600`) for real buckets, orange (`bg-orange-500`)
+    for synthetic ones (unset/removed/untagged).
+  - Tests: new `tech-06/T06_01..03` + `COVERAGE.md`; re-pinned `F12_02` for
+    the additive per-case keys. Full suite **282/282**.
+
 - **Search function does not display results.**
   - Root cause: HTMX 2.x filter expressions like `keyup[key=='Enter']`
     fail silently (bare `key` is undefined in the filter eval scope), so

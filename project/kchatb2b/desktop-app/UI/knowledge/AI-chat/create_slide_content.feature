@@ -1,3 +1,3 @@
 Feature: user can generate slide content by AI
 
-  Scenario:
+  Scenario: user can generate slide content by AI

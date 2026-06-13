@@ -21,9 +21,16 @@ from ._shared import (
 def post_file():
     body = _require_json_object()
     file_name = _require_non_empty_string(body.get("file_name"), "file_name")
+    # tech-04 (Option B): scenario_name is the case identity but stays
+    # OPTIONAL at the API (model permits an empty scenario name, V5; the
+    # create modal enforces "required" client-side). Hard API enforcement
+    # is tracked as a separate Must-have ("Require scenario_name at API").
+    scenario_name = body.get("scenario_name", "")
+    if not isinstance(scenario_name, str):
+        raise ValueError("Body field 'scenario_name' must be a string.")
     description = body.get("description", "")
-    if not isinstance(description, str) or not description.strip():
-        raise ValueError("Body field 'description' must be a non-empty string.")
+    if not isinstance(description, str):
+        raise ValueError("Body field 'description' must be a string.")
 
     parent_segments = _parent_to_segments(body.get("parent", ""))
     # `.feature` files live inside a module (depth 2) or any sub-folder
@@ -37,7 +44,9 @@ def post_file():
             f"{len(parent_segments)} segment(s)."
         )
 
-    _storage().create_file(parent_segments + [file_name], description)
+    _storage().create_file(
+        parent_segments + [file_name], description, scenario_name=scenario_name
+    )
     return jsonify({"ok": True}), 201
 
 

@@ -1,3 +1,3 @@
 Feature: hihi hehe test
 
-  Scenario:
+  Scenario: hihi hehe test

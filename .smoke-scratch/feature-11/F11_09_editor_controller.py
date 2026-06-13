@@ -62,23 +62,34 @@ struct_block = re.search(
 assert struct_block, "renderStructured() does not call renderEnums()"
 print("PASS  renderEnums wired into renderStructured() reload path")
 
-# --- 4. <select> change → state.feature.enums[kind] + markDirty(true) ----
-# Anchor on _buildEnumPicker to avoid catching the step-keyword <select>
-# change handler that exists elsewhere in the editor.
+# --- 4. Value <select> change commits via _commitEnumRows ----------------
+# tech-04 D5 reshaped the editor into a (kind, value) row grid. A value (or
+# kind) change calls _commitEnumRows(), which rebuilds state.feature.enums
+# from the visible rows and marks dirty only when the map actually changed.
 m = re.search(
-    r"_buildEnumPicker\([^)]*\)\s*\{(.*?)\n  \},",
+    r"_buildEnumRow\([^)]*\)\s*\{(.*?)\n  \},",
     src,
     flags=re.DOTALL,
 )
-assert m, "_buildEnumPicker block not found"
-picker_body = m.group(1)
-assert "state.feature.enums[kind]" in picker_body, (
-    "picker change must mutate state.feature.enums[kind]"
+assert m, "_buildEnumRow block not found"
+row_body = m.group(1)
+assert "this._commitEnumRows()" in row_body, (
+    "a value/kind change must commit via _commitEnumRows()"
 )
-assert "markDirty(true)" in picker_body, (
-    "picker change must call markDirty(true)"
+m2 = re.search(
+    r"_commitEnumRows\(\)\s*\{(.*?)\n  \},",
+    src,
+    flags=re.DOTALL,
 )
-print("PASS  Picker change mutates feature.enums + marks dirty")
+assert m2, "_commitEnumRows block not found"
+commit_body = m2.group(1)
+assert "this.state.feature.enums = next" in commit_body, (
+    "_commitEnumRows must rebuild state.feature.enums from the rows"
+)
+assert "markDirty(true)" in commit_body, (
+    "_commitEnumRows must call markDirty(true) when the committed map changes"
+)
+print("PASS  Value/kind change commits via _commitEnumRows -> rebuilds feature.enums + marks dirty")
 
 # --- 5. Orphan rendering -------------------------------------------------
 assert "_renderEnumOrphans()" in src, "_renderEnumOrphans method missing"

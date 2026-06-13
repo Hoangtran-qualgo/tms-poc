@@ -48,27 +48,44 @@ body1 = _extract_block(JS, r"function\s+tmsCreateFile\s*\(\s*parent\s*\)")
 assert "tmsOpenModal" in body1, (
     "UI1: tmsCreateFile(parent) must use tmsOpenModal (not window.prompt)"
 )
-# Two-field form: file name + description.
+# Three-field form (tech-04 D2/D3): file name + feature description
+# (optional) + scenario name (required).
 assert re.search(r"""tms-cf-name""", body1), (
     "UI1: tmsCreateFile must render a file-name input (`tms-cf-name`)"
 )
 assert re.search(r"""tms-cf-desc""", body1), (
     "UI1: tmsCreateFile must render a description input (`tms-cf-desc`)"
 )
+assert re.search(r"""tms-cf-scenario""", body1), (
+    "UI1: tmsCreateFile must render a scenario-name input (`tms-cf-scenario`)"
+)
 # Modal hint declares `.feature` auto-append (verbatim copy in v1).
 assert ".feature is added automatically" in body1, (
     "UI1: tmsCreateFile modal must carry the '.feature is added automatically' hint"
 )
-# POST /api/files with {parent, file_name, description}.
+# POST /api/files with {parent, file_name, scenario_name, description}.
 assert re.search(
     r"""tmsApiPost\(\s*["']/api/files["']""", body1,
 ), (
     "UI1: tmsCreateFile must call tmsApiPost('/api/files', …)"
 )
-assert re.search(r"\bparent\s*[,}]", body1) and "file_name" in body1 and "description" in body1, (
-    "UI1: tmsCreateFile POST body must carry parent, file_name, description"
+assert (
+    re.search(r"\bparent\s*[,}]", body1)
+    and "file_name" in body1
+    and "scenario_name" in body1
+    and "description" in body1
+), (
+    "UI1: tmsCreateFile POST body must carry parent, file_name, "
+    "scenario_name, description"
 )
-print("PASS  UI1: tmsCreateFile(parent) -> tmsOpenModal + POST /api/files {parent, file_name, description}")
+# Confirm gate keys on file name + scenario name (description optional).
+assert "!(n && sc)" in body1, (
+    "UI1: Confirm must gate on file name + scenario name (not description)"
+)
+print(
+    "PASS  UI1: tmsCreateFile(parent) -> tmsOpenModal + POST /api/files "
+    "{parent, file_name, scenario_name, description}; gated on name + scenario"
+)
 
 
 # --- UI2: tmsEditor.rename() -----------------------------------------------

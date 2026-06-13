@@ -1,3 +1,3 @@
 Feature: user profile cannot create new channel
 
-  Scenario:
+  Scenario: user profile cannot create new channel

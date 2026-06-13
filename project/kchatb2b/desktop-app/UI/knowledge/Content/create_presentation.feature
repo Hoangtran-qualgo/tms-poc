@@ -1,3 +1,3 @@
 Feature: user can create new presentation
 
-  Scenario:
+  Scenario: user can create new presentation

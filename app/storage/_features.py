@@ -37,15 +37,18 @@ class FeaturesMixin:
 
     # -- Writes / creates / mutations ------------------------------------
 
-    def create_file(self, parts: PartsLike, description: str) -> None:
+    def create_file(
+        self, parts: PartsLike, description: str = "", *, scenario_name: str = ""
+    ) -> None:
         """Create a new ``.feature`` file with a placeholder scenario.
 
         The leaf segment of ``parts`` is normalised by :func:`_normalize_filename`
         (auto-append ``.feature`` if missing; reject any other extension).
-        Raises :class:`NameConflictError` if a file already exists at the
-        resolved path; :class:`FileNotFoundError` if the parent folder is
-        missing; :class:`~app.errors.ValidationError` if ``description`` is
-        empty or otherwise invalid for write-time invariants.
+        ``description`` is optional (tech-04 D1) — the case identity is
+        ``scenario_name``, written onto the placeholder scenario. Raises
+        :class:`NameConflictError` if a file already exists at the resolved
+        path; :class:`FileNotFoundError` if the parent folder is missing;
+        :class:`~app.errors.ValidationError` on any other write-time invariant.
         """
         segments = self._split(parts)
         if not segments:
@@ -67,7 +70,7 @@ class FeaturesMixin:
                 )
             feature = Feature(
                 description=description,
-                scenario=Scenario(kind="scenario", name=""),
+                scenario=Scenario(kind="scenario", name=scenario_name),
             )
             # Cross-check (no-op for the default empty enums dict; kept for
             # symmetry with write_feature / write_raw so future create-time

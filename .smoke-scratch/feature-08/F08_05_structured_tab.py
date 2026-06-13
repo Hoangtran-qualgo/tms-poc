@@ -82,9 +82,13 @@ for kind_id, kind_value in (("kind-scenario", "scenario"), ("kind-outline", "out
     )
 
 # Scenario name input.
-assert re.search(
-    r'<input[^>]*id="scenario-name"', html
-), "TP4: structured tab must include <input id='scenario-name'>"
+scenario_name_input = re.search(r'<input[^>]*id="scenario-name"[^>]*>', html)
+assert scenario_name_input, "TP4: structured tab must include <input id='scenario-name'>"
+# tech-04: scenario name is the case identity, so its placeholder reads
+# "Scenario name" (NOT the stale "(optional)").
+assert 'placeholder="Scenario name"' in scenario_name_input.group(0), (
+    "tech-04: #scenario-name placeholder must be 'Scenario name', not '(optional)'"
+)
 
 # Scenario tags region.
 assert 'id="scenario-tags-chips"' in html, (

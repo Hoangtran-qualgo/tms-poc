@@ -9,6 +9,7 @@ from __future__ import annotations
 
 from flask import render_template, request
 
+from ..errors import GherkinParseError
 from ..models import RUN_RESULTS
 from ..reporting import compute_report
 from ._shared import ui, _folder_crumbs, _is_feature_path, _storage
@@ -237,7 +238,20 @@ def ui_run(project: str, group: str, file_name: str):
     run_dict = run.to_dict()
     root = s.root
     for r in run_dict["results"]:
-        r["missing"] = not (root / r["file_path"]).is_file()
+        file_path = r["file_path"]
+        missing = not (root / file_path).is_file()
+        r["missing"] = missing
+        # tech-05: scenario name is display-only — read live from the
+        # .feature (never snapshotted into the run YAML), mirroring the
+        # tolerant pattern in storage.list_folder. Tombstoned / unreadable
+        # cases fall back to an empty string.
+        if missing:
+            r["scenario_name"] = ""
+            continue
+        try:
+            r["scenario_name"] = s.read_feature(file_path).scenario.name
+        except (GherkinParseError, OSError, UnicodeDecodeError):
+            r["scenario_name"] = ""
     return render_template(
         "run_editor.html",
         project=project,

@@ -1,3 +1,3 @@
 Feature: admin profile can create new channel
 
-  Scenario:
+  Scenario: admin profile can create new channel
