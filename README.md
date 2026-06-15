@@ -4,6 +4,14 @@ A local Flask web app for managing test cases: editing Gherkin
 `.feature` files, organising test runs, and generating quality reports —
 all stored as files under `./project/<project>/...`.
 
+> [!IMPORTANT]
+> **VERY IMPORTANT NOTE (as of feature 14): the tool supports only
+> _feature-level_ and _scenario-level_ tags — `Examples:`-level tags are
+> NOT supported yet.** Tag surfaces (e.g. the import preview, tag
+> search/filter) operate on feature + scenario tags only. Examples tags are
+> preserved verbatim on file round-trip but are not a first-class, surfaced
+> tag concept anywhere; treat that as a future enhancement.
+
 ## Prerequisites
 
 - Python 3.11+

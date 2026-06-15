@@ -20,7 +20,9 @@ search), `tech-05` (run detail), and `tech-06` (report detail) are all
   Save-gate RG1); the create modal enforces it client-side only. Decide
   whether to also enforce it server-side (a stricter API + matching model
   V-rule), which would re-pin the ~41 setup-only smokes that create files
-  via `POST /api/files` and gate the planned **import** feature too.
+  via `POST /api/files` and would also tighten the shipped **import**
+  feature (`feature-14`), which today likewise enforces scenario name
+  client-side only.
 
 - **Investigate: revamp test-case list.**
   - ~~Rename the `description` column to `scenario name`.~~ **Done
@@ -29,12 +31,8 @@ search), `tech-05` (run detail), and `tech-06` (report detail) are all
     and `n more…`.
   - `Tags` column displays top 2 and `n more…`.
 
-- **Investigate new feature: import test cases.**
-  - User can upload a `.feature` file; validate invalid file type, format,
-    and content.
-  - One feature file may contain one or more scenarios — split each
-    scenario; each scenario is saved as a single test case sharing the
-    same feature description and feature tags.
+- ~~**Investigate new feature: import test cases.**~~ **Shipped Jun 13, 2026**
+  as `feature-14` (see `DONE.md` + `specs/features/14-feature-import-test-cases-NEW.md`).
 
 ## Should have
 
