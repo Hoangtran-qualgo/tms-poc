@@ -11,7 +11,9 @@ from urllib.parse import unquote
 
 from flask import jsonify
 
-from ..models import TestRun
+from ..allure_io import ParsedReport, parse_allure_report, split_example_suffix
+from ..errors import ImportValidationError
+from ..models import RunResult, TestRun
 from ._shared import (
     api,
     _require_json_object,
@@ -20,6 +22,75 @@ from ._shared import (
     _require_optional_str,
     _storage,
 )
+
+#: Maximum size (bytes) of an uploaded Allure HTML report (feature-15).
+#: Enforced on both the preview and commit endpoints, on the UTF-8 payload.
+_MAX_IMPORT_HTML_BYTES = 30 * 1024 * 1024
+
+
+def _require_import_html(body: dict) -> str:
+    """Return the ``html`` report text from ``body``, enforcing the 30 MB cap."""
+    html = body.get("html", "")
+    if not isinstance(html, str):
+        raise ValueError("Body field 'html' must be a string.")
+    if len(html.encode("utf-8")) > _MAX_IMPORT_HTML_BYTES:
+        raise ValueError(
+            f"Imported report exceeds the "
+            f"{_MAX_IMPORT_HTML_BYTES // (1024 * 1024)} MB limit."
+        )
+    return html
+
+
+def _classify_scenario(name: str, resolution: dict) -> tuple[str, str | None]:
+    """Return ``(match, file_path)`` for ``name`` against a resolution dict."""
+    if name in resolution["matched"]:
+        return "matched", resolution["matched"][name]
+    if name in resolution["ambiguous"]:
+        return "ambiguous", None
+    return "unmatched", None
+
+
+def _import_error_line(no: int, name: str, match: str, project: str) -> str:
+    """Format one blocking line: ``<no>.<name> : <message> - <reason>``."""
+    if match == "ambiguous":
+        reason = (
+            f"multiple cases in project {project!r} share this scenario name"
+        )
+    else:
+        reason = f"no case in project {project!r} has this scenario name"
+    return f"{no}.{name} : cannot import - {reason}"
+
+
+def _classify_report(report: ParsedReport, project: str) -> list[dict]:
+    """Per-row classification of an Allure report against project cases (tech-09).
+
+    Splits each scenario's Scenario-Outline example suffix
+    (``" -- @<table>.<row>"``), resolves the **distinct base names** against the
+    project, then re-attaches the outcome to every report row. Repeated base
+    names (an outline's example rows) are each kept as a **distinct** row, never
+    collapsed and never flagged ``ambiguous`` (ambiguous = 2+ *different* cases
+    for one base). Each row is
+    ``{no, name (suffixed), result, match, file_path|None, example|None}``.
+    """
+    splits = [split_example_suffix(sc.name) for sc in report.scenarios]
+    bases = list(dict.fromkeys(base for base, _ex in splits))
+    resolution = _storage().resolve_scenarios(project, bases)
+    rows: list[dict] = []
+    for no, (sc, (base, example)) in enumerate(
+        zip(report.scenarios, splits), start=1
+    ):
+        match, file_path = _classify_scenario(base, resolution)
+        rows.append(
+            {
+                "no": no,
+                "name": sc.name,
+                "result": sc.result,
+                "match": match,
+                "file_path": file_path,
+                "example": example,
+            }
+        )
+    return rows
 
 
 @api.get("/run-groups")
@@ -93,6 +164,111 @@ def post_run():
         name=name,
         file_name=file_name,
         case_paths=case_paths,
+        description=description,
+    )
+    return jsonify({"ok": True}), 201
+
+
+@api.post("/runs/import/preview")
+def post_run_import_preview():
+    """Dry-run: parse an Allure report + resolve its scenarios to project cases.
+
+    Body ``{project, html}`` (text, no multipart). Returns the report's name +
+    created time, one preview row per scenario (``no``, ``name``, ``result``,
+    ``match``, and ``file_path`` when matched), tally ``counts``, and the
+    blocking ``errors`` lines for every non-matched scenario. No writes. A
+    non-Allure / malformed report is rejected as ``bad_request``; a report
+    larger than 30 MB is also ``bad_request``.
+    """
+    body = _require_json_object()
+    project = _require_non_empty_string(body.get("project"), "project")
+    html = _require_import_html(body)
+
+    report = parse_allure_report(html)  # ValueError -> 400 bad_request
+    rows = _classify_report(report, project)
+
+    scenarios: list[dict] = []
+    errors: list[str] = []
+    counts = {"total": len(rows), "matched": 0, "unmatched": 0, "ambiguous": 0}
+    for row in rows:
+        out: dict = {
+            "no": row["no"],
+            "name": row["name"],
+            "result": row["result"],
+            "match": row["match"],
+        }
+        if row["file_path"] is not None:
+            out["file_path"] = row["file_path"]
+        if row["example"] is not None:
+            out["example"] = row["example"]
+        scenarios.append(out)
+        counts[row["match"]] += 1
+        if row["match"] != "matched":
+            errors.append(
+                _import_error_line(row["no"], row["name"], row["match"], project)
+            )
+
+    return jsonify(
+        {
+            "report_name": report.report_name,
+            "created_at": report.created_at,
+            "scenarios": scenarios,
+            "counts": counts,
+            "errors": errors,
+        }
+    )
+
+
+@api.post("/runs/import")
+def post_run_import():
+    """Commit a run import: re-parse + re-resolve server-side, all-or-nothing.
+
+    Body ``{project, group, name, file_name, description?, html}``. The preview
+    is advisory only; this endpoint re-parses the report and re-resolves every
+    scenario. If **any** scenario is unmatched / ambiguous, raises
+    :class:`~app.errors.ImportValidationError` (-> 422 with the per-line error
+    list) and writes nothing. Otherwise builds one :class:`RunResult` per
+    scenario and delegates to :meth:`Storage.import_test_run`.
+    """
+    body = _require_json_object()
+    project = _require_non_empty_string(body.get("project"), "project")
+    group = _require_non_empty_string(body.get("group"), "group")
+    name = _require_non_empty_string(body.get("name"), "name")
+    file_name = _require_non_empty_string(body.get("file_name"), "file_name")
+    description = _require_optional_str(body.get("description"), "description")
+    html = _require_import_html(body)
+
+    report = parse_allure_report(html)  # ValueError -> 400 bad_request
+    if not report.scenarios:
+        raise ImportValidationError(reasons=["No scenarios found to import."])
+
+    rows = _classify_report(report, project)
+
+    errors: list[str] = []
+    results: list[RunResult] = []
+    for row in rows:
+        if row["match"] != "matched":
+            errors.append(
+                _import_error_line(row["no"], row["name"], row["match"], project)
+            )
+        else:
+            results.append(
+                RunResult(
+                    file_path=row["file_path"],
+                    result=row["result"],
+                    example=row["example"],
+                )
+            )
+    if errors:
+        raise ImportValidationError(reasons=errors)
+
+    _storage().import_test_run(
+        project=project,
+        group=group,
+        name=name,
+        file_name=file_name,
+        created_at=report.created_at,
+        results=results,
         description=description,
     )
     return jsonify({"ok": True}), 201

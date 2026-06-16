@@ -1,0 +1,31 @@
+name: tr1
+created_at: '2026-06-16T07:33:31+00:00'
+description: ''
+results:
+- file_path: test-proj01/moduleA/t1.feature
+  result: PENDING
+  remark: ''
+- file_path: test-proj01/moduleA/t2.feature
+  result: EXECUTING
+  remark: ''
+  example:
+    table: 1
+    row: 1
+- file_path: test-proj01/moduleA/t2.feature
+  result: PASSED
+  remark: ''
+  example:
+    table: 1
+    row: 2
+- file_path: test-proj01/moduleA/t2.feature
+  result: FAILED
+  remark: ''
+  example:
+    table: 1
+    row: 3
+- file_path: test-proj01/moduleA/test case 3.feature
+  result: SKIPPED
+  remark: ''
+- file_path: test-proj01/moduleA/test_case1.feature
+  result: PENDING
+  remark: ''

@@ -25,7 +25,8 @@ with tempfile.TemporaryDirectory() as td:
 
     # --- FL5: a .yaml leaf via the generic file API -> 400 bad_request. ---
     r = client.post("/api/files", data=json.dumps(
-        {"file_name": "rogue.yaml", "parent": "Alpha/Checkout", "description": "d"}),
+        {"file_name": "rogue.yaml", "parent": "Alpha/Checkout", "description": "d",
+         "scenario_name": "s"}),
         content_type="application/json")
     assert r.status_code == 400, (r.status_code, r.get_data(as_text=True))
     env = r.get_json()["error"]

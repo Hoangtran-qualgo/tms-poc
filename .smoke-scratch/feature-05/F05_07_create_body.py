@@ -13,10 +13,11 @@ with tempfile.TemporaryDirectory() as td:
     client.post("/api/folders", json={"name": "Alpha"})
     client.post("/api/folders", json={"parent": "Alpha", "name": "Mod"})
 
-    # --- CB1: file_name required; scenario_name + description OPTIONAL ----
-    # tech-04 Option B: the API permits an empty scenario name (model V5);
-    # the create modal enforces "required" client-side. Hard API enforcement
-    # is a separate Must-have ("Require scenario_name at API").
+    # --- CB1: file_name + scenario_name required; description OPTIONAL -----
+    # tech-07 (SN-1 = Option A): scenario_name is REQUIRED at the API,
+    # matching the create modal's client-side gate (tech-04 RG1) and the
+    # import path's server-side enforcement. The model stays permissive (V5);
+    # enforcement lives at this entry point.
     # Missing file_name -> 400 bad_request.
     r = client.post(
         "/api/files",
@@ -27,31 +28,59 @@ with tempfile.TemporaryDirectory() as td:
     )
     assert r.get_json()["error"]["code"] == "bad_request"
 
-    # Non-string scenario_name / description -> 400 (type guard).
-    for field, bad in (
-        ("scenario_name", 123), ("scenario_name", []),
-        ("description", 123), ("description", []),
-    ):
-        r = client.post(
-            "/api/files",
-            json={"parent": "Alpha/Mod", "file_name": "bad", field: bad},
-        )
-        assert r.status_code == 400, (
-            f"CB1: non-string {field}={bad!r} must return 400, got {r.status_code}"
-        )
-
-    # Both scenario_name and description omitted -> 201 (both optional).
+    # Missing scenario_name -> 400 bad_request (tech-07).
     r = client.post(
         "/api/files",
-        json={"parent": "Alpha/Mod", "file_name": "bare"},
+        json={"parent": "Alpha/Mod", "file_name": "noscen", "description": "d"},
+    )
+    assert r.status_code == 400, (
+        f"CB1: missing scenario_name must return 400, got {r.status_code}"
+    )
+    assert r.get_json()["error"]["code"] == "bad_request"
+    assert "scenario_name" in r.get_json()["error"]["message"], r.get_json()
+
+    # Whitespace-only scenario_name -> 400 (tech-07 SN-3: stripped == empty).
+    r = client.post(
+        "/api/files",
+        json={"parent": "Alpha/Mod", "file_name": "wsname", "scenario_name": "   "},
+    )
+    assert r.status_code == 400, (
+        f"CB1: whitespace-only scenario_name must return 400, got {r.status_code}"
+    )
+
+    # Non-string scenario_name -> 400 (type/required guard).
+    for bad in (123, []):
+        r = client.post(
+            "/api/files",
+            json={"parent": "Alpha/Mod", "file_name": "bad", "scenario_name": bad},
+        )
+        assert r.status_code == 400, (
+            f"CB1: non-string scenario_name={bad!r} must return 400, got {r.status_code}"
+        )
+
+    # Non-string description (with a valid scenario_name) -> 400 (type guard).
+    for bad in (123, []):
+        r = client.post(
+            "/api/files",
+            json={"parent": "Alpha/Mod", "file_name": "bad",
+                  "scenario_name": "ok", "description": bad},
+        )
+        assert r.status_code == 400, (
+            f"CB1: non-string description={bad!r} must return 400, got {r.status_code}"
+        )
+
+    # description omitted (scenario_name present) -> 201 (description optional).
+    r = client.post(
+        "/api/files",
+        json={"parent": "Alpha/Mod", "file_name": "bare", "scenario_name": "Pay"},
     )
     assert r.status_code == 201, (
-        f"CB1: omitting scenario_name + description must succeed, got {r.status_code}"
+        f"CB1: omitting only description must succeed, got {r.status_code}"
     )
     bare = client.get("/api/files/Alpha/Mod/bare.feature").get_json()
     assert bare["description"] == "", f"bare description must be '', got {bare['description']!r}"
-    assert bare["scenario"]["name"] == "", (
-        f"bare scenario name must be '', got {bare['scenario']['name']!r}"
+    assert bare["scenario"]["name"] == "Pay", (
+        f"bare scenario name must echo scenario_name, got {bare['scenario']['name']!r}"
     )
 
     # Valid create with both fields -> 201; scenario.name carries identity.
@@ -93,6 +122,6 @@ with tempfile.TemporaryDirectory() as td:
         f"CB1: created scenario must have no tags, got {scenario.get('tags')!r}"
     )
 print(
-    "PASS  CB1: file_name required; scenario_name + description optional at API "
-    "(non-string rejected); scenario.name carries the identity when provided"
+    "PASS  CB1: file_name + scenario_name required at API (missing/blank/"
+    "non-string rejected); description optional; scenario.name carries identity"
 )

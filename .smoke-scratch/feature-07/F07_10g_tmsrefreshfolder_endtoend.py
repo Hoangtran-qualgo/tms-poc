@@ -69,7 +69,7 @@ with tempfile.TemporaryDirectory() as td:
     )
     r = client.post(
         "/api/files",
-        json={"parent": "Beta/Cart", "file_name": "newcase", "description": "x"},
+        json={"parent": "Beta/Cart", "file_name": "newcase", "scenario_name": "s", "description": "x"},
     )
     assert r.status_code == 201, (
         f"AC7 setup (c): POST /api/files must succeed, got {r.status_code}"

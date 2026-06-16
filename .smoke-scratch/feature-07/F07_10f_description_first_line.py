@@ -20,7 +20,7 @@ with tempfile.TemporaryDirectory() as td:
     client.post("/api/folders", json={"parent": "Alpha", "name": "Mod"})
     client.post(
         "/api/files",
-        json={"parent": "Alpha/Mod", "file_name": "case", "description": "seed"},
+        json={"parent": "Alpha/Mod", "file_name": "case", "scenario_name": "s", "description": "seed"},
     )
     # Raw source carries a feature description AND a named scenario. The
     # folder list renders the scenario name; the description must not show.

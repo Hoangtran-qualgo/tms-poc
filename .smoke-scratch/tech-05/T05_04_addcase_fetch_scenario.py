@@ -30,7 +30,7 @@ print("PASS RD-1b add-row template includes the scenario-name cell")
 # 2/3) JS wiring: _createResultRow calls _fillScenarioName; _fillScenarioName
 #      fetches /api/files/<path>, reads scenario.name, fills the cell.
 js = pathlib.Path("app/static/06_run_editor.js").read_text()
-create = re.search(r"_createResultRow\(file_path\)\s*\{(.*?)\n  \},", js, re.S)
+create = re.search(r"_createResultRow\(file_path[^)]*\)\s*\{(.*?)\n  \},", js, re.S)
 assert create, "could not locate _createResultRow"
 assert "_fillScenarioName(" in create.group(1) and ".run-scenario-name" in create.group(1)
 print("PASS RD-1b _createResultRow wires the async scenario-name fill")

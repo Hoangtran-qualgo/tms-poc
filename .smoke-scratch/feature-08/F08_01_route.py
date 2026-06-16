@@ -31,7 +31,7 @@ with tempfile.TemporaryDirectory() as td:
     client.post("/api/folders", json={"parent": "Alpha", "name": "Mod"})
     r = client.post(
         "/api/files",
-        json={"parent": "Alpha/Mod", "file_name": "case", "description": "x"},
+        json={"parent": "Alpha/Mod", "file_name": "case", "scenario_name": "s", "description": "x"},
     )
     assert r.status_code == 201, "RT1 setup: file POST must succeed"
 

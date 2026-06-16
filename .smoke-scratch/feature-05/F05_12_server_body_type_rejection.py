@@ -31,8 +31,10 @@ with tempfile.TemporaryDirectory() as td:
     _expect_400(c.post("/api/files", json={"file_name": 123}), "file_name")
 
     # --- POST /api/files: description isinstance leg (line ~180). ---
+    # tech-07: scenario_name is now required at the API and is checked before
+    # description/parent, so supply a valid one to reach those guards.
     _expect_400(
-        c.post("/api/files", json={"file_name": "a.feature", "description": 123}),
+        c.post("/api/files", json={"file_name": "a.feature", "scenario_name": "s", "description": 123}),
         "description",
     )
 
@@ -40,7 +42,7 @@ with tempfile.TemporaryDirectory() as td:
     _expect_400(
         c.post(
             "/api/files",
-            json={"file_name": "a.feature", "description": "d", "parent": 123},
+            json={"file_name": "a.feature", "scenario_name": "s", "description": "d", "parent": 123},
         ),
         "'parent' must be a string",
     )

@@ -26,7 +26,8 @@ client.post("/api/folders", json={"parent": "Alpha", "name": "Mod"})
 
 r = client.post(
     "/api/files",
-    json={"parent": "Alpha/Mod", "file_name": "case", "description": "seed desc"},
+    json={"parent": "Alpha/Mod", "file_name": "case",
+          "scenario_name": "seed scenario", "description": "seed desc"},
 )
 assert r.status_code == 201, (
     f"HR1: POST /api/files must return 201, got {r.status_code} body={r.get_data(as_text=True)!r}"
@@ -42,7 +43,8 @@ assert (root / "Alpha" / "Mod" / "case.feature").is_file(), (
 client.post("/api/folders", json={"parent": "Alpha/Mod", "name": "Sub"})
 r = client.post(
     "/api/files",
-    json={"parent": "Alpha/Mod/Sub", "file_name": "deep", "description": "deep desc"},
+    json={"parent": "Alpha/Mod/Sub", "file_name": "deep",
+          "scenario_name": "deep scenario", "description": "deep desc"},
 )
 assert r.status_code == 201, "HR1: depth-3 parent must be accepted"
 print("PASS  HR1: POST /api/files {file_name, description, parent} -> 201 {ok: true}")

@@ -39,7 +39,7 @@ with tempfile.TemporaryDirectory() as td:
     # --- AL1 for POST /api/files (create_file) -----------------------------
     r = client.post(
         "/api/files",
-        json={"parent": "Alpha/Mod", "file_name": "f1", "description": "x"},
+        json={"parent": "Alpha/Mod", "file_name": "f1", "scenario_name": "s", "description": "x"},
     )
     assert r.status_code == 201, "AL1 setup: create must succeed"
     target = str(mod_dir / "f1.feature")

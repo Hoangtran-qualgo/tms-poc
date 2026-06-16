@@ -61,11 +61,16 @@ const tmsRunEditor = {
     const rows = document.querySelectorAll("#run-results tbody tr[data-file-path]");
     const results = [];
     rows.forEach((tr) => {
-      results.push({
+      const result = {
         file_path: tr.dataset.filePath,
         result: tr.querySelector(".run-result-select").value,
         remark: tr.querySelector(".run-remark").value,
-      });
+      };
+      // tech-09: a Scenario-Outline row carries its example identity so it
+      // round-trips through dirty tracking + Save (omitted for plain rows).
+      const ex = this._exampleOf(tr);
+      if (ex) result.example = ex;
+      results.push(result);
     });
     return {
       name: nameEl ? nameEl.value : "",
@@ -81,14 +86,36 @@ const tmsRunEditor = {
    *  opening an ungrouped run never flashes a false "changed" state. (Save
    *  still serialises `_readCurrent()` in grouped DOM order.) */
   _compareJson(snapshot) {
-    const results = [...snapshot.results].sort((a, b) =>
-      a.file_path < b.file_path ? -1 : a.file_path > b.file_path ? 1 : 0
-    );
+    // Canonicalise each result (fixed key order + example only when present)
+    // so snapshots built from the DOM, the Save payload, and the disk API all
+    // stringify identically. Sort by (file_path, example) so an outline's
+    // same-path rows compare in a stable order regardless of DOM/disk order.
+    const results = snapshot.results
+      .map((r) => {
+        const o = {
+          file_path: r.file_path,
+          result: r.result,
+          remark: r.remark,
+        };
+        if (r.example) o.example = { table: r.example.table, row: r.example.row };
+        return o;
+      })
+      .sort((a, b) => {
+        const ka = this._sortKey(a);
+        const kb = this._sortKey(b);
+        return ka < kb ? -1 : ka > kb ? 1 : 0;
+      });
     return JSON.stringify({
       name: snapshot.name,
       description: snapshot.description,
       results,
     });
+  },
+
+  /** Stable order key for a result row: file_path then example coordinate. */
+  _sortKey(r) {
+    const ex = r.example ? `${r.example.table}.${r.example.row}` : "";
+    return `${r.file_path}\u0000${ex}`;
   },
 
   _wireInputs() {
@@ -135,11 +162,15 @@ const tmsRunEditor = {
       .addEventListener("click", () => this._onAddCaseClicked());
   },
 
-  /** Clone a fresh row from the server-rendered <template> prototype. */
-  _createResultRow(file_path) {
+  /** Clone a fresh row from the server-rendered <template> prototype.
+   *  tech-09: `example` ({table,row}) pins a Scenario-Outline example row; it
+   *  is stamped onto `data-example` so _readCurrent / _fillScenarioName / Save
+   *  all read the same per-row identity. Null for a plain scenario. */
+  _createResultRow(file_path, example = null) {
     const tpl = document.getElementById("run-result-row-template");
     const tr = tpl.content.firstElementChild.cloneNode(true);
     tr.dataset.filePath = file_path;
+    if (example) tr.dataset.example = `${example.table}.${example.row}`;
     const linkCell = tr.children[0];
     linkCell.setAttribute("title", file_path);
     const link = linkCell.querySelector(".run-row-link");
@@ -164,7 +195,29 @@ const tmsRunEditor = {
     return tr;
   },
 
-  /** Populate a row's display-only scenario-name cell from the feature API. */
+  /** Parse a row's `data-example` ("<table>.<row>") into {table,row} or null. */
+  _exampleOf(tr) {
+    const raw = tr && tr.dataset ? tr.dataset.example : null;
+    if (!raw) return null;
+    const [t, rownum] = raw.split(".").map(Number);
+    if (!(t >= 1) || !(rownum >= 1)) return null;
+    return { table: t, row: rownum };
+  },
+
+  /** Resolve an outline example coordinate to {header, row} from a feature
+   *  payload's scenario, or null (mirrors the server's _resolve_example). */
+  _resolveExample(scenario, example) {
+    if (!scenario || scenario.kind !== "outline" || !example) return null;
+    const table = (scenario.examples || [])[example.table - 1];
+    if (!table) return null;
+    const row = (table.rows || [])[example.row - 1];
+    if (!row) return null;
+    return { header: table.header || [], row };
+  },
+
+  /** Populate a row's display-only scenario-name cell from the feature API.
+   *  tech-09: when the row pins an outline example (data-example), append the
+   *  Examples header + matched data row under the base name. */
   async _fillScenarioName(cell, file_path) {
     if (!cell) return;
     try {
@@ -173,9 +226,26 @@ const tmsRunEditor = {
       });
       if (!r.ok) return;
       const data = await r.json();
-      const name = (data.scenario && data.scenario.name) || "";
-      cell.textContent = name;
+      const scenario = data.scenario || {};
+      const name = scenario.name || "";
       cell.setAttribute("title", name);
+      const example = this._exampleOf(cell.closest("tr"));
+      const ex = example ? this._resolveExample(scenario, example) : null;
+      if (!ex) {
+        cell.textContent = name;
+        return;
+      }
+      cell.textContent = "";
+      const nameDiv = document.createElement("div");
+      nameDiv.textContent = name;
+      const block = document.createElement("div");
+      block.className = "run-example mt-0.5 font-mono text-xs text-slate-500";
+      const h = document.createElement("div");
+      h.textContent = `| ${ex.header.join(" | ")} |`;
+      const rw = document.createElement("div");
+      rw.textContent = `| ${ex.row.join(" | ")} |`;
+      block.append(h, rw);
+      cell.append(nameDiv, block);
     } catch (_e) {
       /* leave the cell blank on any failure (RD-4) */
     }
@@ -249,6 +319,40 @@ const tmsRunEditor = {
     this._refreshDirty();
   },
 
+  /** Expand picked paths into per-row {file_path, example} entries.
+   *  A Scenario Outline yields one entry per Examples data row (1-based
+   *  {table,row}); a plain scenario — or any unreadable case — yields a single
+   *  entry with example=null, so a picked case is never silently dropped. */
+  async _expandCasePaths(paths) {
+    const entries = [];
+    for (const file_path of paths) {
+      let scenario = null;
+      try {
+        const r = await fetch(`/api/files/${file_path}`, {
+          headers: { Accept: "application/json" },
+        });
+        if (r.ok) scenario = (await r.json()).scenario || null;
+      } catch (_e) {
+        /* fall through to a single plain entry */
+      }
+      const tables =
+        scenario &&
+        scenario.kind === "outline" &&
+        Array.isArray(scenario.examples)
+          ? scenario.examples
+          : [];
+      let expanded = false;
+      tables.forEach((table, ti) => {
+        (table.rows || []).forEach((_row, ri) => {
+          expanded = true;
+          entries.push({ file_path, example: { table: ti + 1, row: ri + 1 } });
+        });
+      });
+      if (!expanded) entries.push({ file_path, example: null });
+    }
+    return entries;
+  },
+
   async _onAddCaseClicked() {
     if (!this.state) return;
     const { project } = this.state;
@@ -283,13 +387,19 @@ const tmsRunEditor = {
       size: "lg",
       confirmLabel: "Add cases",
       confirmDisabled: true,
-      onConfirm: ({ close }) => {
+      onConfirm: async ({ close }) => {
         const paths = picker.getSelected();
         if (paths.length === 0) return;
+        // tech-09: a Scenario Outline expands into one row per Examples row.
+        const entries = await this._expandCasePaths(paths);
         const tbody = document.querySelector("#run-results tbody");
-        for (const p of paths) {
+        for (const { file_path, example } of entries) {
           // E2: land each new case in its folder group (creating a heading).
-          this._insertResultRow(tbody, this._createResultRow(p), this._folderOf(p));
+          this._insertResultRow(
+            tbody,
+            this._createResultRow(file_path, example),
+            this._folderOf(file_path)
+          );
         }
         // Tell htmx to process the new hx-get attributes on the cloned
         // file-path links so clicks behave like the server-rendered
@@ -427,6 +537,7 @@ const tmsRunEditor = {
             file_path: rr.file_path,
             result: rr.result,
             remark: rr.remark,
+            example: rr.example,
           })),
         });
       } else {

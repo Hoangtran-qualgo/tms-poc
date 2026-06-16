@@ -29,7 +29,7 @@ with tempfile.TemporaryDirectory() as td:
     client.post("/api/folders", json={"parent": "Alpha", "name": "Mod"})
     client.post(
         "/api/files",
-        json={"parent": "Alpha/Mod", "file_name": "case", "description": "seed"},
+        json={"parent": "Alpha/Mod", "file_name": "case", "scenario_name": "s", "description": "seed"},
     )
 
     # Buffer the user would have on screen: mix of empty + non-empty steps.

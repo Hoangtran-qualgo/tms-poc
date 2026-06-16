@@ -24,7 +24,7 @@ with tempfile.TemporaryDirectory() as td:
         )
     client.post(
         "/api/files",
-        json={"parent": "Alpha/Mod", "file_name": "case", "description": "x"},
+        json={"parent": "Alpha/Mod", "file_name": "case", "scenario_name": "s", "description": "x"},
     )
     (root / "Alpha" / "Mod" / "note.txt").write_text("scratch", encoding="utf-8")
 

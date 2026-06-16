@@ -79,11 +79,13 @@ with tempfile.TemporaryDirectory() as td:
     client.post("/api/folders", json={"parent": "Alpha/Mod", "name": "Sub"})
     client.post(
         "/api/files",
-        json={"parent": "Alpha/Mod", "file_name": "case", "description": "seed"},
+        json={"parent": "Alpha/Mod", "file_name": "case",
+              "scenario_name": "seed", "description": "seed"},
     )
     client.post(
         "/api/files",
-        json={"parent": "Alpha/Mod/Sub", "file_name": "deep_case", "description": "seed"},
+        json={"parent": "Alpha/Mod/Sub", "file_name": "deep_case",
+              "scenario_name": "seed", "description": "seed"},
     )
 
     descendants = [

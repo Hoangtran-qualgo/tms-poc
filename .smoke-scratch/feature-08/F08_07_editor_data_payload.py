@@ -29,6 +29,7 @@ with tempfile.TemporaryDirectory() as td:
         json={
             "parent": "Alpha/Mod",
             "file_name": "case",
+            "scenario_name": "seed scenario",
             "description": "seed description",
         },
     )

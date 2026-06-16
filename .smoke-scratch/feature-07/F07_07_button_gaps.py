@@ -24,7 +24,7 @@ with tempfile.TemporaryDirectory() as td:
         )
     client.post(
         "/api/files",
-        json={"parent": "A/B", "file_name": "case", "description": "x"},
+        json={"parent": "A/B", "file_name": "case", "scenario_name": "s", "description": "x"},
     )
 
     forbidden_handlers = [

@@ -274,6 +274,53 @@ class RunsMixin:
             self._atomic_write_bytes(target, data)
             self._mark_write(target)
 
+    def import_test_run(
+        self,
+        project: str,
+        group: str,
+        name: str,
+        file_name: str,
+        created_at: str,
+        results: list[RunResult],
+        description: str = "",
+    ) -> None:
+        """Create a run file from imported results (feature-15).
+
+        Unlike :meth:`create_run`, ``created_at`` is supplied by the caller
+        (the source report's created time, not server-now) and ``results``
+        carry their own per-case outcomes rather than seeding all-``PENDING``.
+        Every other invariant is shared: the group must already exist, the
+        target must not exist, and :meth:`_serialize_run` runs
+        :func:`validate_run` before any bytes are written.
+
+        Raises :class:`FileNotFoundError` if the group does not yet exist,
+        :class:`NameConflictError` if the run file already exists, and
+        :class:`~app.errors.ValidationError` on any invariant violation
+        (empty name/created_at, duplicate ``file_path``, invalid result).
+        """
+        segments = self._run_segments(project, group, file_name)
+        target = self._resolve(segments)
+        key = self._key(segments)
+        with self._lock_for(key):
+            if not target.parent.is_dir():
+                raise FileNotFoundError(
+                    f"Group does not exist: {project}/{_TEST_RUN_AREA}/{group}"
+                )
+            if target.exists():
+                raise NameConflictError(
+                    path=key,
+                    message=f"A run named {segments[-1]!r} already exists.",
+                )
+            run = TestRun(
+                name=name,
+                created_at=created_at,
+                description=description,
+                results=list(results),
+            )
+            data = self._serialize_run(run)
+            self._atomic_write_bytes(target, data)
+            self._mark_write(target)
+
     def read_run(
         self, project: str, group: str, file_name: str
     ) -> TestRun:

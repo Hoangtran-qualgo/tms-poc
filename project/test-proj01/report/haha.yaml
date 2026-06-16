@@ -1,0 +1,7 @@
+type: enum_ranking
+title: haha
+created_at: '2026-06-16T07:34:42+00:00'
+status: PENDING
+kind: ahihi
+run_paths:
+- test-proj01/test-run/test-run/tr1.yaml
