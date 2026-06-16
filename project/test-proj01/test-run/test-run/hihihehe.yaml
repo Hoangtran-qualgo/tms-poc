@@ -27,5 +27,5 @@ results:
   result: PASSED
   remark: ''
 - file_path: test-proj01/moduleC/sub-module1/test_case_4.feature
-  result: FAILED
+  result: PASSED
   remark: ''

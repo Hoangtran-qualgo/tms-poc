@@ -411,11 +411,39 @@ const tmsRunEditor = {
     });
   },
 
+  /** Recompute the per-status result-summary chips from the live DOM.
+   *  Display-only (the cell is never read by _readCurrent, so it can't affect
+   *  dirty). Mirrors the server-rendered chips: count each visible
+   *  .run-result-select, write the per-chip count, hide zero-count chips, and
+   *  show an em-dash when the run has no results. JS owns no symbol/colour map
+   *  — it only writes numbers + toggles `hidden`. */
+  _updateResultSummary() {
+    const summary = document.getElementById("run-result-summary");
+    if (!summary) return;
+    const counts = { PENDING: 0, EXECUTING: 0, PASSED: 0, FAILED: 0, SKIPPED: 0 };
+    document
+      .querySelectorAll("#run-results tbody tr[data-file-path] .run-result-select")
+      .forEach((sel) => {
+        if (counts[sel.value] !== undefined) counts[sel.value] += 1;
+      });
+    let total = 0;
+    summary.querySelectorAll(".run-summary-chip").forEach((chip) => {
+      const n = counts[chip.dataset.status] || 0;
+      total += n;
+      const c = chip.querySelector('[data-role="count"]');
+      if (c) c.textContent = String(n);
+      chip.classList.toggle("hidden", n === 0);
+    });
+    const empty = summary.querySelector(".run-summary-empty");
+    if (empty) empty.classList.toggle("hidden", total > 0);
+  },
+
   _refreshDirty() {
     if (!this.state) return;
     const liveJson = this._compareJson(this._readCurrent());
     const dirty = liveJson !== this.state.baselineJson;
     this._setDirty(dirty);
+    this._updateResultSummary();
   },
 
   _setDirty(d) {

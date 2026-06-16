@@ -4,6 +4,74 @@ Items fixed during v1 manual verification.
 
 ## Must have
 
+- **Test-case directory tree: folders above files within each folder
+  (shipped Jun 16, 2026).** Reference:
+  `specs/features/06-feature-tree-pane-NEW.md`. The Directory sidebar tree
+  interleaved sub-folders and `.feature`/other files (`_tree_children` in
+  `app/storage/_listing.py` appended in raw `iterdir()` order). It now does a
+  **stable** partition — `children.sort(key=… folder→0, file→1)` — so all
+  folders hoist above all files at every level, while the intra-group order is
+  preserved unchanged (only the folder/file split moved). `tree.html` needed no
+  change (it renders the order it's given); main-pane folder views +
+  `list_test_run_tree` left untouched per scope. No existing smoke pinned the
+  interleaved order (all use order-insensitive lookups); new
+  `feature-06/F06_13_tree_folders_above_files` asserts all folders precede all
+  files. Full suite **306/306**. Too small for a `tech-*` spec.
+
+- **Test-run list: status badge colours match the result palette
+  (shipped Jun 16, 2026).** Reference:
+  `specs/features/10-feature-test-run-NEW.md`. The runs-list (group view)
+  status badges (`app/templates/folder_test_run_group.html`) used divergent
+  hard-coded tints (PENDING slate, EXECUTING amber, SKIPPED slate). They now
+  carry `data-status` and inherit the canonical `app/static/app.css`
+  `[data-status]` palette (tech-02 D1) — **✓ green, ✗ red, ? orange, ⋯ blue,
+  ⤷ purple** — matching the run-editor chips + the result `<select>`. Symbol +
+  count only (no status word, unlike the run-editor summary); zero-count badges
+  still omitted. Tests: `F10_14` needed no re-pin (only checks symbol+count);
+  new `feature-10/F10_86_group_badge_palette` (each badge carries data-status,
+  no hard-coded bg tint, no status word). Full suite **305/305**. Too small for
+  a `tech-*` spec.
+
+- **Test-run detail: per-status result summary below the description
+  (shipped Jun 16, 2026).** Reference:
+  `specs/features/10-feature-test-run-NEW.md`. A one-line **Result** summary
+  renders below the description / "Created …" line, above the Results table.
+  - **Chips.** One chip per `RUN_RESULTS` status showing **symbol + count +
+    word**, e.g. `✓ 1 PASSED  ✗ 2 FAILED  ? 3 PENDING  ⋯ 4 EXECUTING
+    ⤷ 5 SKIPPED`. Zero-count chips are hidden; an em-dash shows when the run is
+    empty. Server-rendered in `app/templates/run_editor.html` via
+    `selectattr` counts.
+  - **Colours = single source of truth.** Chips carry `data-status` and inherit
+    their colour from `app/static/app.css`'s `[data-status]` palette (tech-02
+    D1): PASSED green, FAILED red, PENDING orange, EXECUTING blue, SKIPPED
+    purple — so they always match the result `<select>`. No colour map
+    duplicated in JS/template.
+  - **Live update.** `tmsRunEditor._updateResultSummary`
+    (`app/static/06_run_editor.js`) recomputes counts from the live
+    `.run-result-select` values and is wired into `_refreshDirty`, so the chips
+    stay accurate on every result change / add / remove (not reload-only). It
+    only writes the count numbers + toggles `hidden` (display-only; never enters
+    the dirty snapshot).
+  - Tests: new `feature-10/F10_84_result_summary_render` (counts, status words,
+    hidden zero-count chips, em-dash) + `F10_85_result_summary_live` (live JS
+    wiring). Full suite **304/304**. Too small for a `tech-*` spec.
+
+- **Test-run list: open a run group from the Test-run sidebar tree
+  (shipped Jun 16, 2026).** Reference:
+  `specs/features/10-feature-test-run-NEW.md`. The main-pane run listing
+  already existed (`ui_folder`'s typed `test-run` dispatcher →
+  `folder_test_run_group.html`, reached from the run-editor breadcrumb); only
+  the **sidebar wiring** was missing.
+  - **Change.** In `app/templates/test_run_sidebar.html`, **group** (depth-1)
+    folder rows now navigate via
+    `hx-get="/ui/folder/<project>/test-run/<group>"` (caret still toggles
+    children), mirroring `tree.html`'s folder navigation. **Project** (depth-0)
+    rows stay **toggle-only** / non-interactive (USER decision).
+  - Tests: new `feature-10/F10_83_sidebar_group_nav` (group row links to the
+    run listing; project row has no nav target; run leaf still links to the
+    editor). No existing smoke pinned the old non-interactivity. Full suite
+    **302/302**. Too small for a `tech-*` spec.
+
 - **Scenario Outline as per-example run items — `tech-09`
   (shipped Jun 16, 2026).** Spec:
   `specs/tech/09-tech-outline-import-run-NEW.md`. Follow-up to `feature-15`;
