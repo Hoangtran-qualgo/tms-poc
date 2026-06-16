@@ -519,3 +519,368 @@ async function tmsCreateRun() {
   }, 0);
 }
 
+
+// ===========================================================================
+// Import test run (feature-15)
+// ---------------------------------------------------------------------------
+// Top-bar launcher (wired via `onclick="tmsImportRun()"` in base.html, beside
+// "Import test cases"). Uploads an Allure 2 single-file HTML report, previews
+// each scenario's resolution against the chosen project's cases, and on
+// confirm writes ONE run .yaml with per-case results.
+//
+// Structural sibling of `tmsImportFile` (03_folder_actions.js) for the modal /
+// preview / error shell, and of `tmsCreateRun` (above) for the /api/run-groups
+// destination picker + success "open the run" landing. Two deliberate deltas:
+//   - The uploaded report is transient: parsed in-memory only, never stored.
+//     On success the file input + cached html are cleared client-side.
+//   - HTTP uses raw `fetch` (NOT tmsApiPost) so the all-or-nothing 422's
+//     `error.details.reasons` survive to the per-line error list.
+// ===========================================================================
+async function tmsImportRun() {
+  // 1. Fetch projects + existing run groups (same source as tmsCreateRun).
+  let projects, groups;
+  try {
+    const r = await fetch("/api/run-groups", {
+      headers: { Accept: "application/json" },
+    });
+    if (!r.ok) throw new Error("HTTP " + r.status);
+    ({ projects, groups } = await r.json());
+  } catch (e) {
+    alert("Could not load run groups: " + e.message);
+    return;
+  }
+
+  // 2. Zero-groups branch — info-only modal (IR-6: no "+ create group" row).
+  if (!groups || groups.length === 0) {
+    const info = document.createElement("div");
+    info.innerHTML =
+      '<p class="text-sm text-slate-700">No run groups yet — create one first.</p>';
+    tmsOpenModal({ title: "Import test run", body: info, confirmLabel: null });
+    return;
+  }
+
+  // 3. Modal body.
+  const body = document.createElement("div");
+  body.innerHTML =
+    '<label class="block text-sm text-slate-600 mb-1" for="tms-ir-where">Where</label>' +
+    '<select id="tms-ir-where"' +
+    ' class="w-full border border-slate-300 rounded px-2 py-1.5 text-sm bg-white"></select>' +
+    '<div class="grid grid-cols-2 gap-3 mt-3">' +
+    '  <div>' +
+    '    <label class="block text-sm text-slate-600 mb-1" for="tms-ir-name">Run name</label>' +
+    '    <input id="tms-ir-name" type="text" autocomplete="off"' +
+    '      class="w-full border border-slate-300 rounded px-2 py-1.5 text-sm bg-white" />' +
+    '  </div>' +
+    '  <div>' +
+    '    <label class="block text-sm text-slate-600 mb-1" for="tms-ir-filename">Run file name</label>' +
+    '    <input id="tms-ir-filename" type="text" autocomplete="off"' +
+    '      class="w-full border border-slate-300 rounded px-2 py-1.5 text-sm bg-white" />' +
+    '    <p data-role="filename-hint" class="mt-1 text-xs text-slate-500"></p>' +
+    '  </div>' +
+    '</div>' +
+    '<label class="block text-sm text-slate-600 mt-3 mb-1" for="tms-ir-desc">Run description (optional)</label>' +
+    '<textarea id="tms-ir-desc" rows="2"' +
+    ' class="w-full border border-slate-300 rounded px-2 py-1.5 text-sm bg-white"></textarea>' +
+    '<label class="block text-sm text-slate-600 mt-3 mb-1" for="tms-ir-file">Allure HTML report</label>' +
+    '<input id="tms-ir-file" type="file" accept=".html,.htm"' +
+    ' class="w-full text-sm text-slate-600 file:mr-3 file:py-1.5 file:px-4 file:rounded file:border-2 file:border-slate-400 file:bg-slate-100 file:text-slate-700 file:text-sm file:font-semibold hover:file:bg-slate-200 hover:file:border-slate-500 file:cursor-pointer" />' +
+    '<p class="text-xs text-slate-400 mt-1">One Allure single-file report, max 30 MB. The report is parsed in-memory and never stored.</p>' +
+    '<div data-role="preview" class="mt-3"></div>' +
+    '<p data-role="error" class="hidden mt-2 text-sm text-red-600"></p>';
+
+  const whereSel = body.querySelector("#tms-ir-where");
+  const nameInput = body.querySelector("#tms-ir-name");
+  const fileNameInput = body.querySelector("#tms-ir-filename");
+  const fileNameHint = body.querySelector('[data-role="filename-hint"]');
+  const descInput = body.querySelector("#tms-ir-desc");
+  const fileInput = body.querySelector("#tms-ir-file");
+  const previewBox = body.querySelector('[data-role="preview"]');
+  const error = body.querySelector('[data-role="error"]');
+
+  // Preview state captured for the commit step. `reportHtml` is the transient
+  // report text; it is cleared after a successful commit (never retained).
+  let reportHtml = "";
+  let scenarios = [];
+  let blockingErrors = [];
+  let modalRef = null;
+
+  // 4. Populate the "Where" <select> with one <optgroup> per project.
+  const byProj = new Map();
+  for (const g of groups) {
+    if (!byProj.has(g.project)) byProj.set(g.project, []);
+    byProj.get(g.project).push(g.group);
+  }
+  let firstVal = "";
+  for (const [proj, gs] of byProj) {
+    const og = document.createElement("optgroup");
+    og.label = proj;
+    for (const grp of gs) {
+      const opt = document.createElement("option");
+      opt.value = proj + "|" + grp;
+      opt.textContent = grp;
+      og.appendChild(opt);
+      if (!firstVal) firstVal = opt.value;
+    }
+    whereSel.appendChild(og);
+  }
+  whereSel.value = firstVal;
+
+  const showError = (msg, reasons) => {
+    error.innerHTML = "";
+    const head = document.createElement("div");
+    head.textContent = msg;
+    error.appendChild(head);
+    if (reasons && reasons.length) {
+      const ul = document.createElement("ul");
+      ul.className = "list-disc ml-5 mt-1";
+      for (const rsn of reasons) {
+        const li = document.createElement("li");
+        li.textContent = rsn;
+        ul.appendChild(li);
+      }
+      error.appendChild(ul);
+    }
+    error.classList.remove("hidden");
+  };
+
+  // Mirror the server's `_normalize_run_filename` (append .yaml when absent)
+  // so the success "open the run" URL matches the file actually written.
+  const runLeaf = () => {
+    const fn = fileNameInput.value.trim();
+    return /\.yaml$/i.test(fn) ? fn : fn + ".yaml";
+  };
+
+  const updateFileNameHint = () => {
+    const fn = fileNameInput.value.trim();
+    fileNameHint.textContent = fn
+      ? `will save as ${runLeaf()}`
+      : "(enter a file name)";
+    refreshGate();
+  };
+
+  const refreshGate = () => {
+    if (!modalRef) return;
+    const whereOk = !!whereSel.value;
+    const nameOk = nameInput.value.trim().length > 0;
+    const fileNameOk = fileNameInput.value.trim().length > 0;
+    const previewOk = scenarios.length > 0 && blockingErrors.length === 0;
+    modalRef.setConfirmDisabled(
+      !(whereOk && nameOk && fileNameOk && previewOk)
+    );
+  };
+
+  const renderPreview = () => {
+    previewBox.innerHTML = "";
+    if (!scenarios.length) return;
+    const header = document.createElement("p");
+    header.className = "text-sm text-slate-600 mb-2";
+    header.textContent = scenarios.length + " scenario(s) in the report:";
+    previewBox.appendChild(header);
+
+    const scroll = document.createElement("div");
+    scroll.className =
+      "border border-slate-200 rounded max-h-72 overflow-auto";
+    const table = document.createElement("table");
+    table.className = "w-full text-sm";
+    table.innerHTML =
+      '<thead class="bg-slate-50 text-slate-600 sticky top-0">' +
+      "  <tr>" +
+      '    <th class="text-left px-2 py-1.5 font-medium">#</th>' +
+      '    <th class="text-left px-2 py-1.5 font-medium">Scenario</th>' +
+      '    <th class="text-left px-2 py-1.5 font-medium">Result</th>' +
+      '    <th class="text-left px-2 py-1.5 font-medium">Matched case</th>' +
+      "  </tr>" +
+      "</thead>";
+    const tbody = document.createElement("tbody");
+    table.appendChild(tbody);
+
+    scenarios.forEach((sc) => {
+      const tr = document.createElement("tr");
+      tr.className = "border-t border-slate-100";
+      const blocked = sc.match !== "matched";
+      if (blocked) tr.className += " bg-rose-50";
+
+      const noTd = document.createElement("td");
+      noTd.className = "px-2 py-1.5 text-slate-400";
+      noTd.textContent = sc.no;
+
+      const nameTd = document.createElement("td");
+      nameTd.className = "px-2 py-1.5 text-slate-800";
+      const full = sc.name || "(unnamed scenario)";
+      nameTd.textContent = full.length > 40 ? full.slice(0, 40) + "…" : full;
+      nameTd.title = full;
+
+      const resTd = document.createElement("td");
+      resTd.className = "px-2 py-1.5 text-slate-600 whitespace-nowrap";
+      resTd.textContent = sc.result;
+
+      const matchTd = document.createElement("td");
+      matchTd.className = "px-2 py-1.5 whitespace-nowrap";
+      if (sc.match === "matched") {
+        matchTd.className += " text-slate-500";
+        matchTd.textContent = sc.file_path;
+        matchTd.title = sc.file_path;
+      } else {
+        matchTd.className += " text-rose-600";
+        matchTd.textContent = sc.match === "ambiguous" ? "ambiguous" : "no match";
+      }
+
+      tr.appendChild(noTd);
+      tr.appendChild(nameTd);
+      tr.appendChild(resTd);
+      tr.appendChild(matchTd);
+      tbody.appendChild(tr);
+    });
+
+    scroll.appendChild(table);
+    previewBox.appendChild(scroll);
+  };
+
+  const resetPreview = () => {
+    reportHtml = "";
+    scenarios = [];
+    blockingErrors = [];
+    previewBox.innerHTML = "";
+    error.classList.add("hidden");
+    refreshGate();
+  };
+
+  // Preview runs on file change AND on project change (resolution is
+  // project-scoped, so switching "Where" re-resolves the same report).
+  const runPreview = async () => {
+    resetPreview();
+    const file = fileInput.files && fileInput.files[0];
+    if (!file) return;
+    if (!/\.html?$/i.test(file.name)) {
+      showError("Please choose an .html report.");
+      return;
+    }
+    if (file.size > 30 * 1024 * 1024) {
+      showError("Report exceeds the 30 MB limit.");
+      return;
+    }
+    const project = (whereSel.value || "").split("|")[0];
+    if (!project) return;
+    let text;
+    try {
+      text = await file.text();
+    } catch (_) {
+      showError("Could not read the file.");
+      return;
+    }
+    let data;
+    try {
+      const r = await fetch("/api/runs/import/preview", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ project, html: text }),
+      });
+      data = await r.json();
+      if (!r.ok) {
+        const err = data.error || {};
+        showError(
+          err.message || r.statusText,
+          err.details && err.details.reasons
+        );
+        return;
+      }
+    } catch (e) {
+      showError(e.message);
+      return;
+    }
+    reportHtml = text;
+    scenarios = data.scenarios || [];
+    blockingErrors = data.errors || [];
+    if (!scenarios.length) {
+      showError("No scenarios found to import.");
+      return;
+    }
+    renderPreview();
+    if (blockingErrors.length) {
+      showError(
+        "Some scenarios cannot be imported — every scenario must match exactly one case:",
+        blockingErrors
+      );
+    }
+    refreshGate();
+  };
+
+  fileInput.addEventListener("change", runPreview);
+  whereSel.addEventListener("change", runPreview);
+  nameInput.addEventListener("input", refreshGate);
+  fileNameInput.addEventListener("input", updateFileNameHint);
+
+  // 5. Open the modal. Confirm re-validates server-side (preview is advisory).
+  modalRef = tmsOpenModal({
+    title: "Import test run",
+    body,
+    confirmLabel: "Import",
+    confirmDisabled: true,
+    size: "xl",
+    onConfirm: async ({ close }) => {
+      error.classList.add("hidden");
+      const [project, group] = (whereSel.value || "").split("|");
+      const name = nameInput.value.trim();
+      const file_name = fileNameInput.value.trim();
+      const description = descInput.value.trim();
+      if (
+        !project ||
+        !group ||
+        !name ||
+        !file_name ||
+        !scenarios.length ||
+        blockingErrors.length
+      ) {
+        return;
+      }
+      let data;
+      try {
+        const r = await fetch("/api/runs/import", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            project,
+            group,
+            name,
+            file_name,
+            description,
+            html: reportHtml,
+          }),
+        });
+        data = await r.json();
+        if (!r.ok) {
+          const err = data.error || {};
+          showError(
+            err.message || r.statusText,
+            err.details && err.details.reasons
+          );
+          return;
+        }
+      } catch (e) {
+        showError(e.message);
+        return;
+      }
+      // Success: the report is not retained — clear the file input + cached
+      // html, then open the new run by default in the main pane.
+      const leaf = runLeaf();
+      fileInput.value = "";
+      reportHtml = "";
+      close();
+      tmsRefreshTreePane("test-run-pane");
+      htmx.ajax(
+        "GET",
+        "/ui/run/" +
+          encodeURIComponent(project) +
+          "/" +
+          encodeURIComponent(group) +
+          "/" +
+          encodeURIComponent(leaf),
+        { target: "#main-pane", swap: "innerHTML" }
+      );
+    },
+  });
+
+  updateFileNameHint();
+  setTimeout(() => nameInput.focus(), 0);
+}
+

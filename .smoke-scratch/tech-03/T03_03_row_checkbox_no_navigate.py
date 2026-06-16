@@ -23,7 +23,7 @@ with tempfile.TemporaryDirectory() as td:
     client.post("/api/folders", json={"parent": "Alpha", "name": "Mod"})
     client.post(
         "/api/files",
-        json={"parent": "Alpha/Mod", "file_name": "case", "description": "x"},
+        json={"parent": "Alpha/Mod", "file_name": "case", "scenario_name": "s", "description": "x"},
     )
     html = client.get("/ui/folder/Alpha/Mod").get_data(as_text=True)
 

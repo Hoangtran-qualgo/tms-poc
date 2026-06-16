@@ -10,9 +10,36 @@ from __future__ import annotations
 from flask import render_template, request
 
 from ..errors import GherkinParseError
-from ..models import RUN_RESULTS
+from ..models import RUN_RESULTS, Scenario
 from ..reporting import compute_report
 from ._shared import ui, _folder_crumbs, _is_feature_path, _storage
+
+
+def _resolve_example(
+    scenario: Scenario, example: dict[str, int]
+) -> tuple[list[str] | None, list[str] | None]:
+    """Resolve an outline example coordinate to its live ``(header, data row)``.
+
+    Display-only (tech-09). Returns ``(None, None)`` when the case is not a
+    Scenario Outline or the 1-based ``table`` / ``row`` fall outside the live
+    ``Examples`` — so a case that changed shape degrades to base-name-only
+    rather than erroring (the D3 tolerant-blank rule).
+    """
+    table_no = example.get("table")
+    row_no = example.get("row")
+    if (
+        scenario.kind != "outline"
+        or not isinstance(table_no, int)
+        or not isinstance(row_no, int)
+        or table_no < 1
+        or row_no < 1
+    ):
+        return None, None
+    try:
+        table = scenario.examples[table_no - 1]
+        return list(table.header), list(table.rows[row_no - 1])
+    except IndexError:
+        return None, None
 
 
 @ui.get("/tree")
@@ -249,9 +276,19 @@ def ui_run(project: str, group: str, file_name: str):
             r["scenario_name"] = ""
             continue
         try:
-            r["scenario_name"] = s.read_feature(file_path).scenario.name
+            scenario = s.read_feature(file_path).scenario
         except (GherkinParseError, OSError, UnicodeDecodeError):
             r["scenario_name"] = ""
+            continue
+        r["scenario_name"] = scenario.name
+        # tech-09: when the result pins a Scenario-Outline example row, resolve
+        # its header + matched data row live for display (also never snapshotted).
+        example = r.get("example")
+        if example:
+            header, row = _resolve_example(scenario, example)
+            if header is not None:
+                r["example_header"] = header
+                r["example_row"] = row
     return render_template(
         "run_editor.html",
         project=project,

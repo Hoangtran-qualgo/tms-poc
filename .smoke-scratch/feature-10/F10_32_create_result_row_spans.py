@@ -26,7 +26,7 @@ APP_JS = "\n".join(_p.read_text() for _p in sorted(pathlib.Path("app/static").gl
 # consistent method-indent + `\n  },` closer used by the rest of
 # tmsRunEditor.
 m = re.search(
-    r"_createResultRow\s*\(\s*file_path\s*\)\s*\{[\s\S]*?\n  \},",
+    r"_createResultRow\s*\(\s*file_path[^)]*\)\s*\{[\s\S]*?\n  \},",
     APP_JS,
 )
 assert m, "could not locate _createResultRow function body in app.js"

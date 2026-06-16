@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from typing import Any
 
-from ..errors import GherkinParseError
+from ..errors import EnumsParseError, GherkinParseError
 from ._core import (
     MAX_FOLDER_DEPTH,
     RESERVED_DEPTH2_NAMES,
@@ -14,6 +14,31 @@ from ._core import (
     _TEST_RUN_AREA,
     _is_feature_name,
 )
+
+
+def _enum_display_rows(
+    enums: dict[str, str], vocab: dict[str, dict[str, str]]
+) -> list[dict[str, str]]:
+    """Per-case enum display rows ``{kind, key, label}``, sorted by kind.
+
+    Mirrors ``reporting._case_enums`` (tech-06 RP-2) but lives in storage so
+    the listing layer never imports the engine. Unset keys (empty string)
+    are skipped; ``label`` is the human ``enums.yaml`` value, left empty when
+    it is missing or a redundant ``key : key``.
+    """
+    out: list[dict[str, str]] = []
+    for kind, key in sorted(enums.items()):
+        if not key:
+            continue
+        label = vocab.get(kind, {}).get(key, "")
+        out.append(
+            {
+                "kind": kind,
+                "key": key,
+                "label": label if label and label != key else "",
+            }
+        )
+    return out
 
 
 class ListingMixin:
@@ -230,6 +255,13 @@ class ListingMixin:
 
         # depth >= 2 — module or sub-folder listing. Both folders and
         # features can coexist; collect each in its own list.
+        # Resolve the project enum vocab once for this listing so each row
+        # can render its selected enums with human labels (tech-08). Best-
+        # effort: a missing / malformed enums.yaml degrades to key-only.
+        try:
+            vocab = self.read_project_enums(segments[0])
+        except (FileNotFoundError, EnumsParseError):
+            vocab = {}
         folders: list[str] = []
         features: list[dict[str, Any]] = []
         for entry in target.iterdir():
@@ -252,16 +284,20 @@ class ListingMixin:
                 tags = list(
                     dict.fromkeys([*feature.tags, *feature.scenario.tags])
                 )
+                # Selected enums, resolved to {kind, key, label} (tech-08).
+                enums = _enum_display_rows(feature.enums, vocab)
             except (GherkinParseError, OSError, UnicodeDecodeError):
                 description = ""
                 scenario_name = ""
                 tags = []
+                enums = []
             features.append(
                 {
                     "file_name": name,
                     "description": description,
                     "scenario_name": scenario_name,
                     "tags": tags,
+                    "enums": enums,
                 }
             )
         kind = "module" if len(segments) == 2 else "subfolder"

@@ -10,29 +10,18 @@ is explicitly designated as such.
 
 ## Must have
 
-_Planned & split into smaller plans Jun 13, 2026 — `tech-04` (editor +
-search), `tech-05` (run detail), and `tech-06` (report detail) are all
-**shipped Jun 13, 2026** (see `DONE.md`)._
-
-- **Investigate: require `scenario_name` at the create API.** Deferred
-  from `tech-04` (Jun 13, 2026). Today `POST /api/files` accepts an empty
-  scenario name (Option B — consistent with the model V5 + the UI-only
-  Save-gate RG1); the create modal enforces it client-side only. Decide
-  whether to also enforce it server-side (a stricter API + matching model
-  V-rule), which would re-pin the ~41 setup-only smokes that create files
-  via `POST /api/files` and would also tighten the shipped **import**
-  feature (`feature-14`), which today likewise enforces scenario name
-  client-side only.
-
-- **Investigate: revamp test-case list.**
-  - ~~Rename the `description` column to `scenario name`.~~ **Done
-    Jun 13, 2026** (shipped with `tech-04`; see `DONE.md`).
-  - New `Enums` column displaying all enums of the scenario — show top 2
-    and `n more…`.
-  - `Tags` column displays top 2 and `n more…`.
-
-- ~~**Investigate new feature: import test cases.**~~ **Shipped Jun 13, 2026**
-  as `feature-14` (see `DONE.md` + `specs/features/14-feature-import-test-cases-NEW.md`).
+- **Investigate: a lightweight project-level scenario-name uniqueness rule.**
+  _Filed Jun 15, 2026 as an accepted-risk follow-up to
+  `specs/features/15-feature-import-test-run-NEW.md` (IR-5)._
+  Scenario name is the case identity (tech-04) but uniqueness is enforced only
+  within a **1-level folder scope** (feature-04), so the same scenario name can
+  legitimately live in two folders. The Allure-report importer resolves report
+  scenarios to cases **by name across the whole project**, so cross-folder name
+  reuse makes a name **ambiguous → the all-or-nothing import aborts**.
+  Investigate a **lean** way to keep scenario names unique at the project level
+  (e.g. a project-wide uniqueness check at create/rename time, or a soft
+  warning) without a heavy migration. Quantify how often names already collide
+  in `./project` before choosing.
 
 ## Should have
 

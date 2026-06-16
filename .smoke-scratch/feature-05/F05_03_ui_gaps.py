@@ -112,7 +112,7 @@ with tempfile.TemporaryDirectory() as td:
     client.post("/api/folders", json={"parent": "Alpha", "name": "Mod"})
     client.post(
         "/api/files",
-        json={"parent": "Alpha/Mod", "file_name": "case", "description": "seed"},
+        json={"parent": "Alpha/Mod", "file_name": "case", "scenario_name": "s", "description": "seed"},
     )
     html = client.get("/ui/file/Alpha/Mod/case.feature").get_data(as_text=True)
     assert "btn-delete" not in html, (

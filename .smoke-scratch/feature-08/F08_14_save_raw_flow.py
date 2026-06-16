@@ -95,7 +95,7 @@ with tempfile.TemporaryDirectory() as td:
     client.post("/api/folders", json={"parent": "Alpha", "name": "Mod"})
     client.post(
         "/api/files",
-        json={"parent": "Alpha/Mod", "file_name": "case", "description": "x"},
+        json={"parent": "Alpha/Mod", "file_name": "case", "scenario_name": "s", "description": "x"},
     )
     r = client.put(
         "/api/files/Alpha/Mod/case.feature/raw",

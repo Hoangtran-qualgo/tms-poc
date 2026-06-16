@@ -107,13 +107,14 @@
         {% set _folder = _parts[0] if _parts|length == 2 else '' %}
         {% set _filename = _parts[1] if _parts|length == 2 else _parts[0] %}
         {% if _folder == folder %}
-      {# Tombstone: when r.missing the row's path is struck through and
-         the remark textarea is hidden behind a fixed override message
-         ("test case was removed"). The textarea itself stays in the
-         DOM so the stored remark round-trips through Save unchanged —
+      {# Tombstone (tech-09 DQ1): when r.missing the filename is struck through
+         and a "file has been removed" note renders under it in the Test-case
+         column; the remark textarea is hidden (no override message) but stays
+         in the DOM so the stored remark round-trips through Save unchanged —
          restoring the file un-tombstones the row on the next render. #}
       <tr class="border-t border-slate-100 align-top{% if r.missing %} run-row-missing{% endif %}"
           data-file-path="{{ r.file_path }}"
+          {% if r.example %}data-example="{{ r.example.table }}.{{ r.example.row }}"{% endif %}
           {% if r.missing %}data-missing="1"{% endif %}>
         <td class="px-3 py-2 pl-6" title="{{ r.file_path }}">
           <a class="run-row-link hover:underline cursor-pointer flex items-center min-w-0 w-full font-mono text-xs"
@@ -122,10 +123,13 @@
              hx-swap="innerHTML">
             <span data-role="filename" class="truncate min-w-0 {% if r.missing %}line-through text-slate-400{% else %}text-slate-700{% endif %}">{{ _filename }}</span>
           </a>
+          {% if r.missing %}<div class="run-removed-note text-xs italic text-rose-500 mt-0.5">file has been removed</div>{% endif %}
         </td>
         {# tech-05: scenario name is display-only — a plain text cell (NOT an
-           input) so the DOM dirty-snapshot in tmsRunEditor never picks it up. #}
-        <td class="run-scenario-name px-3 py-2 text-slate-600 truncate" title="{{ r.scenario_name }}">{{ r.scenario_name }}</td>
+           input) so the DOM dirty-snapshot in tmsRunEditor never picks it up.
+           tech-09: an outline result also shows its Examples header + matched
+           data row underneath the base name. #}
+        <td class="run-scenario-name px-3 py-2 text-slate-600 align-top" title="{{ r.scenario_name }}">{{ r.scenario_name }}{% if r.example_header %}<div class="run-example mt-0.5 font-mono text-xs text-slate-500"><div>| {{ r.example_header|join(' | ') }} |</div><div>| {{ r.example_row|join(' | ') }} |</div></div>{% endif %}</td>
         <td class="px-3 py-2">
           <select class="run-result-select w-full border border-slate-300 rounded px-1.5 py-1 text-sm bg-white font-medium" data-status="{{ r.result }}">
             {% for opt in results_options %}
@@ -134,7 +138,6 @@
           </select>
         </td>
         <td class="px-3 py-2">
-          {% if r.missing %}<span class="run-remark-override italic text-slate-400 text-sm">test case was removed</span>{% endif %}
           <textarea class="run-remark w-full border border-slate-300 rounded px-2 py-1 text-sm bg-white resize-y h-10 overflow-y-auto{% if r.missing %} hidden{% endif %}" rows="1">{{ r.remark }}</textarea>
         </td>
         <td class="px-3 py-2 text-center">
@@ -164,8 +167,9 @@
           <span data-role="filename" class="truncate min-w-0 text-slate-700"></span>
         </a>
       </td>
-      {# tech-05: display-only scenario name; populated async on add (RD-1b). #}
-      <td class="run-scenario-name px-3 py-2 text-slate-600 truncate"></td>
+      {# tech-05: display-only scenario name; populated async on add (RD-1b).
+         tech-09: outline rows also get an Examples header + data row appended. #}
+      <td class="run-scenario-name px-3 py-2 text-slate-600 align-top"></td>
       <td class="px-3 py-2">
         <select class="run-result-select w-full border border-slate-300 rounded px-1.5 py-1 text-sm bg-white font-medium">
           {% for opt in results_options %}

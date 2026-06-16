@@ -38,9 +38,10 @@ function tmsRefreshFolder(folderPath) {
  *   information-only modals such as the zero-projects branch of
  *   `tmsCreateRun`, which has nothing actionable to confirm).
  * @param {boolean}[opts.confirmDisabled] Initial disabled state.
- * @param {"md"|"lg"|"xl"} [opts.size]  Modal max width. Default "md".
+ * @param {"md"|"lg"|"xl"|"2xl"} [opts.size]  Modal max width. Default "md".
  *   md = max-w-md (small forms), lg = max-w-2xl (case picker),
- *   xl = max-w-4xl (large pickers / future).
+ *   xl = max-w-4xl (large pickers), 2xl = max-w-6xl (import preview —
+ *   wide enough to show 50 chars of a scenario name on one line).
  * @param {(ctx:{close:()=>void})=>any} [opts.onConfirm]
  *   Called when Confirm is clicked. The caller decides when to close (so a
  *   failed request can keep the modal open). Awaited if it returns a promise.
@@ -62,7 +63,13 @@ function tmsOpenModal({
   overlay.setAttribute("aria-modal", "true");
 
   const sizeClass =
-    size === "xl" ? "max-w-4xl" : size === "lg" ? "max-w-2xl" : "max-w-md";
+    size === "2xl"
+      ? "max-w-6xl"
+      : size === "xl"
+        ? "max-w-4xl"
+        : size === "lg"
+          ? "max-w-2xl"
+          : "max-w-md";
   const card = document.createElement("div");
   card.className = `bg-white rounded shadow-lg w-full ${sizeClass} mx-4 p-4`;
   card.innerHTML =
@@ -477,9 +484,9 @@ async function tmsImportFile() {
       tr.className = "border-t border-slate-100";
 
       const nameTd = document.createElement("td");
-      nameTd.className = "px-2 py-1.5 text-slate-800";
+      nameTd.className = "px-2 py-1.5 text-slate-800 whitespace-nowrap";
       const full = sc.scenario_name || "(unnamed scenario)";
-      nameTd.textContent = full.length > 30 ? full.slice(0, 30) + "…" : full;
+      nameTd.textContent = full.length > 50 ? full.slice(0, 50) + "…" : full;
       nameTd.title = full;
 
       const featTd = document.createElement("td");
@@ -585,7 +592,7 @@ async function tmsImportFile() {
     body,
     confirmLabel: "Import",
     confirmDisabled: true,
-    size: "xl",
+    size: "2xl",
     onConfirm: async ({ close }) => {
       error.classList.add("hidden");
       const parentPath = folderSel.value;

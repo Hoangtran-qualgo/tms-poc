@@ -21,7 +21,7 @@ with tempfile.TemporaryDirectory() as td:
     # Depth 0 (root) -> 400.
     r = client.post(
         "/api/files",
-        json={"parent": "", "file_name": "f", "description": "x"},
+        json={"parent": "", "file_name": "f", "scenario_name": "s", "description": "x"},
     )
     assert r.status_code == 400, (
         f"DR1: file create at root (depth 0) must return 400, got {r.status_code}"
@@ -31,7 +31,7 @@ with tempfile.TemporaryDirectory() as td:
     # Depth 1 (project) -> 400.
     r = client.post(
         "/api/files",
-        json={"parent": "d1", "file_name": "f", "description": "x"},
+        json={"parent": "d1", "file_name": "f", "scenario_name": "s", "description": "x"},
     )
     assert r.status_code == 400, (
         f"DR1: file create at project (depth 1) must return 400, got {r.status_code}"
@@ -40,7 +40,7 @@ with tempfile.TemporaryDirectory() as td:
     # Depth 2 (module) -> 201.
     r = client.post(
         "/api/files",
-        json={"parent": "d1/d2", "file_name": "f_at_2", "description": "x"},
+        json={"parent": "d1/d2", "file_name": "f_at_2", "scenario_name": "s", "description": "x"},
     )
     assert r.status_code == 201, (
         f"DR1: file create at depth 2 (module) must succeed, got {r.status_code}"
@@ -50,7 +50,7 @@ with tempfile.TemporaryDirectory() as td:
     parent_10 = "/".join(segments)  # d1/d2/.../d10
     r = client.post(
         "/api/files",
-        json={"parent": parent_10, "file_name": "f_at_10", "description": "x"},
+        json={"parent": parent_10, "file_name": "f_at_10", "scenario_name": "s", "description": "x"},
     )
     assert r.status_code == 201, (
         f"DR1: file create at depth 10 must succeed, got {r.status_code}"
@@ -59,7 +59,7 @@ with tempfile.TemporaryDirectory() as td:
     # Depth 11 -> 400 (rejected by server.post_file).
     r = client.post(
         "/api/files",
-        json={"parent": parent_10 + "/d11", "file_name": "f", "description": "x"},
+        json={"parent": parent_10 + "/d11", "file_name": "f", "scenario_name": "s", "description": "x"},
     )
     assert r.status_code == 400, (
         f"DR1: file create at depth 11 must return 400, got {r.status_code}"
@@ -78,7 +78,7 @@ with tempfile.TemporaryDirectory() as td:
     client.post("/api/folders", json={"parent": "Src", "name": "ModB"})  # depth 2 dest
     client.post(
         "/api/files",
-        json={"parent": "Src/ModA", "file_name": "case", "description": "seed"},
+        json={"parent": "Src/ModA", "file_name": "case", "scenario_name": "s", "description": "seed"},
     )
     # Depth-10 dest chain.
     deep_segments = ["Src", "ModA"]
@@ -132,7 +132,7 @@ with tempfile.TemporaryDirectory() as td:
     client.post("/api/folders", json={"parent": "Top", "name": "Mod"})  # depth 2
     client.post(
         "/api/files",
-        json={"parent": "Top/Mod", "file_name": "shallow", "description": "x"},
+        json={"parent": "Top/Mod", "file_name": "shallow", "scenario_name": "s", "description": "x"},
     )
 
     deep_segments = ["Top", "Mod"]
@@ -145,7 +145,7 @@ with tempfile.TemporaryDirectory() as td:
     parent_10 = "/".join(deep_segments)
     client.post(
         "/api/files",
-        json={"parent": parent_10, "file_name": "deep", "description": "x"},
+        json={"parent": parent_10, "file_name": "deep", "scenario_name": "s", "description": "x"},
     )
 
     # Rename at depth 2 -> 200.

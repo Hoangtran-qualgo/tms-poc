@@ -15,7 +15,7 @@ with tempfile.TemporaryDirectory() as td:
     client.post("/api/folders", json={"parent": "Alpha", "name": "ModB"})  # decoy
     client.post(
         "/api/files",
-        json={"parent": "Alpha/ModA", "file_name": "src", "description": "x"},
+        json={"parent": "Alpha/ModA", "file_name": "src", "scenario_name": "s", "description": "x"},
     )
 
     # --- SP1: rename is same-parent by construction ------------------------
@@ -48,7 +48,7 @@ with tempfile.TemporaryDirectory() as td:
     client.post("/api/folders", json={"parent": "Alpha", "name": "ModB"})  # decoy
     client.post(
         "/api/files",
-        json={"parent": "Alpha/ModA", "file_name": "src", "description": "x"},
+        json={"parent": "Alpha/ModA", "file_name": "src", "scenario_name": "s", "description": "x"},
     )
 
     # --- SP2: duplicate is same-parent only --------------------------------
@@ -84,7 +84,7 @@ with tempfile.TemporaryDirectory() as td:
     client.post("/api/folders", json={"parent": "Alpha", "name": "ModB"})
     client.post(
         "/api/files",
-        json={"parent": "Alpha/ModA", "file_name": "src", "description": "x"},
+        json={"parent": "Alpha/ModA", "file_name": "src", "scenario_name": "s", "description": "x"},
     )
 
     # --- SP3: move dest parent MUST differ from source parent --------------

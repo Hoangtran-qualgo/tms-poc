@@ -30,9 +30,10 @@
         <input type="checkbox" data-role="select-all" aria-label="Select all test cases"
                onclick="event.stopPropagation()">
       </th>
-      <th class="text-left px-3 py-2 font-medium w-1/4">File name</th>
-      <th class="text-left px-3 py-2 font-medium w-1/2">Scenario name</th>
-      <th class="text-left px-3 py-2 font-medium w-1/4">Tags</th>
+      <th class="text-left px-3 py-2 font-medium w-1/5">File name</th>
+      <th class="text-left px-3 py-2 font-medium w-2/5">Scenario name</th>
+      <th class="text-left px-3 py-2 font-medium w-1/5">Tags</th>
+      <th class="text-left px-3 py-2 font-medium w-1/5">Enums</th>
     </tr>
   </thead>
   <tbody>
@@ -52,8 +53,13 @@
       <td class="px-3 py-2 text-slate-700 truncate" title="{{ f.scenario_name }}">
         {{ f.scenario_name }}
       </td>
-      <td class="px-3 py-2 truncate">
-        {% for t in f.tags %}<span class="inline-block px-1.5 py-0.5 mr-1 mb-0.5 text-xs rounded bg-slate-200 text-slate-700">@{{ t }}</span>{% endfor %}
+      {# Tags: first 3 chips + `+N more…`; full @-list in title (tech-08). #}
+      <td class="px-3 py-2 truncate" title="{% for t in f.tags %}@{{ t }}{{ ' ' if not loop.last }}{% endfor %}">
+        {% if f.tags %}{% for t in f.tags[:3] %}<span class="inline-block px-1.5 py-0.5 mr-1 mb-0.5 text-xs rounded bg-slate-200 text-slate-700">@{{ t }}</span>{% endfor %}{% if f.tags|length > 3 %}<span class="text-xs text-slate-400">+{{ f.tags|length - 3 }} more…</span>{% endif %}{% else %}<span class="text-slate-400">—</span>{% endif %}
+      </td>
+      {# Enums: first 3 `key : label` chips + `+N more…`; full list in title. #}
+      <td class="px-3 py-2 truncate" title="{% for e in f.enums %}{{ e.key }}{% if e.label %} : {{ e.label }}{% endif %}{{ ', ' if not loop.last }}{% endfor %}">
+        {% if f.enums %}{% for e in f.enums[:3] %}<span class="inline-block px-1.5 py-0.5 mr-1 mb-0.5 text-xs rounded bg-indigo-100 text-indigo-700">{{ e.key }}{% if e.label %} : {{ e.label }}{% endif %}</span>{% endfor %}{% if f.enums|length > 3 %}<span class="text-xs text-slate-400">+{{ f.enums|length - 3 }} more…</span>{% endif %}{% else %}<span class="text-slate-400">—</span>{% endif %}
       </td>
     </tr>
     {% endfor %}

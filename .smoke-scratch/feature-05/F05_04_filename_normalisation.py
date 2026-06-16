@@ -21,7 +21,7 @@ with tempfile.TemporaryDirectory() as td:
     # --- FN1 on CREATE: auto-append .feature when extension omitted --------
     r = client.post(
         "/api/files",
-        json={"parent": "Alpha/Mod", "file_name": "no_ext", "description": "seed"},
+        json={"parent": "Alpha/Mod", "file_name": "no_ext", "scenario_name": "s", "description": "seed"},
     )
     assert r.status_code == 201, (
         f"FN1 create: extension-less file_name must succeed with auto-append, "
@@ -35,7 +35,7 @@ with tempfile.TemporaryDirectory() as td:
     for variant in ("Upper.FEATURE", "Mixed.FeAtUrE"):
         r = client.post(
             "/api/files",
-            json={"parent": "Alpha/Mod", "file_name": variant, "description": "seed"},
+            json={"parent": "Alpha/Mod", "file_name": variant, "scenario_name": "s", "description": "seed"},
         )
         assert r.status_code == 201, (
             f"FN1 create: case-insensitive extension {variant!r} must succeed, "
@@ -50,7 +50,7 @@ with tempfile.TemporaryDirectory() as td:
     for bad in ("bad.txt", "bad.yaml", "bad.md", "bad.feature.txt"):
         r = client.post(
             "/api/files",
-            json={"parent": "Alpha/Mod", "file_name": bad, "description": "seed"},
+            json={"parent": "Alpha/Mod", "file_name": bad, "scenario_name": "s", "description": "seed"},
         )
         assert r.status_code == 400, (
             f"FN1 create: non-.feature extension {bad!r} must return 400, "
@@ -74,7 +74,7 @@ with tempfile.TemporaryDirectory() as td:
     client.post("/api/folders", json={"parent": "Alpha", "name": "Mod"})
     client.post(
         "/api/files",
-        json={"parent": "Alpha/Mod", "file_name": "source", "description": "seed"},
+        json={"parent": "Alpha/Mod", "file_name": "source", "scenario_name": "s", "description": "seed"},
     )
 
     # --- FN1 on RENAME: auto-append, case-insensitive accept, non-.feature reject ---
@@ -127,7 +127,7 @@ with tempfile.TemporaryDirectory() as td:
     client.post("/api/folders", json={"parent": "Alpha", "name": "Mod"})
     client.post(
         "/api/files",
-        json={"parent": "Alpha/Mod", "file_name": "source", "description": "seed"},
+        json={"parent": "Alpha/Mod", "file_name": "source", "scenario_name": "s", "description": "seed"},
     )
 
     # --- FN1 on DUPLICATE: same three rules --------------------------------

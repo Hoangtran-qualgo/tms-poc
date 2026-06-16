@@ -41,13 +41,17 @@ def _require_import_source(body: dict) -> str:
 def post_file():
     body = _require_json_object()
     file_name = _require_non_empty_string(body.get("file_name"), "file_name")
-    # tech-04 (Option B): scenario_name is the case identity but stays
-    # OPTIONAL at the API (model permits an empty scenario name, V5; the
-    # create modal enforces "required" client-side). Hard API enforcement
-    # is tracked as a separate Must-have ("Require scenario_name at API").
-    scenario_name = body.get("scenario_name", "")
-    if not isinstance(scenario_name, str):
-        raise ValueError("Body field 'scenario_name' must be a string.")
+    # tech-07 (SN-1 = Option A): scenario_name is the case identity and is
+    # REQUIRED at the API, matching the create modal's client-side gate
+    # (tech-04 RG1) and the import path's server-side enforcement
+    # (import_feature_cases). The model stays permissive (V5) by design, so
+    # this is enforced here at the entry point. SN-3: whitespace-only counts
+    # as empty (mirrors import's .strip() rule).
+    scenario_name = _require_non_empty_string(
+        body.get("scenario_name"), "scenario_name"
+    )
+    if not scenario_name.strip():
+        raise ValueError("Body field 'scenario_name' must be a non-empty string.")
     description = body.get("description", "")
     if not isinstance(description, str):
         raise ValueError("Body field 'description' must be a string.")

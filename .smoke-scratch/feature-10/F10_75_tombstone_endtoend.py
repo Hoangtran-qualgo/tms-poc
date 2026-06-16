@@ -4,7 +4,7 @@
 AC5: deleting a .feature file whose path appears in a run does NOT
      mutate the run on disk. The next /ui/run render marks the now-
      missing case as tombstoned (run-row-missing, data-missing="1",
-     "test case was removed", hidden-but-preserved remark textarea).
+     "file has been removed" note, hidden-but-preserved remark textarea).
      Restoring the file at the original path un-tombstones the row on
      the next render and the stored remark reappears.
 
@@ -45,7 +45,7 @@ with tempfile.TemporaryDirectory() as td:
     html1 = client.get("/ui/run/Alpha/release-1/smoke.yaml").get_data(as_text=True)
     assert "run-row-missing" in html1
     assert 'data-missing="1"' in html1
-    assert "test case was removed" in html1
+    assert "file has been removed" in html1
     assert ">keep me</textarea>" in html1, "stored remark must stay in the (hidden) textarea"
 
     # --- AC5: restoring the file un-tombstones on the next render. ---

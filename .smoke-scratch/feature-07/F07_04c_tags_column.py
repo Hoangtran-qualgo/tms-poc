@@ -20,7 +20,7 @@ with tempfile.TemporaryDirectory() as td:
     client.post("/api/folders", json={"parent": "Alpha", "name": "Mod"})
     client.post(
         "/api/files",
-        json={"parent": "Alpha/Mod", "file_name": "case", "description": "seed"},
+        json={"parent": "Alpha/Mod", "file_name": "case", "scenario_name": "s", "description": "seed"},
     )
     # PUT-raw with a FEATURE-level tag (@regression) AND scenario-level
     # tags (@smoke @critical). `Storage.list_folder` shows the union of

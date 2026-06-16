@@ -4,6 +4,129 @@ Items fixed during v1 manual verification.
 
 ## Must have
 
+- **Scenario Outline as per-example run items — `tech-09`
+  (shipped Jun 16, 2026).** Spec:
+  `specs/tech/09-tech-outline-import-run-NEW.md`. Follow-up to `feature-15`;
+  builds on `tech-05`. An Allure report renders one Scenario Outline as N
+  leaves `"<base> -- @<table>.<row> "` (one per `Examples` data row); each row
+  now becomes a **distinct run item** pointing at the single outline case.
+  - **Suffix parser (DO-1).** `split_example_suffix` (`app/allure_io.py`)
+    trims a whitespace-tolerant trailing ` -- @<n>.<m>` to recover the base
+    name + `{table, row}` (1-based ints); plain names pass through untouched.
+  - **Per-example identity (DO-2).** `RunResult` gains an optional
+    `example: {table, row}` (`app/models/_run.py`), **omitted from `to_dict`
+    when `None`** so legacy run YAML / JSON keeps its exact
+    `{file_path, result, remark}` shape. Uniqueness key relaxed to
+    `(file_path, example)` — same path may repeat once per example row, two
+    plain results on one path still duplicate.
+  - **Import (DO-3).** One shared `_classify_report` helper
+    (`app/server/routes_runs.py`) splits each row's suffix, resolves the
+    **distinct base names**, and re-attaches each row's `example`. An outline's
+    repeated base is kept as distinct rows (never "ambiguous"); counts tally
+    **per report row** (fixes the old `len(resolution[...])` collapse); errors
+    key on the **suffixed** name. Allure carries no remark.
+  - **Editor display (DO-4).** `ui_run` (`app/server/routes_ui.py`,
+    `_resolve_example`) reads the live Examples header + matched data row for a
+    pinned example (tolerant-blank when not an outline / row out of range);
+    `run_editor.html` renders base name + a small monospace `| a | b |` block
+    in the display-only scenario cell (dropped `truncate`).
+  - **DQ1 global tombstone change.** Removed-case cue moved to a **"file has
+    been removed"** sub-line under the filename (Test-case column); the
+    remark-column `run-remark-override` was removed for **all** runs.
+  - **Manual add (DO-5).** Adding an outline case in the run editor
+    (`app/static/06_run_editor.js`) expands into N rows stamped with
+    `data-example`; `_readCurrent` / `_compareJson` canonicalize + sort on
+    `(file_path, example)` so same-path rows don't false-flag dirty, and the
+    full-run PATCH round-trips the per-example identity.
+  - **Import-modal width (USER follow-up Jun 16).** `tmsOpenModal` gained a
+    `2xl` (`max-w-6xl`) tier; the **Import test cases** modal now uses it and
+    shows up to **50 chars** of a scenario name on one line.
+  - Tests: new `tech-09/T09_01..06` + `COVERAGE.md`; re-pinned `F10_29`,
+    `F10_32`, `F10_75`, `T05_04`, and `F14_04` (modal width / 50-char name).
+    Full suite **301/301**.
+
+- **Import a test run (upload an Allure HTML report → TMS test run) —
+  `feature-15` (shipped Jun 15, 2026).** Spec:
+  `specs/features/15-feature-import-test-run-NEW.md`. Upload a single-file
+  Allure 2 report; each report scenario maps **by name (case-insensitive,
+  whole-project)** to a TMS case, and the report's scenarios become one test
+  run written under a chosen project's `test-run/<group>/`. **All-or-nothing:**
+  any unmatched / project-ambiguous scenario aborts with a per-line error.
+  - **Parser (DO-1).** `parse_allure_report` in `app/allure_io.py` — pure
+    (text in / dataclasses out): extracts the `d('<path>','<b64>')`
+    embedded-data calls, decodes `data/suites.json` (leaf walk, depth-agnostic)
+    + `widgets/summary.json`. Status map (IR-3): `broken`→FAILED,
+    `unknown`/unrecognised→SKIPPED. `created_at` from `summary.time.start`
+    (IR-4, earliest-leaf fallback), **never server-now**. Same-name retries
+    collapse to the final run by `time.stop` (IR-5b). Malformed / non-Allure →
+    `ValueError` → 400 `bad_request`.
+  - **Storage (DO-2/DO-3).** `import_test_run` in `app/storage/_runs.py` — a
+    near-clone of `create_run` that takes `created_at` verbatim + caller-supplied
+    `RunResult`s (still gated by `validate_run`); `resolve_scenarios` in
+    `app/storage/_search.py` — project-wide, case-insensitive name→path resolver
+    returning `{matched, unmatched, ambiguous}` (skips unparseable cases).
+  - **API (DO-4).** `POST /api/runs/import/preview` (report name + `created_at`
+    + per-scenario rows + counts + per-line `errors`) and `POST /api/runs/import`
+    (re-parses + re-resolves server-side; all-matched → one `RunResult` each,
+    else `ImportValidationError` → 422 `{reasons}`), both capped at **30 MB**;
+    text body (`html`), no multipart (`app/server/routes_runs.py`).
+  - **UI (DO-5).** Top-bar **Import test run** button beside **Import test
+    cases**; `tmsImportRun()` modal in `app/static/04_run_create.js` (appended,
+    no new script tag) + `app/templates/base.html`. Destination from
+    `/api/run-groups` (existing group only, **no "+ create group" row**, IR-6);
+    `#`/`Scenario`/`Result`/`Matched case` preview; **raw `fetch`** (not
+    `tmsApiPost`) to keep `details.reasons`; client gates `.html` + 30 MB.
+  - **Report is transient:** parsed in-memory, **never persisted** — only the
+    run `.yaml` is written (`F15_05` asserts zero `.html` under the data root);
+    on success the modal clears the file input and **opens the new run** by
+    default.
+  - **NOTE / accepted risk:** name match is whole-project + case-insensitive
+    (explicitly *temporary*, IR-5) — cross-folder name reuse makes a scenario
+    ambiguous and aborts the import. Tracked by the open `IN-PROGRESS.md`
+    Must-have on a project-level scenario-name uniqueness rule.
+  - Tests: new `feature-15/F15_01..06` + `COVERAGE.md`. Full suite **295/295**
+    (was 289; +6 feature-15).
+
+- **Revamp the test-case list (Enums column + top-3 Tags) — `tech-08`
+  (shipped Jun 15, 2026).** Spec:
+  `specs/tech/08-tech-testcase-list-revamp-NEW.md`. Folder-detail features
+  table gains a new **Enums** column and caps both Tags and Enums to the
+  first **3** chips + `+N more…`, with the full set in the cell `title`.
+  - **Storage (DO-1).** `Storage.list_folder` attaches `enums:
+    [{kind, key, label}]` per row via a storage-local `_enum_display_rows`
+    helper (mirrors `reporting._case_enums`, no engine import); vocab read
+    once per call (best-effort), kind-sorted, unset skipped, redundant
+    `label == key` blanked; parse-failure rows get `enums: []`
+    (`app/storage/_listing.py`).
+  - **Template (DO-2).** `_folder_feature_table.html` — Enums chips read
+    `key : label` (indigo, no `@`); both columns show top-3 + `+N more…`,
+    em-dash when empty; widths rebalanced (File `1/5` · Scenario `2/5` ·
+    Tags `1/5` · Enums `1/5`).
+  - **Decisions.** LR-2 = `key : label`; cap raised from 2 → **3** per USER
+    request. `feature-07/F07_04c` needed no re-pin (3-tag fixture under a
+    cap of 3).
+  - Tests: new `tech-08/T08_01..02` + `COVERAGE.md`. Full suite **289/289**.
+
+- **Require `scenario_name` at the create API — `tech-07`
+  (shipped Jun 15, 2026).** Spec:
+  `specs/tech/07-tech-require-scenario-name-create-api-NEW.md`. Closes the one
+  unguarded HTTP entry point that still accepted an empty scenario name
+  (deferred from `tech-04` as Option B). Chose **Option A — API-only
+  entry-point enforcement** (SN-1=A, SN-2=standard 400, SN-3=strip-aware),
+  matching how `import_feature_cases` already enforces it server-side; the
+  model stays permissive (V5) so tech-04 D1's bare-`Scenario:` round-trip is
+  untouched.
+  - **API (DO-1).** `post_file` now requires a non-empty `scenario_name` via
+    `_require_non_empty_string` + a strip guard
+    (`app/server/routes_files.py`); `create_file`, `validate_feature`,
+    PATCH/PUT-raw, and the editor save-gate are unchanged.
+  - **Re-pin (DO-2).** Added a `scenario_name` to **64 `POST /api/files`
+    create sites across 38 smoke files** (`feature-04/05/06/07/08`,
+    `tech-03`). `F05_07_create_body` rewritten to the new required contract;
+    `F05_12`/`F10_51`/`F10_52` kept their original guard as the
+    discriminator. No `storage.create_file` fixtures touched.
+  - Tests: new `tech-07/T07_01` + `COVERAGE.md`. Full suite **287/287**.
+
 - **Import test cases (upload a `.feature`, split into cases) — `feature-14`
   (shipped Jun 13, 2026).** Spec:
   `specs/features/14-feature-import-test-cases-NEW.md`. Upload one `.feature`
@@ -52,9 +175,9 @@ Items fixed during v1 manual verification.
     `tmsCreateFile` (`app/static/03_folder_actions.js`); the editor
     Save-gate now keys on scenario name (RG1), not description, and the
     `#scenario-name` placeholder reads "Scenario name" (was "(optional)").
-    `POST /api/files` + `create_file` accept an optional `scenario_name`
-    (**Option B** — required only client-side; hard API enforcement filed
-    as a separate Must-have). The file-name `<h2>` header is removed (D4).
+    `POST /api/files` + `create_file` accept a `scenario_name` (required at
+    the API as of **`tech-07`**, shipped Jun 15, 2026; see above). The
+    file-name `<h2>` header is removed (D4).
   - **One-time migration** `scripts/backfill_scenario_names.py` moves each
     legacy `description` into `scenario.name` (newlines → `" / "`), skips
     already-named/empty-description files, idempotent.

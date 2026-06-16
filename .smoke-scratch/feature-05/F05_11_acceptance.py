@@ -22,7 +22,7 @@ with tempfile.TemporaryDirectory() as td:
     client.post("/api/folders", json={"name": "Alpha"})
     r = client.post(
         "/api/files",
-        json={"parent": "Alpha", "file_name": "case", "description": "x"},
+        json={"parent": "Alpha", "file_name": "case", "scenario_name": "s", "description": "x"},
     )
     assert r.status_code == 400, (
         f"AC1: file create at depth-1 parent (project only) must return 400, "
@@ -42,11 +42,11 @@ with tempfile.TemporaryDirectory() as td:
     client.post("/api/folders", json={"parent": "Alpha", "name": "Mod"})
     client.post(
         "/api/files",
-        json={"parent": "Alpha/Mod", "file_name": "case", "description": "first"},
+        json={"parent": "Alpha/Mod", "file_name": "case", "scenario_name": "s", "description": "first"},
     )
     r = client.post(
         "/api/files",
-        json={"parent": "Alpha/Mod", "file_name": "case", "description": "second"},
+        json={"parent": "Alpha/Mod", "file_name": "case", "scenario_name": "s", "description": "second"},
     )
     assert r.status_code == 409, (
         f"AC2: name-conflicting POST must return 409, got {r.status_code}"
@@ -66,7 +66,7 @@ with tempfile.TemporaryDirectory() as td:
     client.post("/api/folders", json={"parent": "Alpha", "name": "Mod"})
     client.post(
         "/api/files",
-        json={"parent": "Alpha/Mod", "file_name": "case", "description": "seed"},
+        json={"parent": "Alpha/Mod", "file_name": "case", "scenario_name": "s", "description": "seed"},
     )
     target = root / "Alpha" / "Mod" / "case.feature"
 
@@ -107,11 +107,11 @@ with tempfile.TemporaryDirectory() as td:
     client.post("/api/folders", json={"parent": "Alpha", "name": "Mod"})
     client.post(
         "/api/files",
-        json={"parent": "Alpha/Mod", "file_name": "source", "description": "src desc"},
+        json={"parent": "Alpha/Mod", "file_name": "source", "scenario_name": "s", "description": "src desc"},
     )
     client.post(
         "/api/files",
-        json={"parent": "Alpha/Mod", "file_name": "taken", "description": "taken desc"},
+        json={"parent": "Alpha/Mod", "file_name": "taken", "scenario_name": "s", "description": "taken desc"},
     )
 
     src_path = root / "Alpha" / "Mod" / "source.feature"
@@ -145,7 +145,7 @@ with tempfile.TemporaryDirectory() as td:
     client.post("/api/folders", json={"parent": "Alpha", "name": "ModB"})
     client.post(
         "/api/files",
-        json={"parent": "Alpha/ModA", "file_name": "case", "description": "moveme"},
+        json={"parent": "Alpha/ModA", "file_name": "case", "scenario_name": "s", "description": "moveme"},
     )
     src_path = root / "Alpha" / "ModA" / "case.feature"
     dst_path = root / "Alpha" / "ModB" / "case.feature"  # leaf preserved
@@ -196,7 +196,7 @@ with tempfile.TemporaryDirectory() as td:
     client.post("/api/folders", json={"parent": "Alpha", "name": "Mod2"})
     client.post(
         "/api/files",
-        json={"parent": "Alpha/Mod", "file_name": "case", "description": "seed"},
+        json={"parent": "Alpha/Mod", "file_name": "case", "scenario_name": "s", "description": "seed"},
     )
     time.sleep(max(DEBOUNCE_SECONDS * 3, 0.5))
 

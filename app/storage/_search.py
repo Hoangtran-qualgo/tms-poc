@@ -167,3 +167,54 @@ class SearchMixin:
             raise FileNotFoundError(f"Scope folder not found: {scope}")
         for path in self._iter_feature_files(base):
             yield path.relative_to(self.root).as_posix()
+
+    def resolve_scenarios(
+        self, project: str, names: list[str]
+    ) -> dict[str, Any]:
+        """Resolve scenario ``names`` to case file paths across ``project``.
+
+        Used by the run-import flow (feature-15). Matching is **case-insensitive**
+        on ``Feature.scenario.name`` and scoped to the **whole project**. Returns
+        ``{"matched": {name -> path}, "unmatched": [name], "ambiguous": [name]}``
+        where ``name`` is the caller's original report name (preserving its
+        order in the ``unmatched`` / ``ambiguous`` lists):
+
+        - **matched** — the name resolves to exactly one case in the project.
+        - **unmatched** — the name matches no case.
+        - **ambiguous** — the name matches 2+ cases (no single path to pick).
+
+        Unparseable / non-UTF-8 ``.feature`` files in the project are skipped
+        (best-effort, like :meth:`search`) so one bad file elsewhere does not
+        abort the import. A project with no folder yet leaves every name
+        unmatched.
+        """
+        index: dict[str, list[str]] = {}
+        try:
+            paths = list(self.iter_feature_paths(project))
+        except FileNotFoundError:
+            paths = []
+        for path in paths:
+            try:
+                feature = self.read_feature(path)
+            except (GherkinParseError, UnicodeDecodeError):
+                continue
+            scenario_name = feature.scenario.name
+            if scenario_name:
+                index.setdefault(scenario_name.casefold(), []).append(path)
+
+        matched: dict[str, str] = {}
+        unmatched: list[str] = []
+        ambiguous: list[str] = []
+        for name in names:
+            hits = index.get(name.casefold(), [])
+            if len(hits) == 1:
+                matched[name] = hits[0]
+            elif not hits:
+                unmatched.append(name)
+            else:
+                ambiguous.append(name)
+        return {
+            "matched": matched,
+            "unmatched": unmatched,
+            "ambiguous": ambiguous,
+        }

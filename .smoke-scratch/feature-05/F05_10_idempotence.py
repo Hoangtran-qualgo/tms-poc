@@ -31,7 +31,7 @@ with tempfile.TemporaryDirectory() as td:
     # 3. Existed-then-deleted: second DELETE must also be 204.
     client.post(
         "/api/files",
-        json={"parent": "Alpha/Mod", "file_name": "real", "description": "x"},
+        json={"parent": "Alpha/Mod", "file_name": "real", "scenario_name": "s", "description": "x"},
     )
     real_path = root / "Alpha" / "Mod" / "real.feature"
     assert real_path.is_file(), "ID1 setup: file must exist before first DELETE"

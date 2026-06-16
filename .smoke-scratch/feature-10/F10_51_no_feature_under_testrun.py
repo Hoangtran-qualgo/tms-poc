@@ -23,7 +23,8 @@ with tempfile.TemporaryDirectory() as td:
 
     def mkfile(name, parent):
         return client.post("/api/files", data=json.dumps(
-            {"file_name": name, "parent": parent, "description": "d"}),
+            {"file_name": name, "parent": parent, "description": "d",
+             "scenario_name": "s"}),
             content_type="application/json")
 
     # --- FL4: .feature inside a real group -> 409 name_conflict. ---

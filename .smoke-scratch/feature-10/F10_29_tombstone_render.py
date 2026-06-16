@@ -2,8 +2,8 @@
 
 Verifies:
   1. A row whose underlying .feature was deleted renders with the
-     'run-row-missing' class, line-through link, and the
-     "test case was removed" override visible in the remark cell.
+     'run-row-missing' class, line-through link, and a
+     "file has been removed" note under the filename (tech-09 DQ1).
   2. The remark <textarea> is still present in the DOM (hidden), so
      the stored remark survives any subsequent Save round-trip.
   3. Sibling rows whose files still exist are unaffected.
@@ -65,8 +65,9 @@ with tempfile.TemporaryDirectory() as td:
     assert 'data-missing="1"' in pay_tr_open, pay_tr_open
     # Strike-through styling applied to the file_path link.
     assert "line-through" in pay_row.group(1), "missing line-through on tombstone link"
-    # Override message visible.
-    assert "test case was removed" in pay_row.group(1), "override message missing"
+    # Removed-case note visible under the filename (tech-09 DQ1).
+    assert "file has been removed" in pay_row.group(1), "removed note missing"
+    assert "run-removed-note" in pay_row.group(1), "removed-note element missing"
     # The textarea is still in the DOM, but hidden, and still carries
     # the stored remark (round-trip preserved).
     ta_match = re.search(
@@ -93,7 +94,7 @@ with tempfile.TemporaryDirectory() as td:
     assert "run-row-missing" not in refund_tr_open
     assert "data-missing" not in refund_tr_open
     assert "line-through" not in refund_row.group(1)
-    assert "test case was removed" not in refund_row.group(1)
+    assert "file has been removed" not in refund_row.group(1)
     print("PASS 3.F sibling rows with present files are unaffected")
 
     # 3) The on-disk YAML is not auto-mutated by render.
@@ -115,7 +116,7 @@ with tempfile.TemporaryDirectory() as td:
         r'<tr[^>]*data-file-path="Alpha/Checkout/pay\.feature"[^>]*>(.*?)</tr>',
         html2, re.S,
     )
-    assert "test case was removed" not in pay_row2.group(1)
+    assert "file has been removed" not in pay_row2.group(1)
     print("PASS 3.F restoring the file un-tombstones the row on next render")
 
     # 5) Save a tombstoned editor: the PATCH payload (built as the

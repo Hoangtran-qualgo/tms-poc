@@ -70,9 +70,9 @@ for h in ("Scenario name", "Feature tag", "Scenario tag", "File name"):
 assert 'data-role="filename"' in body, "U6: must render per-scenario filename inputs"
 assert 'input.placeholder = "file name"' in body, "U6: filename input must use the 'file name' placeholder"
 assert "input.value = tmsSlugifyForFilename" not in body, "U6: filename inputs must NOT be pre-filled"
-assert "full.slice(0, 30)" in body, "U6: scenario name must be truncated to 30 chars with an ellipsis"
+assert "full.slice(0, 50)" in body, "U6: scenario name must be truncated to 50 chars with an ellipsis"
 assert "+ more" in body and "t.slice(0, 2)" in body, "U6: tags must show top 2 + N-more, @-prefixed"
-assert 'size: "xl"' in body, "U6: modal must use the wider 'xl' size"
+assert 'size: "2xl"' in body, "U6: modal must use the wider '2xl' size (50-char scenario name)"
 print("PASS  U6: bordered preview table (name/feature-tag/scenario-tag/file) with placeholder filenames, wide modal")
 
 

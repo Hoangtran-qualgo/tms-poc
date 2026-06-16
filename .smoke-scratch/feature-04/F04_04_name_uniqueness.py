@@ -71,7 +71,8 @@ with tempfile.TemporaryDirectory() as td:
     # File first: POST /api/files with file_name="X" -> auto-appends .feature.
     r = client.post(
         "/api/files",
-        json={"parent": "Alpha/Mod", "file_name": "X", "description": "seed"},
+        json={"parent": "Alpha/Mod", "file_name": "X",
+              "scenario_name": "seed", "description": "seed"},
     )
     assert r.status_code == 201, (
         f"NU2 setup: create file Alpha/Mod/X.feature must return 201, got {r.status_code}"
@@ -95,7 +96,8 @@ with tempfile.TemporaryDirectory() as td:
     assert r.status_code == 201, "NU2 setup: folder Y must be created"
     r = client.post(
         "/api/files",
-        json={"parent": "Alpha/Mod2", "file_name": "Y", "description": "seed"},
+        json={"parent": "Alpha/Mod2", "file_name": "Y",
+              "scenario_name": "seed", "description": "seed"},
     )
     assert r.status_code == 201, (
         f"NU2: file 'Y.feature' must coexist with pre-existing folder 'Y'; "
