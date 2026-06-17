@@ -21,16 +21,16 @@
   <div class="flex items-center gap-3 mb-2">
     <div class="text-sm text-slate-500 truncate">
       <a class="hover:underline cursor-pointer"
-         hx-get="/ui/folder/" hx-target="#main-pane" hx-swap="innerHTML">Projects</a>
+         hx-get="/ui/folder/" hx-target="#main-pane" hx-push-url="true" hx-swap="innerHTML">Projects</a>
       <span class="px-1">/</span>
       <a class="hover:underline cursor-pointer"
-         hx-get="/ui/folder/{{ project }}" hx-target="#main-pane" hx-swap="innerHTML">{{ project }}</a>
+         hx-get="/ui/folder/{{ project }}" hx-target="#main-pane" hx-push-url="true" hx-swap="innerHTML">{{ project }}</a>
       <span class="px-1">/</span>
       <a class="hover:underline cursor-pointer"
-         hx-get="/ui/folder/{{ project }}/test-run" hx-target="#main-pane" hx-swap="innerHTML">test-run</a>
+         hx-get="/ui/folder/{{ project }}/test-run" hx-target="#main-pane" hx-push-url="true" hx-swap="innerHTML">test-run</a>
       <span class="px-1">/</span>
       <a class="hover:underline cursor-pointer"
-         hx-get="/ui/folder/{{ project }}/test-run/{{ group }}" hx-target="#main-pane" hx-swap="innerHTML">{{ group }}</a>
+         hx-get="/ui/folder/{{ project }}/test-run/{{ group }}" hx-target="#main-pane" hx-push-url="true" hx-swap="innerHTML">{{ group }}</a>
       <span class="px-1">/</span>
     </div>
     <div class="flex-1"></div>
@@ -143,7 +143,7 @@
         <td class="px-3 py-2 pl-6" title="{{ r.file_path }}">
           <a class="run-row-link hover:underline cursor-pointer flex items-center min-w-0 w-full font-mono text-xs"
              hx-get="/ui/file/{{ r.file_path }}"
-             hx-target="#main-pane"
+             hx-target="#main-pane" hx-push-url="true"
              hx-swap="innerHTML">
             <span data-role="filename" class="truncate min-w-0 {% if r.missing %}line-through text-slate-400{% else %}text-slate-700{% endif %}">{{ _filename }}</span>
           </a>
@@ -187,7 +187,7 @@
     <tr class="border-t border-slate-100 align-top">
       <td class="px-3 py-2 pl-6 text-slate-800">
         <a class="run-row-link hover:underline cursor-pointer flex items-center min-w-0 w-full font-mono text-xs"
-           hx-target="#main-pane" hx-swap="innerHTML">
+           hx-target="#main-pane" hx-push-url="true" hx-swap="innerHTML">
           <span data-role="filename" class="truncate min-w-0 text-slate-700"></span>
         </a>
       </td>

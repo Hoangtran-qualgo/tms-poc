@@ -34,7 +34,7 @@
                caret to the left still toggles the children list. #}
             <span class="flex-1 truncate cursor-pointer {% if child.depth == 0 %}font-semibold text-slate-800{% elif child.depth == 1 %}font-medium text-slate-700{% else %}text-slate-600{% endif %}"
                   hx-get="/ui/folder/{{ child.path }}"
-                  hx-target="#main-pane"
+                  hx-target="#main-pane" hx-push-url="true"
                   hx-swap="innerHTML">{{ child.name }}</span>
           </div>
           <div class="tree-children hidden pl-4 border-l border-slate-100 ml-2">
@@ -44,7 +44,7 @@
           <div class="tree-file flex items-center gap-1 pr-1 py-0.5 rounded hover:bg-slate-100 cursor-pointer select-none"
                data-path="{{ child.path }}"
                hx-get="/ui/file/{{ child.path }}"
-               hx-target="#main-pane"
+               hx-target="#main-pane" hx-push-url="true"
                hx-swap="innerHTML">
             <span class="w-4 text-center text-slate-300">&middot;</span>
             <span class="flex-1 truncate text-slate-700">{{ child.name }}</span>
@@ -53,7 +53,7 @@
           <div class="tree-other flex items-center gap-1 pr-1 py-0.5 rounded hover:bg-slate-100 cursor-pointer select-none text-slate-400"
                data-path="{{ child.path }}"
                hx-get="/ui/file/{{ child.path }}"
-               hx-target="#main-pane"
+               hx-target="#main-pane" hx-push-url="true"
                hx-swap="innerHTML">
             <span class="w-4 text-center">&middot;</span>
             <span class="flex-1 truncate">{{ child.name }}</span>

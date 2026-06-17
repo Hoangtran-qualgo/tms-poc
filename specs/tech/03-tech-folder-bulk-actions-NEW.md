@@ -60,7 +60,7 @@ after the Jun 11 fix). Sub-folders are a separate `folders` list. So the
 
 Both render each feature row as a whole-row navigation target:
 
-```@/Users/hoang.tv/Documents/Projects/tms/app/templates/folder_module.html:58-61
+```root/app/templates/folder_module.html:58-61
       <tr class="border-t border-slate-100 hover:bg-slate-50 cursor-pointer"
           hx-get="/ui/file/{{ module_path }}/{{ f.file_name }}"
           hx-target="#main-pane"

@@ -3,7 +3,7 @@
   <div class="flex items-center justify-between mb-4">
     <div class="text-sm text-slate-500 mb-1">
       <a class="hover:underline cursor-pointer"
-         hx-get="/ui/folder/" hx-target="#main-pane" hx-swap="innerHTML">Projects</a>
+         hx-get="/ui/folder/" hx-target="#main-pane" hx-push-url="true" hx-swap="innerHTML">Projects</a>
       <span class="px-1">/</span>
     </div>
     <h2 class="text-xl font-semibold text-slate-800">{{ project }}</h2>
@@ -24,7 +24,7 @@
       {% for name in modules %}
       <tr class="border-t border-slate-100 hover:bg-slate-50 cursor-pointer"
           hx-get="/ui/folder/{{ project }}/{{ name }}"
-          hx-target="#main-pane"
+          hx-target="#main-pane" hx-push-url="true"
           hx-swap="innerHTML">
         <td class="px-3 py-2 text-slate-800">{{ name }}</td>
       </tr>

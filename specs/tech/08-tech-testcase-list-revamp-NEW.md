@@ -12,7 +12,7 @@ list")._
   [{kind, key, label}]` per feature row via a new storage-local
   `_enum_display_rows(enums, vocab)` helper (mirrors `reporting._case_enums`
   without importing the engine — LR-1)
-  (`@/Users/hoang.tv/Documents/Projects/tms/app/storage/_listing.py:19-41`).
+  (`root/app/storage/_listing.py:19-41`).
   The project vocab is read once per call (best-effort `{}` on
   missing/malformed `enums.yaml`); rows are kind-sorted, unset enums skipped,
   a redundant `label == key` blanked. Parse-failure files still list with
@@ -45,7 +45,7 @@ the enum manager, or the model.
 ## Current state (grounded Jun 15, 2026)
 
 - **Table markup** is shared in
-  `@/Users/hoang.tv/Documents/Projects/tms/app/templates/_folder_feature_table.html:26-61`
+  `root/app/templates/_folder_feature_table.html:26-61`
   — 4 columns: a select checkbox (`w-10`), **File name** (`w-1/4`),
   **Scenario name** (`w-1/2`), **Tags** (`w-1/4`). It is `include`d by
   `folder_module.html` (depth 2) and `folder_subfolder.html` (depth 3+).
@@ -53,14 +53,14 @@ the enum manager, or the model.
   `{% for t in f.tags %}<span …>@{{ t }}</span>{% endfor %}` inside a
   `truncate` `<td>`. Overflow is clipped by CSS, but every chip is emitted.
 - **Row data** comes from `Storage.list_folder`
-  (`@/Users/hoang.tv/Documents/Projects/tms/app/storage/_listing.py:246-266`):
+  (`root/app/storage/_listing.py:246-266`):
   each row is `{file_name, description, scenario_name, tags}`. `tags` is the
   **order-preserving, de-duped union** of feature-level + scenario-level tags
   (D10; feature tags first). **No enums are attached to rows.** Parse
   failures still list the file with empty `description` / `scenario_name` /
   `tags`.
 - **Enum data model.** `feature.enums` is a `dict[str, str]` of `kind → key`
-  (`@/Users/hoang.tv/Documents/Projects/tms/app/models/_feature.py:167-179`).
+  (`root/app/models/_feature.py:167-179`).
   Enums are **feature-level**, which in the one-file = one-scenario model is
   the case identity, so "the scenario's enums" = `feature.enums`. An
   **empty-string value is the "unset" marker** and must be skipped. The only
@@ -68,13 +68,13 @@ the enum manager, or the model.
   `<project>/enums.yaml` and are resolved at render time via
   `storage.read_project_enums(project)` → `{kind: {key: label}}`.
 - **Reusable enum-display helper.** `reporting._case_enums(feature, vocab)`
-  (`@/Users/hoang.tv/Documents/Projects/tms/app/reporting.py:156-175`) already
+  (`root/app/reporting.py:156-175`) already
   produces `[{kind, key, label}, …]` **sorted by kind**, skipping unset keys,
   with `label=""` when it would be a redundant `key : key`. tech-06 renders
   these as **`key : label`**. _Caveat:_ this helper lives in the **engine**
   layer; `list_folder` lives in **storage** — see LR-1.
 - **`top-2 + N more` precedent.** `fmtTags`
-  (`@/Users/hoang.tv/Documents/Projects/tms/app/static/03_folder_actions.js:439-447`)
+  (`root/app/static/03_folder_actions.js:439-447`)
   formats a tag list as `@a @b +N more` (top 2, `@`-prefixed), em-dash when
   empty. This is client-side string formatting for the import-preview modal,
   not the server-rendered chip markup the list uses.

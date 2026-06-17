@@ -43,11 +43,11 @@
        (before the file name) is rendered once at the end. #}
     <div class="text-sm text-slate-500 truncate">
       <a class="hover:underline cursor-pointer"
-         hx-get="/ui/folder/" hx-target="#main-pane" hx-swap="innerHTML">Projects</a>
+         hx-get="/ui/folder/" hx-target="#main-pane" hx-push-url="true" hx-swap="innerHTML">Projects</a>
       {% for crumb in crumbs %}
         <span class="px-1">/</span>
         <a class="hover:underline cursor-pointer"
-           hx-get="/ui/folder/{{ crumb.path }}" hx-target="#main-pane" hx-swap="innerHTML">{{ crumb.label }}</a>
+           hx-get="/ui/folder/{{ crumb.path }}" hx-target="#main-pane" hx-push-url="true" hx-swap="innerHTML">{{ crumb.label }}</a>
       {% endfor %}
       {% if crumbs %}<span class="px-1">/</span>{% endif %}
     </div>

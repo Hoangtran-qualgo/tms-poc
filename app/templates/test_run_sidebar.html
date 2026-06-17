@@ -42,7 +42,7 @@
                renders via folder_test_run_group.html. #}
             <span class="flex-1 truncate cursor-pointer font-medium text-slate-700"
                   hx-get="/ui/folder/{{ child.path }}"
-                  hx-target="#main-pane"
+                  hx-target="#main-pane" hx-push-url="true"
                   hx-swap="innerHTML">{{ child.name }}</span>
             {% endif %}
           </div>
@@ -53,7 +53,7 @@
           <div class="tree-file flex items-center gap-1 pr-1 py-0.5 rounded hover:bg-slate-100 cursor-pointer select-none"
                data-path="{{ child.path }}"
                hx-get="/ui/run/{{ child.project }}/{{ child.group }}/{{ child.file_name }}"
-               hx-target="#main-pane"
+               hx-target="#main-pane" hx-push-url="true"
                hx-swap="innerHTML">
             <span class="w-4 text-center text-slate-300">&middot;</span>
             <span class="flex-1 truncate text-slate-700">{{ child.name }}</span>

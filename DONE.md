@@ -4,6 +4,53 @@ Items fixed during v1 manual verification.
 
 ## Must have
 
+- **Deep-linkable URLs + browser history — `tech-10` (phases 10a–10c,
+  shipped Jun 16–17, 2026).** Spec:
+  `specs/tech/10-tech-deep-linking-urls-NEW.md`. Main-pane items are now
+  reflected in the browser URL; refresh / direct-link / bookmark / Back /
+  Forward all restore the view + the correct sidebar tab, and the Directory
+  tree auto-expands to the open item.
+  - **Server.** `maybe_shell` (`app/server/_shared.py`) content-negotiates the
+    five item routes (folder/file/run/report/enums): a genuine browser
+    navigation (`Sec-Fetch-Mode: navigate`) gets the full `base.html` shell
+    pointed at the item; HTMX swaps + programmatic/test GETs keep the bare
+    fragment, so the `/ui/*` fragment contract is preserved (an
+    `HX-Request`-only signal had regressed 70 fragment-GET smokes). Active tab
+    is derived from the URL, folder sub-path aware (`<p>/test-run` → test-run,
+    `<p>/report` → reports).
+  - **Client.** `base.html` parameterised (`initial_main_url`,
+    `data-active-tab`, `TMS_ACTIVE_TAB/ACTIVE_PATH/EXPAND_PATHS`);
+    `09_bootstrap.js` sets `historyCacheSize=0` + `refreshOnHistoryMiss=true`
+    (Back/Forward = full reload → fresh shell, dodging the snapshot
+    script-rerun / `const`-redeclaration trap), seeds the tree expand-state to
+    the item's ancestors, restores the tab, and calls `tmsRestoreTreeState()`
+    at boot. `hx-push-url="true"` added to every `#main-pane` nav element; the
+    load-trigger + SSE/lazy-mount pane elements deliberately excluded. The
+    `beforeunload` dirty guard already existed.
+  - **10b — Typed-tab tree auto-expand.** Generalised the Directory-tree
+    restore into `tmsApplyTreeExpansion(root, set)`; a `tmsTypedExpand` set is
+    seeded at boot for a non-tree active tab and re-applied to the
+    test-run / reports / enums panes on every `htmx:afterSwap` (lazy mount +
+    SSE). Server emits the typed tree's folder `data-path` nodes (run →
+    `[<p>, <p>/test-run/<g>]`, report → `[<p>]`).
+  - **10c — Dirty guard + bad-URL handling.** `09_bootstrap.js` wraps
+    `window.onpopstate`: on a dirty editor Back/Forward confirms, re-pushes the
+    editor URL on cancel (so the address bar matches the still-shown editor),
+    and clears the dirty flag on confirm so the ensuing full-reload's
+    `beforeunload` stays silent (no double prompt). A scoped
+    `htmx:responseError` listener injects the server's `_ui_error_html` snippet
+    into `#main-pane` when a deep-linked / pasted URL points at a missing item
+    (htmx won't swap 4xx by default), instead of a stuck "Loading…".
+  - Tests: `tech-10/T10_01..11`. Full suite **317/317**. Browser-verified —
+    refreshing / Back-Forward on `/ui/report/<p>/<f>` rehydrates the reports
+    tab + report view.
+  - **Won't-do (closed Jun 17, 2026):** SPA-snappy Back/Forward
+    (`hx-history-elt` + snapshot cache) — would reverse D2 and reintroduce the
+    spike-identified breakage (editor tail-scripts not re-run, top-level
+    `const` clobbering), and the full-reload restore isn't heavy; and a cleaner
+    public `/app/<type>/<path>` URL scheme — cosmetic, no demand. Both can be
+    reopened from the spec if the gating conditions ever materialise.
+
 - **Test-case directory tree: folders above files within each folder
   (shipped Jun 16, 2026).** Reference:
   `specs/features/06-feature-tree-pane-NEW.md`. The Directory sidebar tree
@@ -762,7 +809,7 @@ Items fixed during v1 manual verification.
 
 - **Review `DONE.md` doc and refine content.**
   - Replaced all 22 occurrences of the machine-specific absolute path
-    prefix `@/Users/hoang.tv/Documents/Projects/tms` in `root/DONE.md`
+    prefix `root` in `root/DONE.md`
     with the portable placeholder `root` so the file's path citations
     stay meaningful when the repo is checked out elsewhere. Pure
     docs-only edit: no code changed, no other content touched.

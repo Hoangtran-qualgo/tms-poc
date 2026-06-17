@@ -48,20 +48,20 @@ Decisions IR-1..IR-6 signed off Jun 15, 2026 (see §5, §8). Reference data:
    report `allureVersion: 2.42.0`, `single_file: true`.)_
 2. **`created_at` is server-stamped today.** `Storage.create_run` stamps
    `created_at = datetime.now(UTC)` and *callers cannot override it*
-   (`@/Users/hoang.tv/Documents/Projects/tms/app/storage/_runs.py:227-275`).
+   (`root/app/storage/_runs.py:227-275`).
    Honoring the report's time needs a new/extended write path.
 3. **The report gives names; a run needs case paths.** `RunResult.file_path`
    is a data-root-relative `.feature` path
-   (`@/Users/hoang.tv/Documents/Projects/tms/app/models/_run.py:17-36`), but
+   (`root/app/models/_run.py:17-36`), but
    the report only carries scenario **names**. We must resolve name → case
    path by scanning the project, case-insensitively — and decide what happens
    for **unmatched**, **duplicate**, and **ambiguous** names.
 4. **Run invariants constrain the mapping.** `validate_run` requires a
    non-empty single-line `name` + `created_at`, **unique non-empty
    `file_path`s**, and each `result ∈ RUN_RESULTS`
-   (`@/Users/hoang.tv/Documents/Projects/tms/app/models/_run.py:83-143`;
+   (`root/app/models/_run.py:83-143`;
    `RUN_RESULTS = PENDING|EXECUTING|PASSED|FAILED|SKIPPED`,
-   `@/Users/hoang.tv/Documents/Projects/tms/app/models/_common.py:40-46`).
+   `root/app/models/_common.py:40-46`).
    Two report scenarios resolving to the same case path would violate the
    uniqueness rule.
 
@@ -88,7 +88,7 @@ Decisions IR-1..IR-6 signed off Jun 15, 2026 (see §5, §8). Reference data:
   (lazy-creates `test-run/`).
 - **Project-wide case walker exists:** `Storage.iter_feature_paths(scope)`
   yields every `.feature` path under a scope (e.g. the project)
-  (`@/Users/hoang.tv/Documents/Projects/tms/app/storage/_search.py:151-169`) —
+  (`root/app/storage/_search.py:151-169`) —
   the basis for the name→path resolver (read each, key on
   `feature.scenario.name`).
 - **Import precedent (feature-14) to mirror:** preview + commit endpoints with
@@ -119,9 +119,9 @@ Decisions IR-1..IR-6 signed off Jun 15, 2026 (see §5, §8). Reference data:
 - **IR-4 — created_at. [LOCKED + verified.]** `widgets/summary.json.time.start`
   (epoch-ms) → `datetime.fromtimestamp(ms/1000, tz=UTC).isoformat(
   timespec="seconds")` — the **same shape** `create_run` already produces
-  (`@/Users/hoang.tv/Documents/Projects/tms/app/storage/_runs.py:264-266`).
+  (`root/app/storage/_runs.py:264-266`).
   `validate_run` only requires `created_at` **non-empty + single-line**
-  (`@/Users/hoang.tv/Documents/Projects/tms/app/models/_run.py:109-118`) — no
+  (`root/app/models/_run.py:109-118`) — no
   format parsing — so this is accepted with zero risk. Requires a write path
   that accepts `created_at` + per-case `result` (see §5 DO-2). _Fallback if
   `summary` missing:_ earliest leaf `time.start`, else reject.

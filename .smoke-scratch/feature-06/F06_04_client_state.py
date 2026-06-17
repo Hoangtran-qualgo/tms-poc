@@ -94,16 +94,18 @@ assert caret_onclick, (
 print("PASS  CS2 (Hybrid): toggleTreeFolder mutates Set on expand/collapse + caret wires inline onclick")
 
 
-# --- CS3: tmsRestoreTreeState walks #tree-pane .tree-folder + afterSwap.
+# --- CS3: tmsRestoreTreeState restores #tree-pane from tmsExpandedFolders;
+# the row-walk lives in the shared tmsApplyTreeExpansion helper (tech-10 10b
+# generalised it so the typed sidebar trees can reuse it) + afterSwap.
 body = _extract_block(JS, r"function\s+tmsRestoreTreeState\s*\(\s*\)")
-assert '"#tree-pane .tree-folder"' in body, (
-    "CS3 (static): tmsRestoreTreeState() must querySelectorAll "
-    "`#tree-pane .tree-folder` (so it only walks the current tree pane, "
-    "not the test-run sibling pane)"
+assert '"tree-pane"' in body and "tmsExpandedFolders" in body, (
+    "CS3 (static): tmsRestoreTreeState() must restore the #tree-pane from "
+    "tmsExpandedFolders (scoped to the tree pane, not the test-run sibling)"
 )
-assert "tmsExpandedFolders.has(path)" in body, (
-    "CS3 (static): tmsRestoreTreeState() must consult tmsExpandedFolders.has(path) "
-    "to decide which rows to re-expand"
+helper = _extract_block(JS, r"function\s+tmsApplyTreeExpansion\s*\(")
+assert ".tree-folder" in helper and ".has(path)" in helper, (
+    "CS3 (static): tmsApplyTreeExpansion() must walk .tree-folder rows and "
+    "consult the passed expand-set via .has(path)"
 )
 
 # htmx:afterSwap listener wired to call tmsRestoreTreeState when

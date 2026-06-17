@@ -75,13 +75,19 @@ print("PASS  EP1 (Hybrid): toggleTreeFolder mutates tmsExpandedFolders in both d
 # --- EP2: htmx:afterSwap on #tree-pane -> tmsRestoreTreeState; walks
 # `[data-path]` rows. ---
 restore = _extract_block(JS, r"function\s+tmsRestoreTreeState\s*\(\s*\)")
-assert 'querySelectorAll("#tree-pane .tree-folder")' in restore, (
-    "EP2 (static): tmsRestoreTreeState() must walk "
-    "`document.querySelectorAll(\"#tree-pane .tree-folder\")`"
+assert '"tree-pane"' in restore and "tmsExpandedFolders" in restore, (
+    "EP2 (static): tmsRestoreTreeState() must restore the #tree-pane from "
+    "tmsExpandedFolders"
 )
-assert "row.dataset.path" in restore, (
-    "EP2 (static): tmsRestoreTreeState() must read each row's "
-    "`dataset.path` (the data-path attribute) to look up the Set"
+# tech-10 10b: the row-walk was generalised into tmsApplyTreeExpansion so the
+# typed sidebar trees can reuse it; the directory restore delegates to it.
+helper = _extract_block(JS, r"function\s+tmsApplyTreeExpansion\s*\(")
+assert 'querySelectorAll(".tree-folder")' in helper, (
+    "EP2 (static): tmsApplyTreeExpansion() must walk `.tree-folder` rows under "
+    "the given pane root"
+)
+assert "row.dataset.path" in helper, (
+    "EP2 (static): tmsApplyTreeExpansion() must read each row's `dataset.path`"
 )
 # htmx:afterSwap wiring + the if-branch guarding the call.
 afterswap_to_restore = re.search(
@@ -119,12 +125,11 @@ print("PASS  EP2 (Hybrid): htmx:afterSwap -> tmsRestoreTreeState; walks #tree-pa
 # sits unused. Static check is the strongest available without a JS
 # runtime.
 assert re.search(
-    r"if\s*\(\s*!path\s*\|\|\s*!tmsExpandedFolders\.has\s*\(\s*path\s*\)\s*\)\s*return\s*;",
-    restore,
+    r"if\s*\(\s*!path\s*\|\|\s*!expandSet\.has\s*\(\s*path\s*\)\s*\)\s*return\s*;",
+    helper,
 ), (
-    "EP3 (static): tmsRestoreTreeState() must guard with "
-    "`if (!path || !tmsExpandedFolders.has(path)) return;` so rows whose "
-    "data-path is missing or was never expanded simply drop off (no "
-    "exception, no bespoke cleanup)"
+    "EP3 (static): tmsApplyTreeExpansion() must guard with "
+    "`if (!path || !expandSet.has(path)) return;` so rows whose data-path is "
+    "missing or was never expanded simply drop off (no exception, no cleanup)"
 )
-print("PASS  EP3 (static): guard `if (!path || !tmsExpandedFolders.has(path)) return` covers disappeared rows")
+print("PASS  EP3 (static): guard `if (!path || !expandSet.has(path)) return` covers disappeared rows")
