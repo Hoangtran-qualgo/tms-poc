@@ -226,7 +226,7 @@ coverage.
     that "validation errors return 422
     validation_error". The as-shipped
     `Storage.write_raw`
-    (`@/Users/hoang.tv/Documents/Projects/tms/app/storage.py:708-731`)
+    (`root/app/storage.py:708-731`)
     only calls `parse_feature(text)` — it does NOT call
     `validate_feature(parsed)` nor
     `serialize_feature(parsed)`. The on-disk text is

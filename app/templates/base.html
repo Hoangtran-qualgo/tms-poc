@@ -78,6 +78,7 @@
   <div class="flex-1 flex min-h-0">
     <div id="sidebar"
          class="shrink-0 flex bg-white border-r border-slate-200 relative"
+         data-active-tab="{{ active_tab|default('tree') }}"
          data-default-width="316"
          data-min-width="240"
          data-max-width="600"
@@ -159,14 +160,20 @@
     </div>
 
     <main class="flex-1 min-w-0 overflow-auto p-6" id="main-pane"
-          hx-get="/ui/folder/" hx-trigger="load" hx-swap="innerHTML">
+          hx-get="{{ initial_main_url|default('/ui/folder/') }}" hx-trigger="load" hx-swap="innerHTML">
       <p class="text-slate-500">Loading&hellip;</p>
     </main>
   </div>
 
   {# Run-result vocabulary, server-rendered so the report-create modal's
      status <select> stays in lock-step with models.RUN_RESULTS. #}
-  <script>window.TMS_RUN_RESULTS = {{ run_results | tojson }};</script>
+  <script>
+    window.TMS_RUN_RESULTS = {{ run_results | tojson }};
+    // tech-10 (10a): deep-link rehydration hints consumed by 09_bootstrap.js.
+    window.TMS_ACTIVE_TAB = {{ (active_tab|default('tree')) | tojson }};
+    window.TMS_ACTIVE_PATH = {{ (active_path|default('')) | tojson }};
+    window.TMS_EXPAND_PATHS = {{ (expand_paths|default([])) | tojson }};
+  </script>
   {# app.js was split into per-area files (specs/tech/01-tech-restructure-NEW.md
      slice 4). All are classic global-scope scripts. The NN_ prefix encodes the
      load order (= the original app.js source order): 09_bootstrap.js MUST load

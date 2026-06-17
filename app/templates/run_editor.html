@@ -21,16 +21,16 @@
   <div class="flex items-center gap-3 mb-2">
     <div class="text-sm text-slate-500 truncate">
       <a class="hover:underline cursor-pointer"
-         hx-get="/ui/folder/" hx-target="#main-pane" hx-swap="innerHTML">Projects</a>
+         hx-get="/ui/folder/" hx-target="#main-pane" hx-push-url="true" hx-swap="innerHTML">Projects</a>
       <span class="px-1">/</span>
       <a class="hover:underline cursor-pointer"
-         hx-get="/ui/folder/{{ project }}" hx-target="#main-pane" hx-swap="innerHTML">{{ project }}</a>
+         hx-get="/ui/folder/{{ project }}" hx-target="#main-pane" hx-push-url="true" hx-swap="innerHTML">{{ project }}</a>
       <span class="px-1">/</span>
       <a class="hover:underline cursor-pointer"
-         hx-get="/ui/folder/{{ project }}/test-run" hx-target="#main-pane" hx-swap="innerHTML">test-run</a>
+         hx-get="/ui/folder/{{ project }}/test-run" hx-target="#main-pane" hx-push-url="true" hx-swap="innerHTML">test-run</a>
       <span class="px-1">/</span>
       <a class="hover:underline cursor-pointer"
-         hx-get="/ui/folder/{{ project }}/test-run/{{ group }}" hx-target="#main-pane" hx-swap="innerHTML">{{ group }}</a>
+         hx-get="/ui/folder/{{ project }}/test-run/{{ group }}" hx-target="#main-pane" hx-push-url="true" hx-swap="innerHTML">{{ group }}</a>
       <span class="px-1">/</span>
     </div>
     <div class="flex-1"></div>
@@ -60,6 +60,30 @@
                 class="w-full border border-slate-300 rounded px-2 py-1.5 text-sm bg-white resize-y">{{ run.description }}</textarea>
     </div>
     <div class="text-xs text-slate-400">Created {{ run.created_at }}</div>
+    {# Result summary: per-status counts of run.results. Display-only — never
+       read by tmsRunEditor's dirty snapshot — and kept live by
+       _updateResultSummary on every result-select change / add / remove. The
+       five chips' symbols mirror folder_test_run_group.html; their colours
+       come from app.css's [data-status] palette (single source of truth,
+       tech-02 D1) so each chip matches the result <select> exactly. A chip is
+       hidden when its count is 0, and an em-dash shows when the run is empty.
+       JS only writes the counts + toggles `hidden`. #}
+    {% set _passed = run.results|selectattr('result','equalto','PASSED')|list|length %}
+    {% set _failed = run.results|selectattr('result','equalto','FAILED')|list|length %}
+    {% set _pending = run.results|selectattr('result','equalto','PENDING')|list|length %}
+    {% set _executing = run.results|selectattr('result','equalto','EXECUTING')|list|length %}
+    {% set _skipped = run.results|selectattr('result','equalto','SKIPPED')|list|length %}
+    <div id="run-result-summary" class="flex items-center gap-2 text-xs" data-role="result-summary">
+      <span class="uppercase tracking-wider text-slate-500">Result</span>
+      <span class="inline-flex flex-wrap items-center gap-1">
+        <span class="run-summary-chip inline-block font-medium{% if not _passed %} hidden{% endif %}" data-status="PASSED">&#10003; <span data-role="count">{{ _passed }}</span> PASSED</span>
+        <span class="run-summary-chip inline-block font-medium{% if not _failed %} hidden{% endif %}" data-status="FAILED">&#10007; <span data-role="count">{{ _failed }}</span> FAILED</span>
+        <span class="run-summary-chip inline-block font-medium{% if not _pending %} hidden{% endif %}" data-status="PENDING">? <span data-role="count">{{ _pending }}</span> PENDING</span>
+        <span class="run-summary-chip inline-block font-medium{% if not _executing %} hidden{% endif %}" data-status="EXECUTING">&#8943; <span data-role="count">{{ _executing }}</span> EXECUTING</span>
+        <span class="run-summary-chip inline-block font-medium{% if not _skipped %} hidden{% endif %}" data-status="SKIPPED">&#10551; <span data-role="count">{{ _skipped }}</span> SKIPPED</span>
+        <span class="run-summary-empty text-slate-400{% if run.results %} hidden{% endif %}">&mdash;</span>
+      </span>
+    </div>
   </div>
 
   <div class="flex items-center mb-2">
@@ -119,7 +143,7 @@
         <td class="px-3 py-2 pl-6" title="{{ r.file_path }}">
           <a class="run-row-link hover:underline cursor-pointer flex items-center min-w-0 w-full font-mono text-xs"
              hx-get="/ui/file/{{ r.file_path }}"
-             hx-target="#main-pane"
+             hx-target="#main-pane" hx-push-url="true"
              hx-swap="innerHTML">
             <span data-role="filename" class="truncate min-w-0 {% if r.missing %}line-through text-slate-400{% else %}text-slate-700{% endif %}">{{ _filename }}</span>
           </a>
@@ -163,7 +187,7 @@
     <tr class="border-t border-slate-100 align-top">
       <td class="px-3 py-2 pl-6 text-slate-800">
         <a class="run-row-link hover:underline cursor-pointer flex items-center min-w-0 w-full font-mono text-xs"
-           hx-target="#main-pane" hx-swap="innerHTML">
+           hx-target="#main-pane" hx-push-url="true" hx-swap="innerHTML">
           <span data-role="filename" class="truncate min-w-0 text-slate-700"></span>
         </a>
       </td>

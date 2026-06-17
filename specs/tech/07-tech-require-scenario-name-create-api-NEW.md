@@ -9,7 +9,7 @@ _Deferred from `tech-04` (Option B); filed as a Must-have in `IN-PROGRESS.md`._
 - **DO-1 — API.** `post_file` now requires a non-empty `scenario_name` via
   `_require_non_empty_string` + a strip-aware guard (SN-3); the stale
   tech-04 "Option B / deferred" comment is gone
-  (`@/Users/hoang.tv/Documents/Projects/tms/app/server/routes_files.py:43-54`).
+  (`root/app/server/routes_files.py:43-54`).
   Model (V5), `create_file`, `validate_feature`, PATCH/PUT-raw, and the
   editor save-gate are unchanged — enforcement lives at the one HTTP entry
   point, mirroring `import_feature_cases`.
@@ -40,15 +40,15 @@ strict.
 
 - **API permissive.** `POST /api/files` reads `scenario_name` with a default
   of `""` and only type-checks it; an empty value is accepted and passed to
-  `create_file` (`@/Users/hoang.tv/Documents/Projects/tms/app/server/routes_files.py:44-69`).
+  `create_file` (`root/app/server/routes_files.py:44-69`).
 - **Storage permissive.** `create_file(parts, description="", *,
   scenario_name="")` writes a placeholder `Scenario(kind="scenario",
   name=scenario_name)` — empty is allowed and serialises to a bare
   `Scenario:` line that round-trips
-  (`@/Users/hoang.tv/Documents/Projects/tms/app/storage/_features.py:40-81`).
+  (`root/app/storage/_features.py:40-81`).
 - **Model permissive (V5 / Option B).** `validate_feature` checks
   `scenario.name` is **single-line** but **not non-empty**
-  (`@/Users/hoang.tv/Documents/Projects/tms/app/models/_feature.py:360-364`).
+  (`root/app/models/_feature.py:360-364`).
   This is deliberate (tech-04 D1: an empty description + empty scenario name
   round-trips as bare `Feature:` / `Scenario:` lines).
 - **UI already strict.** The create modal `tmsCreateFile` gates Save on a
@@ -57,7 +57,7 @@ strict.
 - **Import already strict (use-case layer).** `import_feature_cases` adds a
   pre-flight reason `"scenario #N: scenario name is required."` and writes
   nothing when any scenario name is empty
-  (`@/Users/hoang.tv/Documents/Projects/tms/app/storage/_features.py:202-203`).
+  (`root/app/storage/_features.py:202-203`).
   Note: import enforces this **in the use-case method, not in the model** —
   so the established pattern is *entry-point* enforcement with a permissive
   model.

@@ -4,6 +4,121 @@ Items fixed during v1 manual verification.
 
 ## Must have
 
+- **Deep-linkable URLs + browser history — `tech-10` (phases 10a–10c,
+  shipped Jun 16–17, 2026).** Spec:
+  `specs/tech/10-tech-deep-linking-urls-NEW.md`. Main-pane items are now
+  reflected in the browser URL; refresh / direct-link / bookmark / Back /
+  Forward all restore the view + the correct sidebar tab, and the Directory
+  tree auto-expands to the open item.
+  - **Server.** `maybe_shell` (`app/server/_shared.py`) content-negotiates the
+    five item routes (folder/file/run/report/enums): a genuine browser
+    navigation (`Sec-Fetch-Mode: navigate`) gets the full `base.html` shell
+    pointed at the item; HTMX swaps + programmatic/test GETs keep the bare
+    fragment, so the `/ui/*` fragment contract is preserved (an
+    `HX-Request`-only signal had regressed 70 fragment-GET smokes). Active tab
+    is derived from the URL, folder sub-path aware (`<p>/test-run` → test-run,
+    `<p>/report` → reports).
+  - **Client.** `base.html` parameterised (`initial_main_url`,
+    `data-active-tab`, `TMS_ACTIVE_TAB/ACTIVE_PATH/EXPAND_PATHS`);
+    `09_bootstrap.js` sets `historyCacheSize=0` + `refreshOnHistoryMiss=true`
+    (Back/Forward = full reload → fresh shell, dodging the snapshot
+    script-rerun / `const`-redeclaration trap), seeds the tree expand-state to
+    the item's ancestors, restores the tab, and calls `tmsRestoreTreeState()`
+    at boot. `hx-push-url="true"` added to every `#main-pane` nav element; the
+    load-trigger + SSE/lazy-mount pane elements deliberately excluded. The
+    `beforeunload` dirty guard already existed.
+  - **10b — Typed-tab tree auto-expand.** Generalised the Directory-tree
+    restore into `tmsApplyTreeExpansion(root, set)`; a `tmsTypedExpand` set is
+    seeded at boot for a non-tree active tab and re-applied to the
+    test-run / reports / enums panes on every `htmx:afterSwap` (lazy mount +
+    SSE). Server emits the typed tree's folder `data-path` nodes (run →
+    `[<p>, <p>/test-run/<g>]`, report → `[<p>]`).
+  - **10c — Dirty guard + bad-URL handling.** `09_bootstrap.js` wraps
+    `window.onpopstate`: on a dirty editor Back/Forward confirms, re-pushes the
+    editor URL on cancel (so the address bar matches the still-shown editor),
+    and clears the dirty flag on confirm so the ensuing full-reload's
+    `beforeunload` stays silent (no double prompt). A scoped
+    `htmx:responseError` listener injects the server's `_ui_error_html` snippet
+    into `#main-pane` when a deep-linked / pasted URL points at a missing item
+    (htmx won't swap 4xx by default), instead of a stuck "Loading…".
+  - Tests: `tech-10/T10_01..11`. Full suite **317/317**. Browser-verified —
+    refreshing / Back-Forward on `/ui/report/<p>/<f>` rehydrates the reports
+    tab + report view.
+  - **Won't-do (closed Jun 17, 2026):** SPA-snappy Back/Forward
+    (`hx-history-elt` + snapshot cache) — would reverse D2 and reintroduce the
+    spike-identified breakage (editor tail-scripts not re-run, top-level
+    `const` clobbering), and the full-reload restore isn't heavy; and a cleaner
+    public `/app/<type>/<path>` URL scheme — cosmetic, no demand. Both can be
+    reopened from the spec if the gating conditions ever materialise.
+
+- **Test-case directory tree: folders above files within each folder
+  (shipped Jun 16, 2026).** Reference:
+  `specs/features/06-feature-tree-pane-NEW.md`. The Directory sidebar tree
+  interleaved sub-folders and `.feature`/other files (`_tree_children` in
+  `app/storage/_listing.py` appended in raw `iterdir()` order). It now does a
+  **stable** partition — `children.sort(key=… folder→0, file→1)` — so all
+  folders hoist above all files at every level, while the intra-group order is
+  preserved unchanged (only the folder/file split moved). `tree.html` needed no
+  change (it renders the order it's given); main-pane folder views +
+  `list_test_run_tree` left untouched per scope. No existing smoke pinned the
+  interleaved order (all use order-insensitive lookups); new
+  `feature-06/F06_13_tree_folders_above_files` asserts all folders precede all
+  files. Full suite **306/306**. Too small for a `tech-*` spec.
+
+- **Test-run list: status badge colours match the result palette
+  (shipped Jun 16, 2026).** Reference:
+  `specs/features/10-feature-test-run-NEW.md`. The runs-list (group view)
+  status badges (`app/templates/folder_test_run_group.html`) used divergent
+  hard-coded tints (PENDING slate, EXECUTING amber, SKIPPED slate). They now
+  carry `data-status` and inherit the canonical `app/static/app.css`
+  `[data-status]` palette (tech-02 D1) — **✓ green, ✗ red, ? orange, ⋯ blue,
+  ⤷ purple** — matching the run-editor chips + the result `<select>`. Symbol +
+  count only (no status word, unlike the run-editor summary); zero-count badges
+  still omitted. Tests: `F10_14` needed no re-pin (only checks symbol+count);
+  new `feature-10/F10_86_group_badge_palette` (each badge carries data-status,
+  no hard-coded bg tint, no status word). Full suite **305/305**. Too small for
+  a `tech-*` spec.
+
+- **Test-run detail: per-status result summary below the description
+  (shipped Jun 16, 2026).** Reference:
+  `specs/features/10-feature-test-run-NEW.md`. A one-line **Result** summary
+  renders below the description / "Created …" line, above the Results table.
+  - **Chips.** One chip per `RUN_RESULTS` status showing **symbol + count +
+    word**, e.g. `✓ 1 PASSED  ✗ 2 FAILED  ? 3 PENDING  ⋯ 4 EXECUTING
+    ⤷ 5 SKIPPED`. Zero-count chips are hidden; an em-dash shows when the run is
+    empty. Server-rendered in `app/templates/run_editor.html` via
+    `selectattr` counts.
+  - **Colours = single source of truth.** Chips carry `data-status` and inherit
+    their colour from `app/static/app.css`'s `[data-status]` palette (tech-02
+    D1): PASSED green, FAILED red, PENDING orange, EXECUTING blue, SKIPPED
+    purple — so they always match the result `<select>`. No colour map
+    duplicated in JS/template.
+  - **Live update.** `tmsRunEditor._updateResultSummary`
+    (`app/static/06_run_editor.js`) recomputes counts from the live
+    `.run-result-select` values and is wired into `_refreshDirty`, so the chips
+    stay accurate on every result change / add / remove (not reload-only). It
+    only writes the count numbers + toggles `hidden` (display-only; never enters
+    the dirty snapshot).
+  - Tests: new `feature-10/F10_84_result_summary_render` (counts, status words,
+    hidden zero-count chips, em-dash) + `F10_85_result_summary_live` (live JS
+    wiring). Full suite **304/304**. Too small for a `tech-*` spec.
+
+- **Test-run list: open a run group from the Test-run sidebar tree
+  (shipped Jun 16, 2026).** Reference:
+  `specs/features/10-feature-test-run-NEW.md`. The main-pane run listing
+  already existed (`ui_folder`'s typed `test-run` dispatcher →
+  `folder_test_run_group.html`, reached from the run-editor breadcrumb); only
+  the **sidebar wiring** was missing.
+  - **Change.** In `app/templates/test_run_sidebar.html`, **group** (depth-1)
+    folder rows now navigate via
+    `hx-get="/ui/folder/<project>/test-run/<group>"` (caret still toggles
+    children), mirroring `tree.html`'s folder navigation. **Project** (depth-0)
+    rows stay **toggle-only** / non-interactive (USER decision).
+  - Tests: new `feature-10/F10_83_sidebar_group_nav` (group row links to the
+    run listing; project row has no nav target; run leaf still links to the
+    editor). No existing smoke pinned the old non-interactivity. Full suite
+    **302/302**. Too small for a `tech-*` spec.
+
 - **Scenario Outline as per-example run items — `tech-09`
   (shipped Jun 16, 2026).** Spec:
   `specs/tech/09-tech-outline-import-run-NEW.md`. Follow-up to `feature-15`;
@@ -694,7 +809,7 @@ Items fixed during v1 manual verification.
 
 - **Review `DONE.md` doc and refine content.**
   - Replaced all 22 occurrences of the machine-specific absolute path
-    prefix `@/Users/hoang.tv/Documents/Projects/tms` in `root/DONE.md`
+    prefix `root` in `root/DONE.md`
     with the portable placeholder `root` so the file's path citations
     stay meaningful when the repo is checked out elsewhere. Pure
     docs-only edit: no code changed, no other content touched.

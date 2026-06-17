@@ -8,11 +8,11 @@
     <div>
       <div class="text-sm text-slate-500 truncate">
         <a class="hover:underline cursor-pointer"
-           hx-get="/ui/folder/" hx-target="#main-pane" hx-swap="innerHTML">Projects</a>
+           hx-get="/ui/folder/" hx-target="#main-pane" hx-push-url="true" hx-swap="innerHTML">Projects</a>
         {% for crumb in crumbs %}
           <span class="px-1">/</span>
           <a class="hover:underline cursor-pointer"
-             hx-get="/ui/folder/{{ crumb.path }}" hx-target="#main-pane" hx-swap="innerHTML">{{ crumb.label }}</a>
+             hx-get="/ui/folder/{{ crumb.path }}" hx-target="#main-pane" hx-push-url="true" hx-swap="innerHTML">{{ crumb.label }}</a>
         {% endfor %}
         <span class="px-1">/</span>
       </div>
@@ -36,7 +36,7 @@
       {% for name in folders %}
       <tr class="border-t border-slate-100 hover:bg-slate-50 cursor-pointer"
           hx-get="/ui/folder/{{ folder_path }}/{{ name }}"
-          hx-target="#main-pane"
+          hx-target="#main-pane" hx-push-url="true"
           hx-swap="innerHTML">
         <td class="px-3 py-2 text-slate-700">&#128193; {{ name }}</td>
       </tr>

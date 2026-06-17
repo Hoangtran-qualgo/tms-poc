@@ -12,7 +12,14 @@ from flask import render_template, request
 from ..errors import GherkinParseError
 from ..models import RUN_RESULTS, Scenario
 from ..reporting import compute_report
-from ._shared import ui, _folder_crumbs, _is_feature_path, _storage
+from ._shared import (
+    ui,
+    _folder_crumbs,
+    _is_feature_path,
+    _storage,
+    maybe_shell,
+    tree_ancestors,
+)
 
 
 def _resolve_example(
@@ -102,6 +109,9 @@ def ui_enums(project: str):
     Legacy projects (no ``enums.yaml``) render the Initialize state; a
     malformed file propagates as 422 ``enums_parse_error``.
     """
+    shell = maybe_shell("enums")  # tech-10: top-level GET -> shell
+    if shell is not None:
+        return shell
     s = _storage()
     try:
         vocab = s.read_project_enums(project)
@@ -132,6 +142,23 @@ def ui_folder(p: str = ""):
     """
     s = _storage()
     segments = [x for x in p.split("/") if x] if p else []
+
+    # tech-10: a top-level (non-HX) GET returns the full shell. The active tab
+    # + tree-expand depend on whether this folder is a typed area (test-run/
+    # and report/ are hidden from the Directory tree, so they own their tab).
+    if len(segments) >= 2 and segments[1] == "test-run":
+        # 10b: expand the test-run tree to <project> (+ the group node when the
+        # URL points at a specific group).
+        exp = [segments[0]]
+        if len(segments) >= 3:
+            exp.append(f"{segments[0]}/test-run/{segments[2]}")
+        shell = maybe_shell("test-run", exp)
+    elif len(segments) >= 2 and segments[1] == "report":
+        shell = maybe_shell("reports", [segments[0]])
+    else:
+        shell = maybe_shell("tree", tree_ancestors("/".join(segments)))
+    if shell is not None:
+        return shell
 
     if len(segments) == 0:
         listing = s.list_folder("")
@@ -218,6 +245,13 @@ def ui_file(p: str):
     422 envelope via the blueprint error handler — the user is expected to
     repair the file externally or via the raw tab in a sibling file.
     """
+    # tech-10: top-level GET -> shell; the Directory tree expands to the file's
+    # parent folder (the leaf file has no children to expand).
+    shell = maybe_shell(
+        "tree", tree_ancestors(p.rsplit("/", 1)[0] if "/" in p else "")
+    )
+    if shell is not None:
+        return shell
     if not _is_feature_path(p):
         return render_template("unsupported.html", file_path=p)
     s = _storage()
@@ -255,6 +289,10 @@ def ui_run(project: str, group: str, file_name: str):
     :class:`~app.errors.RunParseError` on malformed YAML, surfacing as
     a 422 envelope.
     """
+    # tech-10: top-level GET -> shell; 10b expands the test-run tree to the run.
+    shell = maybe_shell("test-run", [project, f"{project}/test-run/{group}"])
+    if shell is not None:
+        return shell
     s = _storage()
     run = s.read_run(project, group, file_name)
     # Tombstone-on-render (spec § "Tombstone rendering"): a row whose
@@ -313,6 +351,10 @@ def ui_report(project: str, file_name: str):
     :class:`~app.errors.ReportParseError` (422) on malformed YAML, both
     surfaced via the UI blueprint error handlers.
     """
+    # tech-10: top-level GET -> shell; 10b expands the reports tree to <project>.
+    shell = maybe_shell("reports", [project])
+    if shell is not None:
+        return shell
     s = _storage()
     report = s.read_report(project, file_name)
     view = compute_report(s, project, report)

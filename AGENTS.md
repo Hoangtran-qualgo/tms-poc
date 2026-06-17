@@ -55,3 +55,19 @@ For multi-step tasks, state a brief plan:
 ```
 
 Strong success criteria let you loop independently. Weak criteria ("make it work") require constant clarification.
+
+## 5. No Machine-Specific Paths in Docs
+
+**Docs are portable. Keep the local filesystem out of them.**
+
+When writing or editing any doc (this file, `IN-PROGRESS.md`, `DONE.md`,
+`specs/**`, `README`, etc.), NEVER embed a machine-specific absolute path —
+e.g. a user-home prefix like `/Users/<name>/Documents/Projects/<repo>`. Use a
+repo-relative path or the `root/` placeholder instead:
+
+- Good: `root/app/server/routes_ui.py:43-54` or `app/server/routes_ui.py:43-54`
+- Bad: an absolute path that hard-codes a user home / local checkout location
+
+This keeps the actual local directory out of every committed doc so citations
+stay meaningful when the repo is checked out elsewhere. (Applies to docs
+*content* only — not to IDE/chat tooling that may require absolute paths.)

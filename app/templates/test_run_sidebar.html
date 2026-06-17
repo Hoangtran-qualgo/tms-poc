@@ -6,8 +6,10 @@
        mount); subsequent re-renders are driven by sse:change.
 
    Distinct from tree.html in two ways:
-     - Folder rows (projects, groups) have no navigation target in Phase 2.
-       The caret toggles children; the name is non-interactive text.
+     - Project (depth-0) folder rows have no navigation target: the caret
+       toggles children and the name is non-interactive text. Group (depth-1)
+       rows open their run listing (/ui/folder/<project>/test-run/<group>) in
+       the main pane, mirroring tree.html's folder navigation.
      - Leaf rows are `type: "run"` (not `feature`/`other`) and link to
        /ui/run/<project>/<group>/<file_name> in the main pane.
 
@@ -30,7 +32,19 @@
             <button type="button"
                     class="caret w-4 text-center text-slate-400 cursor-pointer"
                     onclick="event.stopPropagation(); toggleTreeFolder(this.parentElement)">&#9654;</button>
-            <span class="flex-1 truncate {% if child.depth == 0 %}font-semibold text-slate-800{% else %}font-medium text-slate-700{% endif %}">{{ child.name }}</span>
+            {% if child.depth == 0 %}
+            {# Project rows toggle only; the name is non-interactive text. #}
+            <span class="flex-1 truncate font-semibold text-slate-800">{{ child.name }}</span>
+            {% else %}
+            {# Group rows open the run listing in the main pane (the caret to
+               the left still toggles the children list). child.path is
+               <project>/test-run/<group>, which ui_folder's typed dispatcher
+               renders via folder_test_run_group.html. #}
+            <span class="flex-1 truncate cursor-pointer font-medium text-slate-700"
+                  hx-get="/ui/folder/{{ child.path }}"
+                  hx-target="#main-pane" hx-push-url="true"
+                  hx-swap="innerHTML">{{ child.name }}</span>
+            {% endif %}
           </div>
           <div class="tree-children hidden pl-4 border-l border-slate-100 ml-2">
             {{ render_test_run_children(child.children) }}
@@ -39,7 +53,7 @@
           <div class="tree-file flex items-center gap-1 pr-1 py-0.5 rounded hover:bg-slate-100 cursor-pointer select-none"
                data-path="{{ child.path }}"
                hx-get="/ui/run/{{ child.project }}/{{ child.group }}/{{ child.file_name }}"
-               hx-target="#main-pane"
+               hx-target="#main-pane" hx-push-url="true"
                hx-swap="innerHTML">
             <span class="w-4 text-center text-slate-300">&middot;</span>
             <span class="flex-1 truncate text-slate-700">{{ child.name }}</span>

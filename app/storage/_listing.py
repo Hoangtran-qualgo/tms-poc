@@ -106,6 +106,10 @@ class ListingMixin:
                         "path": rel,
                     }
                 )
+        # Hoist folders above files at every level (folders on top, files on
+        # the bottom). Stable, so the intra-group order from iterdir() above is
+        # preserved within the folders group and within the files group.
+        children.sort(key=lambda c: 0 if c["type"] == "folder" else 1)
         return children
 
     def list_test_run_tree(self) -> dict[str, Any]:

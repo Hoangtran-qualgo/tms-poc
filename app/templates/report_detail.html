@@ -19,15 +19,15 @@
      data-report-type="{{ view.type }}"
      hx-get="/ui/report/{{ project }}/{{ file_name }}"
      hx-trigger="sse:change"
-     hx-target="#main-pane"
+     hx-target="#main-pane" hx-push-url="true"
      hx-swap="innerHTML">
 
   <div class="text-sm text-slate-500 truncate mb-2">
     <a class="hover:underline cursor-pointer"
-       hx-get="/ui/folder/" hx-target="#main-pane" hx-swap="innerHTML">Projects</a>
+       hx-get="/ui/folder/" hx-target="#main-pane" hx-push-url="true" hx-swap="innerHTML">Projects</a>
     <span class="px-1">/</span>
     <a class="hover:underline cursor-pointer"
-       hx-get="/ui/folder/{{ project }}" hx-target="#main-pane" hx-swap="innerHTML">{{ project }}</a>
+       hx-get="/ui/folder/{{ project }}" hx-target="#main-pane" hx-push-url="true" hx-swap="innerHTML">{{ project }}</a>
     <span class="px-1">/</span>
     <span class="text-slate-400">report</span>
     <span class="px-1">/</span>
@@ -130,7 +130,7 @@
                   {% if c.scenario_name %}<span class="text-sm font-medium text-slate-800 truncate min-w-0" title="{{ c.scenario_name }}">{{ c.scenario_name }}</span>
                   <span class="shrink-0 text-slate-300" aria-hidden="true">&middot;</span>{% endif %}
                   <a class="font-mono text-xs text-slate-400 hover:text-slate-700 hover:underline cursor-pointer shrink-0"
-                     hx-get="/ui/file/{{ c.file_path }}" hx-target="#main-pane" hx-swap="innerHTML">{{ _filename }}</a>
+                     hx-get="/ui/file/{{ c.file_path }}" hx-target="#main-pane" hx-push-url="true" hx-swap="innerHTML">{{ _filename }}</a>
                   {% if c.tags %}<span class="text-xs shrink-0 space-x-1">{% for t in c.tags %}<span class="font-mono text-slate-400">@{{ t }}</span>{% endfor %}</span>{% endif %}
                   {% if c.enums %}<span class="text-xs shrink-0 flex flex-wrap gap-x-2">{% for e in c.enums %}<span><span class="text-slate-400">{{ e.kind }}</span> <span class="font-mono text-slate-500">{{ e.key }}{% if e.label %} : {{ e.label }}{% endif %}</span></span>{% endfor %}</span>{% endif %}
                 </li>
@@ -190,7 +190,7 @@
           <td class="px-3 py-2">
             <a class="hover:underline cursor-pointer font-mono text-xs"
                hx-get="/ui/run/{{ t.run_path.split('/')[0] }}/{{ t.run_path.split('/')[2] }}/{{ t.run_path.split('/')[3] }}"
-               hx-target="#main-pane" hx-swap="innerHTML">{{ t.run }}</a>
+               hx-target="#main-pane" hx-push-url="true" hx-swap="innerHTML">{{ t.run }}</a>
           </td>
           <td class="px-3 py-2 text-slate-700 truncate" title="{{ t.run_name }}">{{ t.run_name }}</td>
           <td class="px-3 py-2 text-slate-500 text-xs font-mono">{{ t.created_at }}</td>

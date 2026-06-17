@@ -41,10 +41,10 @@ TMS's entire model is **one scenario per `.feature` file**. The parser
 
 - `parse_feature` raises `GherkinParseError` on >1 scenario, on `Rule:`
   blocks, and on a missing `Feature:` header
-  (`@/Users/hoang.tv/Documents/Projects/tms/app/gherkin_io.py:68-122`).
+  (`root/app/gherkin_io.py:68-122`).
 - The rejection lives in `_split_children`, which raises on the **second**
   scenario and on any `rule` child
-  (`@/Users/hoang.tv/Documents/Projects/tms/app/gherkin_io.py:222-259`).
+  (`root/app/gherkin_io.py:222-259`).
 
 So the whole point of import — accepting a multi-scenario file — is the one
 thing the current parser refuses. Import therefore needs a **new splitter**
@@ -57,7 +57,7 @@ that parses a multi-scenario document and emits N single-scenario
 - **Model** is single-scenario:
   `Feature{description, tags, background, scenario, enums}` with exactly one
   `Scenario`
-  (`@/Users/hoang.tv/Documents/Projects/tms/app/models/_feature.py:159-199`,
+  (`root/app/models/_feature.py:159-199`,
   `:108-142`). `description` is the assembled `Feature:` name + body; tags
   are feature-level; `Background` is optional/shared.
 - **Parser internals reusable for a splitter:** `_build_scenario`
@@ -69,24 +69,24 @@ that parses a multi-scenario document and emits N single-scenario
   cross-check:
   - `create_file(parts, description, *, scenario_name)` writes a
     placeholder-scenario file
-    (`@/Users/hoang.tv/Documents/Projects/tms/app/storage/_features.py:40-81`).
+    (`root/app/storage/_features.py:40-81`).
   - `write_feature(parts, feature)` serialises a full `Feature`; **requires
     the file to already exist**
-    (`@/Users/hoang.tv/Documents/Projects/tms/app/storage/_features.py:83-105`).
+    (`root/app/storage/_features.py:83-105`).
   - **Enum cross-check** rejects saves whose `enums` don't resolve in
     `<project>/enums.yaml` — unknown kind, unknown key, or *missing*
     `enums.yaml` → `ValidationError`
-    (`@/Users/hoang.tv/Documents/Projects/tms/app/storage/_enums.py:509-551`).
+    (`root/app/storage/_enums.py:509-551`).
   - **Tags are free-form** (char rules only, no vocab) — imported tags
     never fail a cross-check
-    (`@/Users/hoang.tv/Documents/Projects/tms/app/models/_feature.py:207-221`).
+    (`root/app/models/_feature.py:207-221`).
 - **Naming rules:** leaf must end `.feature` (auto-appended)
   (`_normalize_filename`, `_core.py:124-139`); segments reject
   `/ \ : * ? " < > |` + control chars and `.`/`..`
   (`_validate_segment` `:301-311`, `_FORBIDDEN_CHARS` `:32-34`).
 - **Create API:** `POST /api/files {parent, file_name, scenario_name?,
   description?}`; `parent` must be 2..`MAX_FOLDER_DEPTH` segments
-  (`@/Users/hoang.tv/Documents/Projects/tms/app/server/routes_files.py:20-50`).
+  (`root/app/server/routes_files.py:20-50`).
 - **Create UI:** `tmsCreateFile(parent)` opens a modal and `POST`s JSON; no
   file input anywhere (`03_folder_actions.js:184-278`). Buttons sit beside
   "+ Create test case" in `folder_module.html:26` and
