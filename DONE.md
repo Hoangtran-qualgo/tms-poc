@@ -4,6 +4,97 @@ Items fixed during v1 manual verification.
 
 ## Must have
 
+- **Folder table filename sort + scenario filter — `feature-22` (shipped Aug
+  19, 2026).** Spec:
+  `specs/features/22-feature-folder-table-sort-filter-NEW.md`. Module and
+  nested-folder direct test-case tables now begin filename-sorted
+  case-insensitively and toggle A–Z / Z–A from the File name header. A trimmed,
+  case-insensitive scenario-name filter hides non-matching rows without
+  discarding their checks. Select All and its tri-state state cover visible rows
+  only; bulk actions retain all selected rows and the toolbar shows visible and
+  selected totals while filtering. No storage/API behaviour changed. Tests:
+  feature-22 (2/2), feature-07 (24/24), and relevant tech-03 checks (3/3)
+  pass; watcher setup prints the known fsevents environment error.
+
+- **Folder/project and test-case rename UI — `feature-21` (shipped Aug 19,
+  2026).** Spec: `specs/features/21-feature-rename-ui-NEW.md`. Project,
+  module, and nested-folder headers now expose Rename; test-case filename
+  Rename lives in folder-detail rows, not the editor. Existing rename routes
+  now cascade exact/slash-bounded references in test runs and reports. All
+  affected run/report YAML is parsed before move; malformed typed metadata
+  blocks the operation. Metadata writes are atomic with best-effort
+  compensation and physical-move reversal on failure. Project success fully
+  reloads at its new path; other success paths refresh the folder and
+  Directory tree. Tests: `feature-21/F21_01..02` (2/2), feature-16 counts
+  (2/2), and existing rename lock/self-write/atomicity smokes (3/3) pass.
+  Watcher setup still prints the known environment fsevents error despite zero
+  smoke failures.
+
+- **Import auto-generated test-case filenames — `feature-20` (shipped Aug 19,
+  2026).** Spec: `specs/features/20-feature-import-auto-filenames-NEW.md`.
+  Import-preview filename fields now prefill in stable source/scenario order as
+  `<destination-folder>_<available-positive-number>.feature`. The client uses
+  the cached tree's direct children, case-insensitively, fills gaps from `1`,
+  and reserves each generated batch name; manual edits remain intact when the
+  destination changes. Existing commit/API/storage validation is unchanged and
+  remains the concurrent-write guard. Tests: feature-20 (1/1), feature-17
+  (2/2), and feature-14 (4/4) pass; watcher setup still prints the known
+  fsevents environment error despite zero test failures.
+
+- **Enum inline create + kind labels — `feature-19` (shipped Aug 17, 2026).**
+  Spec: `specs/features/19-feature-enum-kind-label-NEW.md`. The Enums manager
+  now creates both kinds and entries through inline forms. Kind IDs remain
+  stable; editable display labels persist in optional
+  `enum-kind-labels.yaml` metadata, defaulting to the ID for legacy projects.
+  Existing `enums.yaml`, `.feature` directives, enum-ranking reports, and
+  `GET /api/enums` stay unchanged. Save writes vocabulary then labels; a
+  label-write failure leaves safe ID fallback and can be retried. Tests:
+  feature-19 (1/1) and feature-13 compatibility (18/18) pass; watcher setup
+  still prints the known fsevents environment error despite zero test failures.
+
+- **Folder delete UI — `feature-18` (shipped Aug 17, 2026).**
+  Spec: `specs/features/18-feature-folder-delete-NEW.md`. Module and deeper
+  branch headers now offer **Delete folder**. Its modal names the full path,
+  warns that descendant folders/test cases are permanently deleted, and uses
+  the existing recursive/idempotent `DELETE /api/folders/<path>` contract.
+  On success it returns the main pane to the parent and explicitly refreshes
+  the Directory tree; errors stay in the dialog. Root, project, and typed
+  views expose no control, so project deletion remains API-only because it
+  removes hidden run/report/enum data. Tests: `feature-18/F18_01` plus revised
+  feature-04/07 gap smokes pass; watcher creation still prints the known
+  fsevents environment error despite zero test failures.
+
+- **Multi-file test-case import — `feature-17` (shipped Aug 17, 2026).**
+  Spec: `specs/features/17-feature-multi-file-import-NEW.md`. The global
+  import modal now selects up to **20** `.feature` files with a **3 MB total**
+  client/server cap, previews flattened source/scenario rows with a Source
+  file column, and creates all cases in one destination folder. The existing
+  splitter and `Storage.import_feature_cases()` transaction are reused: one
+  source/case failure aborts the entire batch, including cross-source
+  case-insensitive filename/scenario-name conflicts. Preview collects each
+  invalid type/parse/no-scenario source and keeps Import disabled; the server
+  revalidates before writing. One enum-drop acknowledgement identifies every
+  affected source. Existing one-file `{source}` API bodies retain their
+  response/commit contract. Tests: `feature-17/F17_01..02` (2/2) and
+  feature-14 compatibility (4/4) pass. Full-suite check: 315/321 pass; six
+  pre-existing watcher acceptance smokes fail only because this environment
+  cannot start watchdog's fsevents stream.
+
+- **Recursive test-case counts in directory tree — `feature-16` (shipped Aug
+  10, 2026).** Spec: `specs/features/16-feature-tree-case-count-NEW.md`.
+  Project, module, and deeper branch rows now show `(total-auto-non_auto)` scenario
+  counts. Recursive storage aggregation uses `split_feature_source()`;
+  feature-level `@auto` marks every scenario, scenario-level `@auto` is
+  counted per scenario, matching is case-insensitive, malformed `.feature`
+  files contribute one non-auto scenario fallback. Numeric
+  `{total, auto, non_auto}` metadata is added to every visible folder node;
+  existing tree navigation, ordering, reserved-area filtering, and
+  SSE/manual refresh paths remain unchanged. Tests: `feature-16/F16_01..02`
+  (2/2 pass). Full suite Check: 313/319 pass; six watcher acceptance smokes
+  fail only because this macOS environment cannot start watchdog's fsevents
+  stream (`SystemError: Cannot start fsevents stream. Use a kqueue or polling
+  observer instead.`).
+
 - **Deep-linkable URLs + browser history — `tech-10` (phases 10a–10c,
   shipped Jun 16–17, 2026).** Spec:
   `specs/tech/10-tech-deep-linking-urls-NEW.md`. Main-pane items are now
@@ -271,7 +362,7 @@ Items fixed during v1 manual verification.
     (built from `/api/tree`, folders shown relative to the chosen project),
     `.feature` picker with client type + 3 MB gating, a bordered preview table
     (Scenario name 30-char truncate · Feature tag · Scenario tag as top-2
-    `@`+N-more · File name input, placeholder-only), enum-drop acknowledgement
+    `@`+N-more · File name input, later pre-filled by feature 20), enum-drop acknowledgement
     gate, and collect-all reason list on abort.
   - **NOTE:** only **feature + scenario** tags are supported; `Examples:`-level
     tags are not a first-class concept yet (they round-trip verbatim but are

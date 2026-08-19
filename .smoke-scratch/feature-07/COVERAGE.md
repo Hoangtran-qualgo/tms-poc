@@ -77,10 +77,10 @@ Step 1 audit of the smoke tests against
 | FT3 | `Tags`: chips rendered with `@` prefix, single line, truncated. Column shows the **union** of feature-level + scenario-level tags (D10). | Invariants \u2192 Features-table columns | `F07_04_features_table.py` | covered |
 | ST1 | Sub-folder table: one column `Sub-folder` with a folder icon (\ud83d\udcc1). Click \u2192 `/ui/folder/<path>`. | Invariants \u2192 Sub-folder-table column | `F07_05_subfolder_table.py` | covered |
 | BD1 | Depth 0 (root) \u2192 `+ New project` button. | Invariants \u2192 Buttons by depth | `F07_06_buttons.py` | covered |
-| BD2 | Depth 1 (project) \u2192 `+ New module` button. | Invariants \u2192 Buttons by depth | `F07_06_buttons.py` | covered |
-| BD3 | Depth 2 (module) \u2192 `+ Sub-folder`, `+ Create test case`. | Invariants \u2192 Buttons by depth | `F07_06_buttons.py` | covered |
-| BD4 | Depth 3..10 (sub-folder) \u2192 `+ Sub-folder`, `+ Create test case`. | Invariants \u2192 Buttons by depth | `F07_06_buttons.py` | covered |
-| BD5 | **No rename / delete / move buttons at any depth** \u2014 those operations either don't have UI (`04-folder-crud`) or live inside the file editor (`05-testcase-crud`). | Invariants \u2192 Buttons by depth | `F07_07_button_gaps.py` + `F04_07_ui_gaps.py` (folder-CRUD half) | covered |
+| BD2 | Depth 1 (project) \u2192 `Rename project`, `+ New module`. | Invariants \u2192 Buttons by depth | `F07_06_buttons.py` + `F07_07_button_gaps.py` | covered |
+| BD3 | Depth 2 (module) \u2192 `Rename folder`, `Delete folder`, `+ Sub-folder`, `+ Create test case`; file rows expose Rename. | Invariants \u2192 Buttons by depth | `F07_06c_buttons_module.py` + `F07_07_button_gaps.py` | covered |
+| BD4 | Depth 3..10 (sub-folder) \u2192 `Rename folder`, `Delete folder`, `+ Sub-folder`, `+ Create test case`. | Invariants \u2192 Buttons by depth | `F07_06d_buttons_subfolder.py` + `F07_07_button_gaps.py` | covered |
+| BD5 | Folder rename appears only at project/module/branch depth; root has none. Folder move/file delete/file duplicate remain absent. | Invariants \u2192 Buttons by depth | `F07_07_button_gaps.py` + `F04_07_ui_gaps.py` | covered |
 | ES1 | Depth 0 with no projects \u2192 "No projects yet." + central `Create project` CTA. | Invariants \u2192 Empty states | `F07_08_empty_states.py` | covered |
 | ES2 | Depth 1 with no modules \u2192 "No modules in `<project>` yet." + CTA. | Invariants \u2192 Empty states | `F07_08_empty_states.py` | covered |
 | ES3 | Depth 2 / 3+ with no folders AND no features \u2192 "No test cases in `<name>` yet." + CTA (or `+ Sub-folder` and `+ Test case` CTAs side-by-side in sub-folder view). | Invariants \u2192 Empty states | `F07_08_empty_states.py` | covered |

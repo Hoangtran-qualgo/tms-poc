@@ -21,6 +21,14 @@
     <div class="flex-1"></div>
     <button type="button"
             class="px-3 py-1.5 text-sm border border-slate-300 rounded hover:bg-slate-50"
+            data-folder-path="{{ folder_path }}"
+            onclick="tmsRenameFolder(this.dataset.folderPath)">Rename folder</button>
+    <button type="button"
+            class="px-3 py-1.5 text-sm border border-red-300 text-red-700 rounded hover:bg-red-50"
+            data-folder-path="{{ folder_path }}" data-parent-path="{{ parent_path }}"
+            onclick="tmsDeleteFolder(this.dataset.folderPath, this.dataset.parentPath)">Delete folder</button>
+    <button type="button"
+            class="px-3 py-1.5 text-sm border border-slate-300 rounded hover:bg-slate-50"
             onclick="tmsCreateSubfolder('{{ folder_path }}')">+ Sub-folder</button>
     <button type="button"
             class="px-3 py-1.5 text-sm bg-slate-800 text-white rounded hover:bg-slate-700"

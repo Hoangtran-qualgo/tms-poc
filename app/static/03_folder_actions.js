@@ -1,5 +1,5 @@
 // -----------------------------------------------------------------------
-// Folder-view actions (prompt-based for v1; modal polish in step 14)
+// Folder-view actions
 // -----------------------------------------------------------------------
 
 async function tmsApiPost(url, body) {
@@ -20,8 +20,12 @@ async function tmsApiPost(url, body) {
 }
 
 function tmsRefreshFolder(folderPath) {
-  const url = "/ui/folder/" + (folderPath || "");
+  const url = "/ui/folder/" + (folderPath ? tmsEncodePath(folderPath) : "");
   htmx.ajax("GET", url, { target: "#main-pane", swap: "innerHTML" });
+}
+
+function tmsEncodePath(path) {
+  return path.split("/").map((segment) => encodeURIComponent(segment)).join("/");
 }
 
 /**
@@ -180,6 +184,189 @@ async function tmsCreateSubfolder(parent) {
 }
 
 /**
+ * Confirm and delete one module/branch folder. The templates expose this only
+ * below project depth, so project typed data (runs, reports, enums) is never
+ * reachable through this UI action.
+ */
+function tmsDeleteFolder(folderPath, parentPath) {
+  const body = document.createElement("div");
+  const warning = document.createElement("p");
+  warning.className = "text-sm text-slate-700";
+  warning.textContent =
+    "Permanently delete " + folderPath +
+    ", including all sub-folders and test cases? This cannot be undone.";
+  const error = document.createElement("p");
+  error.className = "hidden mt-2 text-sm text-red-600";
+  body.appendChild(warning);
+  body.appendChild(error);
+
+  tmsOpenModal({
+    title: "Delete folder",
+    body,
+    confirmLabel: "Delete folder",
+    onConfirm: async ({ close }) => {
+      error.classList.add("hidden");
+      try {
+        const encodedPath = folderPath
+          .split("/")
+          .map((segment) => encodeURIComponent(segment))
+          .join("/");
+        const response = await fetch("/api/folders/" + encodedPath, {
+          method: "DELETE",
+        });
+        if (!response.ok) {
+          let message = response.statusText;
+          try {
+            const data = await response.json();
+            if (data?.error?.message) message = data.error.message;
+          } catch (_) {}
+          throw new Error(message);
+        }
+      } catch (e) {
+        error.textContent = "Could not delete folder: " + e.message;
+        error.classList.remove("hidden");
+        return;
+      }
+      close();
+      tmsRefreshFolder(parentPath);
+      tmsRefreshTreePane("tree-pane");
+    },
+  });
+}
+
+/** Rename a project, module, or branch and refresh its renamed location. */
+function tmsRenameFolder(folderPath) {
+  const parts = folderPath.split("/");
+  const currentName = parts.at(-1);
+  const isProject = parts.length === 1;
+  const body = document.createElement("div");
+  body.innerHTML =
+    '<label class="block text-sm text-slate-600 mb-1" for="tms-rf-name">Folder name</label>' +
+    '<input id="tms-rf-name" type="text" autocomplete="off"' +
+    ' class="w-full border border-slate-300 rounded px-2 py-1.5 text-sm bg-white" />' +
+    '<p class="text-xs text-slate-500 mt-2"></p>' +
+    '<p data-role="error" class="hidden mt-2 text-sm text-red-600"></p>';
+  const nameInput = body.querySelector("#tms-rf-name");
+  const note = body.querySelector("p.text-xs");
+  const error = body.querySelector('[data-role="error"]');
+  nameInput.value = currentName;
+  note.textContent = isProject
+    ? "Linked test runs and reports update to the new project path."
+    : "Linked test runs and reports update to the new folder path.";
+
+  const modal = tmsOpenModal({
+    title: isProject ? "Rename project" : "Rename folder",
+    body,
+    confirmLabel: "Rename",
+    onConfirm: async ({ close }) => {
+      const name = nameInput.value.trim();
+      if (!name) return;
+      error.classList.add("hidden");
+      try {
+        const response = await fetch("/api/folders/" + tmsEncodePath(folderPath), {
+          method: "PATCH",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ name }),
+        });
+        if (!response.ok) {
+          const data = await response.json().catch(() => null);
+          throw new Error(data?.error?.message || response.statusText);
+        }
+      } catch (e) {
+        error.textContent = e.message;
+        error.classList.remove("hidden");
+        return;
+      }
+
+      const newPath = [...parts.slice(0, -1), name].join("/");
+      close();
+      if (isProject) {
+        window.location.assign("/ui/folder/" + tmsEncodePath(newPath));
+        return;
+      }
+      window.history.pushState({}, "", "/ui/folder/" + tmsEncodePath(newPath));
+      tmsRefreshFolder(newPath);
+      tmsRefreshTreePane("tree-pane");
+    },
+  });
+
+  nameInput.addEventListener("keydown", (event) => {
+    if (event.key !== "Enter") return;
+    event.preventDefault();
+    const button = body
+      .closest('[role="dialog"]')
+      ?.querySelector('[data-action="confirm"]');
+    if (button && !button.disabled) button.click();
+  });
+  setTimeout(() => {
+    nameInput.focus();
+    nameInput.select();
+  }, 0);
+  return modal;
+}
+
+/** Rename one test-case file from its folder listing. */
+function tmsRenameFile(filePath, currentName) {
+  const body = document.createElement("div");
+  body.innerHTML =
+    '<label class="block text-sm text-slate-600 mb-1" for="tms-rfile-name">File name</label>' +
+    '<input id="tms-rfile-name" type="text" autocomplete="off"' +
+    ' class="w-full border border-slate-300 rounded px-2 py-1.5 text-sm bg-white" />' +
+    '<p class="text-xs text-slate-500 mt-1">.feature is added automatically.</p>' +
+    '<p data-role="error" class="hidden mt-2 text-sm text-red-600"></p>';
+  const nameInput = body.querySelector("#tms-rfile-name");
+  const error = body.querySelector('[data-role="error"]');
+  nameInput.value = currentName;
+
+  const modal = tmsOpenModal({
+    title: "Rename test case",
+    body,
+    confirmLabel: "Rename",
+    onConfirm: async ({ close }) => {
+      const fileName = nameInput.value.trim();
+      if (!fileName) return;
+      error.classList.add("hidden");
+      try {
+        const response = await fetch(
+          "/api/files/" + tmsEncodePath(filePath) + "/rename",
+          {
+            method: "PATCH",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ file_name: fileName }),
+          }
+        );
+        if (!response.ok) {
+          const data = await response.json().catch(() => null);
+          throw new Error(data?.error?.message || response.statusText);
+        }
+      } catch (e) {
+        error.textContent = e.message;
+        error.classList.remove("hidden");
+        return;
+      }
+
+      close();
+      tmsRefreshFolder(filePath.split("/").slice(0, -1).join("/"));
+      tmsRefreshTreePane("tree-pane");
+    },
+  });
+
+  nameInput.addEventListener("keydown", (event) => {
+    if (event.key !== "Enter") return;
+    event.preventDefault();
+    const button = body
+      .closest('[role="dialog"]')
+      ?.querySelector('[data-action="confirm"]');
+    if (button && !button.disabled) button.click();
+  });
+  setTimeout(() => {
+    nameInput.focus();
+    nameInput.select();
+  }, 0);
+  return modal;
+}
+
+/**
  * Open the single-form create-test-case modal (tech-04 D2/D3). Three
  * fields, top-down: File name (required), Feature description (optional),
  * Scenario name (required). Confirm is gated on File name + Scenario name
@@ -286,15 +473,35 @@ function tmsCreateFile(parent) {
 
 
 /**
+ * Return the first ``count`` free feature leaves for one destination folder.
+ * Existing leaf names are compared case-insensitively, matching storage.
+ */
+function tmsSuggestImportFilenames(folderName, occupiedNames, count) {
+  const occupied = new Set(
+    Array.from(occupiedNames, (name) => String(name).toLowerCase())
+  );
+  const suggestions = [];
+  let number = 1;
+  while (suggestions.length < count) {
+    const name = `${folderName}_${number}.feature`;
+    number += 1;
+    if (occupied.has(name.toLowerCase())) continue;
+    occupied.add(name.toLowerCase());
+    suggestions.push(name);
+  }
+  return suggestions;
+}
+
+/**
  * Open the "Import test cases" modal (feature-14). Launched from the global
- * top-bar button. Upload a single `.feature` file, preview the split
- * scenarios, name each output file, then commit. The destination is chosen
- * via a project selector + a destination-folder selector that lists folders
- * **relative to the chosen project** (module level and below). Enum
- * directives are dropped on import; when the file contains any, the user
- * must acknowledge the drop before Confirm enables. All blocking validation
- * (duplicate file / scenario names, content rules) is delegated to the
- * server, whose `import_validation_error` reasons are rendered as a list.
+ * top-bar button. Upload up to 20 `.feature` files (3 MB total), preview the
+ * split scenarios, name each output file, then commit. The destination is
+ * chosen via a project selector + a destination-folder selector that lists
+ * folders **relative to the chosen project** (module level and below). Enum
+ * directives are dropped on import; one acknowledgement covers every source
+ * containing them. All blocking validation (duplicate file / scenario names,
+ * content rules) is delegated to the server, whose errors are rendered as a
+ * list.
  */
 async function tmsImportFile() {
   let tree;
@@ -310,6 +517,7 @@ async function tmsImportFile() {
   // project name -> [destination folder paths] (depth >= 1 = modules and
   // deeper; reserved areas are already hidden from /api/tree).
   const foldersByProject = new Map();
+  const folderNodesByPath = new Map();
   for (const projNode of tree.children || []) {
     if (projNode.type !== "folder") continue;
     const list = [];
@@ -317,6 +525,7 @@ async function tmsImportFile() {
       for (const child of node.children || []) {
         if (child.type === "folder") {
           list.push(child.path);
+          folderNodesByPath.set(child.path, child);
           walk(child);
         }
       }
@@ -346,14 +555,14 @@ async function tmsImportFile() {
     '    <select id="tms-im-folder" class="w-full border border-slate-300 rounded px-2 py-1.5 text-sm bg-white"></select>' +
     "  </div>" +
     "</div>" +
-    '<label class="block text-sm text-slate-600 mt-3 mb-1" for="tms-im-file">.feature file</label>' +
-    '<input id="tms-im-file" type="file" accept=".feature"' +
+    '<label class="block text-sm text-slate-600 mt-3 mb-1" for="tms-im-file">.feature files</label>' +
+    '<input id="tms-im-file" type="file" accept=".feature" multiple' +
     ' class="w-full text-sm text-slate-600 file:mr-3 file:py-1.5 file:px-4 file:rounded file:border-2 file:border-slate-400 file:bg-slate-100 file:text-slate-700 file:text-sm file:font-semibold hover:file:bg-slate-200 hover:file:border-slate-500 file:cursor-pointer" />' +
-    '<p class="text-xs text-slate-400 mt-1">One file, max 3 MB. Enum directives are dropped on import.</p>' +
+    '<p class="text-xs text-slate-400 mt-1">Up to 20 files, 3 MB total. Enum directives are dropped on import.</p>' +
     '<div data-role="enum-warn" class="hidden mt-3 p-2 border border-amber-300 bg-amber-50 rounded text-sm text-amber-800">' +
     '  <label class="flex items-start gap-2">' +
     '    <input type="checkbox" data-role="enum-ack" class="mt-0.5" />' +
-    "    <span>This file contains enum directives. They will be <strong>dropped</strong> on import. Check to acknowledge.</span>" +
+    '    <span data-role="enum-message">Enum directives will be <strong>dropped</strong> on import. Check to acknowledge.</span>' +
     "  </label>" +
     "</div>" +
     '<div data-role="scenarios" class="mt-3"></div>' +
@@ -364,13 +573,15 @@ async function tmsImportFile() {
   const fileInput = body.querySelector("#tms-im-file");
   const enumWarn = body.querySelector('[data-role="enum-warn"]');
   const enumAck = body.querySelector('[data-role="enum-ack"]');
+  const enumMessage = body.querySelector('[data-role="enum-message"]');
   const scenBox = body.querySelector('[data-role="scenarios"]');
   const error = body.querySelector('[data-role="error"]');
 
   // Preview state captured for the commit step.
-  let sourceText = "";
+  let sourceItems = [];
   let scenarios = [];
-  let featureTags = [];
+  let previewErrors = [];
+  let enumSources = [];
   let enumsPresent = false;
   let modalRef = null;
 
@@ -431,6 +642,36 @@ async function tmsImportFile() {
       i.value.trim()
     );
 
+  const refreshGeneratedNames = () => {
+    const folder = folderNodesByPath.get(folderSel.value);
+    if (!folder) return;
+    const inputs = Array.from(
+      scenBox.querySelectorAll('input[data-role="filename"]')
+    );
+    const generatedInputs = inputs.filter(
+      (input) => input.dataset.generated !== "0"
+    );
+    const occupied = (folder.children || []).map((child) => child.name);
+    for (const input of inputs) {
+      if (input.dataset.generated === "0" && input.value) {
+        const name = input.value.toLowerCase().endsWith(".feature")
+          ? input.value
+          : input.value + ".feature";
+        occupied.push(name);
+      }
+    }
+    const suggestions = tmsSuggestImportFilenames(
+      folder.name,
+      occupied,
+      generatedInputs.length
+    );
+    generatedInputs.forEach((input, index) => {
+      input.value = suggestions[index];
+      input.dataset.generatedName = suggestions[index];
+      input.dataset.generated = "1";
+    });
+  };
+
   const refreshGate = () => {
     if (!modalRef) return;
     const names = getNames();
@@ -440,7 +681,9 @@ async function tmsImportFile() {
       names.every((n) => n.length > 0);
     const folderOk = !!folderSel.value;
     const enumOk = !enumsPresent || enumAck.checked;
-    modalRef.setConfirmDisabled(!(folderOk && allNamed && enumOk));
+    modalRef.setConfirmDisabled(
+      !(folderOk && allNamed && enumOk && previewErrors.length === 0)
+    );
   };
 
   // Format a tag list as "@a @b +N more" (top 2, @-prefixed); em-dash when
@@ -469,6 +712,7 @@ async function tmsImportFile() {
     table.innerHTML =
       '<thead class="bg-slate-50 text-slate-600 sticky top-0">' +
       "  <tr>" +
+      '    <th class="text-left px-2 py-1.5 font-medium">Source file</th>' +
       '    <th class="text-left px-2 py-1.5 font-medium">Scenario name</th>' +
       '    <th class="text-left px-2 py-1.5 font-medium">Feature tag</th>' +
       '    <th class="text-left px-2 py-1.5 font-medium">Scenario tag</th>' +
@@ -478,10 +722,14 @@ async function tmsImportFile() {
     const tbody = document.createElement("tbody");
     table.appendChild(tbody);
 
-    const featTagText = fmtTags(featureTags);
     scenarios.forEach((sc) => {
       const tr = document.createElement("tr");
       tr.className = "border-t border-slate-100";
+
+      const sourceTd = document.createElement("td");
+      sourceTd.className = "px-2 py-1.5 text-slate-500 whitespace-nowrap";
+      sourceTd.textContent = sc.source_name;
+      sourceTd.title = sc.source_name;
 
       const nameTd = document.createElement("td");
       nameTd.className = "px-2 py-1.5 text-slate-800 whitespace-nowrap";
@@ -491,7 +739,7 @@ async function tmsImportFile() {
 
       const featTd = document.createElement("td");
       featTd.className = "px-2 py-1.5 text-slate-500 whitespace-nowrap";
-      featTd.textContent = featTagText;
+      featTd.textContent = fmtTags(sc.feature_tags);
 
       const scenTd = document.createElement("td");
       scenTd.className = "px-2 py-1.5 text-slate-500 whitespace-nowrap";
@@ -504,11 +752,17 @@ async function tmsImportFile() {
       input.autocomplete = "off";
       input.dataset.role = "filename";
       input.placeholder = "file name";
+      input.dataset.generated = "1";
       input.className =
         "w-44 border border-slate-300 rounded px-2 py-1 text-sm bg-white";
-      input.addEventListener("input", refreshGate);
+      input.addEventListener("input", () => {
+        input.dataset.generated =
+          input.value === input.dataset.generatedName ? "1" : "0";
+        refreshGate();
+      });
       fileTd.appendChild(input);
 
+      tr.appendChild(sourceTd);
       tr.appendChild(nameTd);
       tr.appendChild(featTd);
       tr.appendChild(scenTd);
@@ -518,12 +772,14 @@ async function tmsImportFile() {
 
     scroll.appendChild(table);
     scenBox.appendChild(scroll);
+    refreshGeneratedNames();
   };
 
   const resetPreview = () => {
-    sourceText = "";
+    sourceItems = [];
     scenarios = [];
-    featureTags = [];
+    previewErrors = [];
+    enumSources = [];
     enumsPresent = false;
     scenBox.innerHTML = "";
     enumWarn.classList.add("hidden");
@@ -534,21 +790,44 @@ async function tmsImportFile() {
 
   fileInput.addEventListener("change", async () => {
     resetPreview();
-    const file = fileInput.files && fileInput.files[0];
-    if (!file) return;
-    if (!file.name.toLowerCase().endsWith(".feature")) {
-      showError("Please choose a .feature file.");
+    const files = Array.from(fileInput.files || []);
+    if (!files.length) return;
+    if (files.length > 20) {
+      showError("Import batch exceeds the 20-file limit.");
       return;
     }
-    if (file.size > 3 * 1024 * 1024) {
-      showError("File exceeds the 3 MB limit.");
+    const wrongTypes = files.filter((file) => !file.name.toLowerCase().endsWith(".feature"));
+    if (wrongTypes.length) {
+      showError(
+        "Every selected file must end with .feature.",
+        wrongTypes.map((file) => file.name)
+      );
       return;
     }
-    let text;
+    const totalBytes = files.reduce((total, file) => total + file.size, 0);
+    if (totalBytes > 3 * 1024 * 1024) {
+      showError("Import batch exceeds the 3 MB total limit.");
+      return;
+    }
+    let results;
     try {
-      text = await file.text();
+      results = await Promise.allSettled(files.map((file) => file.text()));
     } catch (_) {
-      showError("Could not read the file.");
+      showError("Could not read the selected files.");
+      return;
+    }
+    const readErrors = [];
+    sourceItems = [];
+    results.forEach((result, index) => {
+      if (result.status === "fulfilled") {
+        sourceItems.push({ name: files[index].name, source: result.value });
+      } else {
+        readErrors.push(files[index].name + ": could not read file.");
+      }
+    });
+    if (readErrors.length) {
+      sourceItems = [];
+      showError("Could not read every selected file.", readErrors);
       return;
     }
     let data;
@@ -556,7 +835,7 @@ async function tmsImportFile() {
       const r = await fetch("/api/files/import/preview", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ source: text }),
+        body: JSON.stringify({ sources: sourceItems }),
       });
       data = await r.json();
       if (!r.ok) {
@@ -567,24 +846,39 @@ async function tmsImportFile() {
       showError(e.message);
       return;
     }
-    sourceText = text;
     scenarios = data.scenarios || [];
-    featureTags = data.tags || [];
+    previewErrors = data.errors || [];
+    enumSources = data.enum_sources || [];
     enumsPresent = !!data.enums_present;
-    if (!scenarios.length) {
+    if (!scenarios.length && !previewErrors.length) {
       showError("No scenarios found to import.");
       return;
     }
     enumWarn.classList.toggle("hidden", !enumsPresent);
+    if (enumsPresent) {
+      const names = enumSources.map((source) => source.source_name).join(", ");
+      enumMessage.textContent =
+        names + " contain enum directives. They will be dropped on import. Check to acknowledge.";
+    }
     renderScenarios();
+    if (previewErrors.length) {
+      showError(
+        "Fix every source before importing:",
+        previewErrors.map((item) => item.source_name + ": " + item.message)
+      );
+    }
     refreshGate();
   });
 
   projectSel.addEventListener("change", () => {
     populateFolders();
+    refreshGeneratedNames();
     refreshGate();
   });
-  folderSel.addEventListener("change", refreshGate);
+  folderSel.addEventListener("change", () => {
+    refreshGeneratedNames();
+    refreshGate();
+  });
   enumAck.addEventListener("change", refreshGate);
 
   modalRef = tmsOpenModal({
@@ -597,7 +891,12 @@ async function tmsImportFile() {
       error.classList.add("hidden");
       const parentPath = folderSel.value;
       const names = getNames();
-      if (!parentPath || !scenarios.length || names.some((n) => !n)) return;
+      if (
+        !parentPath ||
+        !scenarios.length ||
+        previewErrors.length ||
+        names.some((n) => !n)
+      ) return;
       let data;
       try {
         const r = await fetch("/api/files/import", {
@@ -606,7 +905,7 @@ async function tmsImportFile() {
           body: JSON.stringify({
             project: projectSel.value,
             parent: parentPath,
-            source: sourceText,
+            sources: sourceItems,
             names,
           }),
         });
@@ -629,4 +928,3 @@ async function tmsImportFile() {
     },
   });
 }
-

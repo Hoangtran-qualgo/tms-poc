@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from flask import Response, jsonify, request
 
-from ..errors import ImportValidationError
+from ..errors import GherkinParseError, ImportValidationError
 from ..gherkin_io import split_feature_source, source_has_enum_directives
 from ..models import Feature
 from ..storage import MAX_FOLDER_DEPTH
@@ -20,12 +20,15 @@ from ._shared import (
 )
 
 #: Maximum size (bytes) of an imported ``.feature`` source (IM-F). Enforced
-#: on both the preview and commit endpoints, measured on the UTF-8 payload.
+#: on one-file legacy requests and on the cumulative source text of a batch,
+#: measured on the UTF-8 payload.
 _MAX_IMPORT_BYTES = 3 * 1024 * 1024
+#: Maximum number of selected source files in one batch (feature-17).
+_MAX_IMPORT_FILES = 20
 
 
 def _require_import_source(body: dict) -> str:
-    """Return the ``source`` text from ``body``, enforcing the 3 MB cap."""
+    """Return legacy one-file ``source`` text, enforcing the 3 MB cap."""
     source = body.get("source", "")
     if not isinstance(source, str):
         raise ValueError("Body field 'source' must be a string.")
@@ -35,6 +38,103 @@ def _require_import_source(body: dict) -> str:
             f"MB limit."
         )
     return source
+
+
+def _require_import_sources(body: dict) -> list[dict[str, str]]:
+    """Return validated multi-file ``sources`` entries with batch limits.
+
+    Each entry is ``{name, source}``: ``name`` is display/error context only;
+    source-array order remains the association key. File-type and Gherkin
+    errors are deliberately collected by :func:`_split_import_sources` so the
+    preview can show every bad source together.
+    """
+    raw_sources = body.get("sources")
+    if not isinstance(raw_sources, list):
+        raise ValueError("Body field 'sources' must be a list.")
+    if not raw_sources:
+        raise ValueError("Body field 'sources' must contain at least one file.")
+    if len(raw_sources) > _MAX_IMPORT_FILES:
+        raise ValueError(
+            f"Import batch exceeds the {_MAX_IMPORT_FILES}-file limit."
+        )
+
+    sources: list[dict[str, str]] = []
+    total_bytes = 0
+    for index, raw_source in enumerate(raw_sources):
+        field = f"sources[{index}]"
+        if not isinstance(raw_source, dict):
+            raise ValueError(f"Body field {field!r} must be an object.")
+        name = raw_source.get("name")
+        source = raw_source.get("source")
+        if not isinstance(name, str) or not name:
+            raise ValueError(
+                f"Body field {field + '.name'!r} must be a non-empty string."
+            )
+        if not isinstance(source, str):
+            raise ValueError(
+                f"Body field {field + '.source'!r} must be a string."
+            )
+        total_bytes += len(source.encode("utf-8"))
+        sources.append({"name": name, "source": source})
+
+    if total_bytes > _MAX_IMPORT_BYTES:
+        raise ValueError(
+            f"Import batch exceeds the {_MAX_IMPORT_BYTES // (1024 * 1024)} "
+            "MB total limit."
+        )
+    return sources
+
+
+def _split_import_sources(
+    sources: list[dict[str, str]],
+) -> tuple[
+    list[tuple[int, str, Feature]], list[dict[str, object]], list[dict[str, object]]
+]:
+    """Split every batch source, collecting source-specific blocking errors."""
+    cases: list[tuple[int, str, Feature]] = []
+    errors: list[dict[str, object]] = []
+    enum_sources: list[dict[str, object]] = []
+
+    for index, item in enumerate(sources):
+        source_name = item["name"]
+        source = item["source"]
+        base = {"source_index": index, "source_name": source_name}
+        if not source_name.lower().endswith(".feature"):
+            errors.append(
+                {
+                    **base,
+                    "code": "invalid_file_type",
+                    "message": "Source file must end with .feature.",
+                }
+            )
+            continue
+        try:
+            features = split_feature_source(source)
+        except GherkinParseError as exc:
+            errors.append(
+                {
+                    **base,
+                    "code": "parse_error",
+                    "message": exc.message,
+                    "line": exc.line,
+                    "column": exc.column,
+                }
+            )
+            continue
+        if not features:
+            errors.append(
+                {
+                    **base,
+                    "code": "no_scenarios",
+                    "message": "No scenarios found to import.",
+                }
+            )
+            continue
+        if source_has_enum_directives(source):
+            enum_sources.append(base)
+        cases.extend((index, source_name, feature) for feature in features)
+
+    return cases, errors, enum_sources
 
 
 @api.post("/files")
@@ -78,29 +178,51 @@ def post_file():
 def post_import_preview():
     """Dry-run: split an uploaded ``.feature`` source into per-scenario metadata.
 
-    Body ``{source}`` (text, no multipart). Returns the shared feature
-    ``description`` / ``tags``, an ``enums_present`` flag (so the UI can warn
-    that enum directives will be dropped), and one entry per scenario
-    ``{scenario_name, step_count, scenario_tags}`` in document order. Performs
-    no writes. A parse failure propagates as ``parse_error`` (line/col); a
-    source larger than 3 MB is rejected as ``bad_request``.
+    Legacy body ``{source}`` preserves its shipped response shape. Batch body
+    ``{sources: [{name, source}, ...]}`` returns flattened scenario metadata
+    with source context plus every source-specific type/parse/content error.
+    Both variants perform no writes.
     """
     body = _require_json_object()
-    source = _require_import_source(body)
-    features = split_feature_source(source)  # GherkinParseError on bad input
+    if "sources" not in body:
+        source = _require_import_source(body)
+        features = split_feature_source(source)  # GherkinParseError on bad input
+        scenarios = [
+            {
+                "scenario_name": f.scenario.name,
+                "step_count": len(f.scenario.steps),
+                "scenario_tags": list(f.scenario.tags),
+            }
+            for f in features
+        ]
+        return jsonify(
+            {
+                "description": features[0].description if features else "",
+                "tags": list(features[0].tags) if features else [],
+                "enums_present": source_has_enum_directives(source),
+                "scenarios": scenarios,
+            }
+        )
+
+    cases, errors, enum_sources = _split_import_sources(
+        _require_import_sources(body)
+    )
     scenarios = [
         {
-            "scenario_name": f.scenario.name,
-            "step_count": len(f.scenario.steps),
-            "scenario_tags": list(f.scenario.tags),
+            "source_index": index,
+            "source_name": source_name,
+            "scenario_name": feature.scenario.name,
+            "step_count": len(feature.scenario.steps),
+            "feature_tags": list(feature.tags),
+            "scenario_tags": list(feature.scenario.tags),
         }
-        for f in features
+        for index, source_name, feature in cases
     ]
     return jsonify(
         {
-            "description": features[0].description if features else "",
-            "tags": list(features[0].tags) if features else [],
-            "enums_present": source_has_enum_directives(source),
+            "errors": errors,
+            "enum_sources": enum_sources,
+            "enums_present": bool(enum_sources),
             "scenarios": scenarios,
         }
     )
@@ -110,15 +232,12 @@ def post_import_preview():
 def post_import():
     """Commit an import: re-split server-side and write one file per scenario.
 
-    Body ``{parent, source, names, project?}`` (text, no multipart). ``parent``
-    is the destination folder path; ``names[i]`` is the user-supplied file name
-    for scenario ``i`` (document order). ``project`` is optional and, when
-    present, must equal the first segment of ``parent``. Enforces the 3 MB cap,
-    requires ``len(names) == len(scenarios)``, and delegates the all-or-nothing
-    pre-flight + write to :meth:`Storage.import_feature_cases`.
+    Legacy body ``{parent, source, names, project?}`` remains supported. Batch
+    body replaces ``source`` with ordered ``sources: [{name, source}, ...]``;
+    ``names[i]`` maps to flattened source/scenario order. Both delegate one
+    all-or-nothing pre-flight + write to :meth:`Storage.import_feature_cases`.
     """
     body = _require_json_object()
-    source = _require_import_source(body)
 
     parent_segments = _parent_to_segments(body.get("parent", ""))
     if not (2 <= len(parent_segments) <= MAX_FOLDER_DEPTH):
@@ -139,7 +258,19 @@ def post_import():
             )
 
     names = _require_list_of_str(body.get("names"), "names")
-    features = split_feature_source(source)  # GherkinParseError on bad input
+    if "sources" not in body:
+        source = _require_import_source(body)
+        features = split_feature_source(source)  # GherkinParseError on bad input
+    else:
+        cases, errors, _ = _split_import_sources(_require_import_sources(body))
+        if errors:
+            raise ImportValidationError(
+                reasons=[
+                    f"{error['source_name']}: {error['message']}"
+                    for error in errors
+                ]
+            )
+        features = [feature for _, _, feature in cases]
     if not features:
         raise ImportValidationError(reasons=["No scenarios to import."])
     if len(names) != len(features):

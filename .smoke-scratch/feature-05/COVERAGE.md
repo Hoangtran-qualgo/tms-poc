@@ -66,7 +66,7 @@ Step 1 audit of the smoke tests against
 | HR8 | `GET /api/files/<path:p>/raw` returns source text with `Content-Type: text/plain; charset=utf-8`; non-`.feature` → 415. | Public surface → HTTP routes | `F05_01_http_routes.py` | covered |
 | HR9 | `PUT /api/files/<path:p>/raw` accepts raw text body; parses + validates + re-serialises + atomic-writes; returns `{ok: true}` 200. _Note: spec says "validates + re-serialises" but as-shipped code only parses + newline-normalises; see RR1a / RR1c spec-gap notes below._ | Public surface → HTTP routes | `F05_01_http_routes.py` | covered |
 | UI1 | `tmsCreateFile(parent)` in `app/static/app.js` uses `tmsOpenModal` with two fields (file name + description), posts `/api/files` with `{parent, file_name, description}`; modal hint declares `.feature` is auto-appended. | Public surface → UI triggers | `F05_02_ui_triggers.py` | covered |
-| UI2 | `tmsEditor.rename()` invokes `PATCH /api/files/<state.path>/rename` after prompting for a new file name; wired to the `#btn-rename` topbar button. | Public surface → UI triggers | `F05_02_ui_triggers.py` | covered |
+| UI2 | `tmsRenameFile(filePath, currentName)` opens `tmsOpenModal`, invokes `PATCH /api/files/<filePath>/rename`, then refreshes folder/tree. | Public surface → UI triggers | `F05_02_ui_triggers.py` | covered |
 | UI3 | `tmsEditor.move()` opens a tree-based folder picker modal then invokes `PATCH /api/files/<state.path>/move`; wired to the `#btn-move` topbar button. | Public surface → UI triggers | `F05_02_ui_triggers.py` | covered |
 | UI4 | `tmsEditor.save()` invokes `PATCH /api/files/<state.path>` with the structured buffer (delegates to `saveRaw()` when on the raw tab); wired to the `#btn-save` topbar button. | Public surface → UI triggers | `F05_02_ui_triggers.py` | covered |
 | UI5 | `tmsEditor.saveRaw()` invokes `PUT /api/files/<state.path>/raw` with the raw textarea contents; wired to the `#btn-save-raw` button. | Public surface → UI triggers | `F05_02_ui_triggers.py` | covered |
@@ -195,8 +195,8 @@ coverage.
   `tmsEditor.delete`, `tmsEditor.duplicate` in
   `app/static/app.js`, and the template ids
   `#btn-delete` / `#btn-duplicate` in
-  `app/templates/file_editor.html`. The `tmsEditor.rename`
-  / `.move` / `.save` symbols ARE expected to remain
+  `app/templates/file_editor.html`. The `tmsRenameFile`, `tmsEditor.move`,
+  and `tmsEditor.save` symbols ARE expected to remain
   present (sanity-check fixture for the negative
   assertion).
 - **MAX_FOLDER_DEPTH = 10** is the same constant from

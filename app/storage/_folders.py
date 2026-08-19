@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from contextlib import ExitStack
 import os
 import shutil
 
@@ -11,12 +12,171 @@ from ._core import (
     PartsLike,
     _ENUMS_DEFAULT_BYTES,
     _ENUMS_FILE_NAME,
+    _REPORT_AREA,
+    _RUN_EXT,
+    _TEST_RUN_AREA,
+    TEMP_FILE_RE,
     _normalize_filename,
 )
 
 
 class FoldersMixin:
     """Folder writes plus cross-folder file move / duplicate."""
+
+    @staticmethod
+    def _relocate_reference_path(value: str, old: str, new: str) -> str:
+        """Replace one exact or slash-bounded data-root-relative path."""
+        if value == old:
+            return new
+        if value.startswith(old + "/"):
+            return new + value[len(old):]
+        return value
+
+    def _reference_rewrites_for_relocation(
+        self,
+        source,
+        target,
+        old_key: str,
+        new_key: str,
+        project: str,
+    ) -> list[tuple[object, object, bytes, bytes]]:
+        """Preflight changed run/report documents for one path relocation.
+
+        All typed metadata in the affected project is parsed before the
+        physical move. This deliberately blocks a rename on malformed typed
+        metadata rather than risking a silent stale reference.
+        """
+        project_dir = self._resolve([project])
+        rewrites: list[tuple[object, object, bytes, bytes]] = []
+
+        def relocated_document_path(path):
+            if path.is_relative_to(source):
+                return target / path.relative_to(source)
+            return path
+
+        run_dir = project_dir / _TEST_RUN_AREA
+        if run_dir.is_dir():
+            for run_path in sorted(run_dir.rglob("*")):
+                if (
+                    not run_path.is_file()
+                    or TEMP_FILE_RE.match(run_path.name)
+                    or not run_path.name.lower().endswith(_RUN_EXT)
+                ):
+                    continue
+                before = run_path.read_bytes()
+                run = self._parse_run(before.decode("utf-8"))
+                changed = False
+                for result in run.results:
+                    updated = self._relocate_reference_path(
+                        result.file_path, old_key, new_key
+                    )
+                    if updated != result.file_path:
+                        result.file_path = updated
+                        changed = True
+                if changed:
+                    rewrites.append(
+                        (
+                            run_path,
+                            relocated_document_path(run_path),
+                            before,
+                            self._serialize_run(run),
+                        )
+                    )
+
+        report_dir = project_dir / _REPORT_AREA
+        if report_dir.is_dir():
+            for report_path in sorted(report_dir.iterdir()):
+                if (
+                    not report_path.is_file()
+                    or TEMP_FILE_RE.match(report_path.name)
+                    or not report_path.name.lower().endswith(_RUN_EXT)
+                ):
+                    continue
+                before = report_path.read_bytes()
+                report = self._parse_report(before.decode("utf-8"))
+                updated_run_paths = [
+                    self._relocate_reference_path(path, old_key, new_key)
+                    for path in report.run_paths
+                ]
+                updated_case_path = self._relocate_reference_path(
+                    report.case_path, old_key, new_key
+                )
+                updated_scope = self._relocate_reference_path(
+                    report.scope, old_key, new_key
+                )
+                if (
+                    updated_run_paths != report.run_paths
+                    or updated_case_path != report.case_path
+                    or updated_scope != report.scope
+                ):
+                    report.run_paths = updated_run_paths
+                    report.case_path = updated_case_path
+                    report.scope = updated_scope
+                    rewrites.append(
+                        (
+                            report_path,
+                            relocated_document_path(report_path),
+                            before,
+                            self._serialize_report(report),
+                        )
+                    )
+
+        return rewrites
+
+    def _relocate_with_reference_cascade(
+        self,
+        source,
+        target,
+        old_key: str,
+        new_key: str,
+        project: str,
+    ) -> None:
+        """Rename a path and rewrite its run/report references.
+
+        The filesystem has no multi-file transaction, so a failed metadata
+        write reverses the physical move and restores already-written
+        documents before the original error propagates.
+        """
+        rewrites = self._reference_rewrites_for_relocation(
+            source, target, old_key, new_key, project
+        )
+        lock_keys = sorted(
+            {
+                path.relative_to(self.root).as_posix()
+                for original, rewritten, _, _ in rewrites
+                for path in (original, rewritten)
+                if path.relative_to(self.root).as_posix() not in {old_key, new_key}
+            }
+        )
+        moved = False
+        written: list[tuple[object, object, bytes, bytes]] = []
+        with ExitStack() as stack:
+            for key in lock_keys:
+                stack.enter_context(self._lock_for(key))
+            try:
+                os.replace(source, target)
+                moved = True
+                for rewrite in rewrites:
+                    _, rewritten, _, data = rewrite
+                    self._atomic_write_bytes(rewritten, data)
+                    written.append(rewrite)
+            except BaseException:
+                if moved:
+                    try:
+                        os.replace(target, source)
+                    except OSError:
+                        pass
+                for original, _, data, _ in written:
+                    try:
+                        self._atomic_write_bytes(original, data)
+                    except OSError:
+                        pass
+                raise
+
+        self._mark_write(source)
+        self._mark_write(target)
+        for _, rewritten, _, _ in rewrites:
+            self._mark_write(rewritten)
 
     # -- Folder writes ----------------------------------------------------
 
@@ -96,9 +256,9 @@ class FoldersMixin:
                     path=dst_key,
                     message=f"A folder named {new_name!r} already exists.",
                 )
-            os.replace(source, target)
-            self._mark_write(source)
-            self._mark_write(target)
+            self._relocate_with_reference_cascade(
+                source, target, src_key, dst_key, segments[0]
+            )
 
     def delete_folder(self, parts: PartsLike) -> None:
         """Recursively delete a folder. Idempotent on missing target.

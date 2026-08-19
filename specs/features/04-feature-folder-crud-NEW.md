@@ -3,16 +3,16 @@
 _Retroactive spec: documents the as-shipped behaviour. Source files:_
 _`app/server/routes_folders.py` (folder routes), `app/storage/_folders.py`_
 _(folder methods), `app/static/03_folder_actions.js` (`tmsCreateProject`,_
-_`tmsCreateModule`, `tmsCreateSubfolder`), `app/templates/folder_*.html`_
+_`tmsCreateModule`, `tmsCreateSubfolder`, `tmsDeleteFolder`, `tmsRenameFolder`),_
+_`app/templates/folder_*.html`_
 _(create buttons)._
 
 ## Summary
 
 Create / rename / delete operations for project, module, and
 sub-folder levels of the data root. Depth `1..10` is uniformly
-supported by the API and storage; the UI only exposes the create
-half of the contract in v1 — rename and delete exist on the server
-but have no button yet.
+supported by the API and storage. Feature 18 added module/branch delete;
+feature 21 adds project/module/branch rename UI and reference-safe rename.
 
 ## Scope
 
@@ -27,12 +27,12 @@ In scope:
 - Server-side name uniqueness scoped to the parent.
 - The three UI create entry points (project, module, sub-folder)
   with their distinct prompts/modals.
+- Rename controls for project, module, and nested folder headers.
 
 Out of scope:
 
 - Folder *move* (no API today).
 - Folder *duplicate* (no API today).
-- UI buttons for folder rename / delete (API-only in v1).
 - File operations (covered in `05-testcase-crud`).
 
 ## Public surface
@@ -69,6 +69,17 @@ UI triggers (`app/static/03_folder_actions.js`):
 All three call `tmsRefreshFolder(parent)` on success so the current
 main pane re-renders.
 
+Feature 18 adds `tmsDeleteFolder(folderPath, parentPath)` and a red
+**Delete folder** button to depth-2 module and depth-3..10 branch headers.
+It names the path and permanent recursive scope in `tmsOpenModal`, sends the
+existing DELETE route, then refreshes the deleted folder's parent and the
+Directory tree. Root, project, and reserved typed-area views have no button.
+
+Feature 21 adds `tmsRenameFolder(folderPath)`: a `tmsOpenModal` form in every
+project/module/nested-folder header. It keeps API errors inline. Project
+success performs full navigation to the new project path; deeper success
+refreshes the renamed folder and Directory tree.
+
 ## Invariants & rules
 
 **Depth**
@@ -99,12 +110,11 @@ main pane re-renders.
 - `DELETE /api/folders/<p>` returns 204 even if `p` was already
   gone (storage's `delete_folder` no-ops on missing target).
 
-**UI gaps**
+**Rename references**
 
-- v1 has no UI button for folder rename or delete. Users wanting
-  these operations must call the API directly (e.g. `curl` or the
-  forthcoming pending Investigate items that may add the
-  surfaces).
+- Renaming cascades exact/slash-bounded values in the affected project's run
+  and report YAML. Malformed typed metadata blocks before the physical move;
+  failed rewrites compensate best-effort. Full contract: feature 21.
 
 ## Affects
 
@@ -116,6 +126,8 @@ main pane re-renders.
 - `07-folder-views`: hosts the create buttons; the modules /
   sub-folders list rendered by these views reflects the post-
   mutation state after the tree refresh.
+- `10-feature-test-run`, `12-feature-quality-report`: rename preserves their
+  data-root-relative case/scope/run references.
 
 ## Depends on
 
@@ -128,9 +140,8 @@ main pane re-renders.
 
 ## Surface for follow-up
 
-- Folder rename and delete buttons in the UI are missing — easy
-  additions because the API already exists; UX decision needed
-  (inline action menu vs. modal vs. dedicated folder-detail view).
+- Project deletion stays API-only until its hidden typed-data impact has a
+  separate confirmation decision.
 - Folder *move* would require a new storage method and route
   (analogous to `move_file`); reuse the sorted-dual-lock pattern.
 - `10-feature-test-run` (shipped) layers a depth-2 reservation on
@@ -155,3 +166,5 @@ main pane re-renders.
 - Each successful mutation results in exactly one SSE `"change"`
   event reaching open tabs (after `DEBOUNCE_SECONDS`), with no
   self-event from the writing tab.
+- Renaming a folder updates exact/slash-bounded test-run and report paths;
+  malformed typed metadata leaves the original folder untouched.

@@ -42,7 +42,7 @@ A row is `covered` when:
 | # | Rule | Spec § | Smoke file | Status |
 |---|---|---|---|---|
 | RT1 | `GET /ui/file/<path:p>` (`ui_file`): for `.feature` paths renders `file_editor.html` with `file_path`, `crumbs`, `file_name`, `feature = Feature.to_dict()`, `raw = read_raw()`. Non-`.feature` → `unsupported.html`. Parse errors hit the UI catch-all `Exception` handler → **500** (spec updated to match; the 422 `parse_error` envelope is the JSON API surface, not this HTML route). | Public surface → Route | `F08_01_route.py` | covered |
-| TP1 | Topbar buttons: breadcrumb, `#dirty-indicator`, `#saved-indicator`, `#btn-rename`, `#btn-move`, `#btn-reload`, `#btn-save`. | Public surface → Template | `F08_02_topbar.py` (+ cross-credit `F05_03_ui_gaps.py`) | covered |
+| TP1 | Topbar: breadcrumb, `#dirty-indicator`, `#saved-indicator`, `#btn-move`, `#btn-reload`, `#btn-save`; filename rename belongs to folder details. | Public surface → Template | `F08_02_topbar.py` (+ cross-credit `F05_03_ui_gaps.py`) | covered |
 | TP2 | Banner slot `#editor-banner`, empty by default; populated by `tmsEditor._showBanner`. | Public surface → Template | `F08_03_banner_slot.py` | covered |
 | TP3 | Tabs `#tab-btn-structured`, `#tab-btn-raw`. | Public surface → Template | `F08_04_tabs.py` | covered |
 | TP4 | Structured tab content: feature description textarea, feature-tag chips, background card (steps + `+ Add background step`), scenario card (kind toggle, name, tags chips, steps, examples). | Public surface → Template | `F08_05_structured_tab.py` (+ cross-credit `feature-11/F11_08_editor_scaffold.py` step 4) | covered |
@@ -72,9 +72,9 @@ A row is `covered` when:
 | SR1 | `saveRaw()`: `hideRawError()`, then PUT `/api/files/<state.path>/raw` with `state.raw` as `text/plain`. | Invariants → Save flow (raw) | `F08_14_save_raw_flow.py` (+ cross-credit `F05_02_ui_triggers.py` UI5) | covered |
 | SR2 | Server parses + re-serialises. On 422 (`parse_error` / `validation_error`), response includes `details.line` / `details.column` for parse errors; `showRawError` renders the formatted message inline at `#raw-error` (`"Line N, col M: <message>"` for parse errors; plain message otherwise). | Invariants → Save flow (raw) | `F08_14_save_raw_flow.py` | covered |
 | SR3 | On 2xx: `await _refreshFromDisk()` so the structured tab also reflects canonical form; `flashSaved()`. | Invariants → Save flow (raw) | `F08_14_save_raw_flow.py` | covered |
-| RN1 | `rename()` uses `window.prompt` (legacy v1; create uses `tmsOpenModal`, rename does not). | Invariants → Rename | `F08_15_rename.py` (strict per Step-1 sign-off Q5) | covered |
-| RN2 | PATCH `/api/files/<p>/rename` with `{file_name}`. | Invariants → Rename | `F08_15_rename.py` (+ cross-credit `F05_02_ui_triggers.py` UI2) | covered |
-| RN3 | On success, navigates to `/ui/file/<newpath>` via `htmx.ajax(...)`. | Invariants → Rename | `F08_15_rename.py` | covered |
+| RN1 | File editor has no `rename()`/`#btn-rename`; filename rename belongs to folder details. | Invariants → Rename | `F08_15_rename.py` | covered |
+| RN2 | Folder-detail `tmsRenameFile` uses `tmsOpenModal` and PATCHes `/api/files/<p>/rename`. | Invariants → Rename | `F08_15_rename.py` (+ cross-credit `F05_02_ui_triggers.py` UI2) | covered |
+| RN3 | On success, folder-detail rename refreshes containing folder and Directory tree. | Invariants → Rename | `F08_15_rename.py` | covered |
 | MV1 | `move()` confirms when `state.dirty` (`"Discard unsaved changes and move the file?"`). | Invariants → Move | `F08_16_move.py` | covered |
 | MV2 | Fetches `/api/tree`, walks the result to collect every folder at depth `2..MAX_FOLDER_DEPTH`, opens `tmsOpenModal` with `<select>` (current parent disabled, prompt option keeps Confirm disabled until a real target is picked). | Invariants → Move | `F08_16_move.py` | covered |
 | MV3 | PATCH `/api/files/<p>/move` with `{parent}`. | Invariants → Move | `F08_16_move.py` (+ cross-credit `F05_02_ui_triggers.py` UI3) | covered |

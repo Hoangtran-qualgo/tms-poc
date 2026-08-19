@@ -3,8 +3,9 @@
 // specs/features/13-feature-enums-crud-NEW.md (S4).
 //
 // Renders the per-project enums vocabulary as editable kind sections from
-// the embedded TMS_ENUMS payload. Add / remove / edit-label are batched in
-// memory and persisted with Save (PUT /api/enums/<project>). Rename-key and
+// the embedded TMS_ENUMS payload. Inline kind/entry adds and display-label
+// edits are batched in memory and persisted with Save. Stable kind IDs remain
+// in the existing vocabulary; labels use additive metadata. Rename-key and
 // Clear are dedicated server ops (POST .../rename, POST .../clear) that
 // reload the view. Booted by an inline script in enums_manager.html on every
 // HTMX swap into #main-pane.
@@ -30,9 +31,32 @@ const tmsEnumsManager = {
     this.state = {
       project: data.project,
       vocab: JSON.parse(JSON.stringify(data.vocab || {})),
+      kindLabels: JSON.parse(JSON.stringify(data.kind_labels || {})),
+      addingEntryFor: null,
     };
-    document.getElementById("enums-add-kind-btn")
-      .addEventListener("click", () => this._addKind());
+    const addKindForm = document.getElementById("enums-add-kind-form");
+    const kindId = document.getElementById("enums-new-kind-id");
+    const kindLabel = document.getElementById("enums-new-kind-label");
+    document.getElementById("enums-add-kind-btn").addEventListener(
+      "click",
+      () => {
+        this._hideError();
+        addKindForm.reset();
+        addKindForm.classList.remove("hidden");
+        kindId.focus();
+      }
+    );
+    document.getElementById("enums-add-kind-cancel").addEventListener(
+      "click",
+      () => addKindForm.classList.add("hidden")
+    );
+    addKindForm.addEventListener("submit", (e) => {
+      e.preventDefault();
+      if (this._addKind(kindId.value.trim(), kindLabel.value.trim())) {
+        addKindForm.classList.add("hidden");
+        addKindForm.reset();
+      }
+    });
     document.getElementById("enums-save-btn")
       .addEventListener("click", () => this._save());
     document.getElementById("enums-clear-btn")
@@ -53,11 +77,17 @@ const tmsEnumsManager = {
       return;
     }
     for (const kind of kinds) {
-      host.appendChild(this._buildKind(kind, this.state.vocab[kind]));
+      host.appendChild(
+        this._buildKind(
+          kind,
+          this.state.vocab[kind],
+          this.state.kindLabels[kind] || kind
+        )
+      );
     }
   },
 
-  _buildKind(kind, entries) {
+  _buildKind(kind, entries, displayLabel) {
     const section = document.createElement("section");
     section.className = "border border-slate-200 rounded";
     section.dataset.kind = kind;
@@ -65,16 +95,30 @@ const tmsEnumsManager = {
     const head = document.createElement("div");
     head.className =
       "flex items-center gap-2 px-3 py-2 bg-slate-50 border-b border-slate-100";
-    const title = document.createElement("span");
-    title.className = "font-medium text-slate-800 flex-1";
-    title.textContent = kind;
-    head.appendChild(title);
+    const labelInput = document.createElement("input");
+    labelInput.type = "text";
+    labelInput.className =
+      "font-medium text-slate-800 flex-1 min-w-0 border border-slate-300 rounded px-2 py-0.5 text-sm bg-white";
+    labelInput.value = displayLabel;
+    labelInput.setAttribute("aria-label", `Display label for ${kind}`);
+    labelInput.addEventListener("input", (e) => {
+      this.state.kindLabels[kind] = e.target.value;
+    });
+    head.appendChild(labelInput);
+
+    const id = document.createElement("code");
+    id.className = "text-xs text-slate-500";
+    id.textContent = kind;
+    head.appendChild(id);
 
     const addEntry = document.createElement("button");
     addEntry.type = "button";
     addEntry.className = "text-xs text-slate-600 hover:text-slate-900";
     addEntry.textContent = "+ Add entry";
-    addEntry.addEventListener("click", () => this._addEntry(kind));
+    addEntry.addEventListener("click", () => {
+      this.state.addingEntryFor = kind;
+      this.render();
+    });
     head.appendChild(addEntry);
 
     const rmKind = document.createElement("button");
@@ -89,7 +133,7 @@ const tmsEnumsManager = {
     const body = document.createElement("div");
     body.className = "divide-y divide-slate-100";
     const keys = Object.keys(entries);
-    if (keys.length === 0) {
+    if (keys.length === 0 && this.state.addingEntryFor !== kind) {
       const none = document.createElement("div");
       none.className = "px-3 py-2 text-xs text-slate-400 italic";
       none.textContent = "No entries.";
@@ -99,8 +143,65 @@ const tmsEnumsManager = {
         body.appendChild(this._buildEntry(kind, key, entries[key]));
       }
     }
+    if (this.state.addingEntryFor === kind) {
+      body.appendChild(this._buildAddEntryForm(kind));
+    }
     section.appendChild(body);
     return section;
+  },
+
+  _buildAddEntryForm(kind) {
+    const form = document.createElement("form");
+    form.className = "flex flex-wrap items-end gap-2 px-3 py-2 bg-slate-50";
+
+    const keyWrap = document.createElement("label");
+    keyWrap.className = "block text-xs text-slate-600";
+    keyWrap.textContent = "Entry key";
+    const keyInput = document.createElement("input");
+    keyInput.type = "text";
+    keyInput.autocomplete = "off";
+    keyInput.className =
+      "block mt-1 border border-slate-300 rounded px-2 py-1 text-sm bg-white";
+    keyWrap.appendChild(keyInput);
+    form.appendChild(keyWrap);
+
+    const labelWrap = document.createElement("label");
+    labelWrap.className = "block text-xs text-slate-600 flex-1 min-w-48";
+    labelWrap.textContent = "Entry label";
+    const labelInput = document.createElement("input");
+    labelInput.type = "text";
+    labelInput.autocomplete = "off";
+    labelInput.className =
+      "block mt-1 w-full border border-slate-300 rounded px-2 py-1 text-sm bg-white";
+    labelWrap.appendChild(labelInput);
+    form.appendChild(labelWrap);
+
+    const submit = document.createElement("button");
+    submit.type = "submit";
+    submit.className =
+      "px-2 py-1 text-xs bg-slate-800 text-white rounded hover:bg-slate-700";
+    submit.textContent = "Add entry";
+    form.appendChild(submit);
+
+    const cancel = document.createElement("button");
+    cancel.type = "button";
+    cancel.className =
+      "px-2 py-1 text-xs border border-slate-300 rounded hover:bg-white";
+    cancel.textContent = "Cancel";
+    cancel.addEventListener("click", () => {
+      this.state.addingEntryFor = null;
+      this.render();
+    });
+    form.appendChild(cancel);
+
+    form.addEventListener("submit", (e) => {
+      e.preventDefault();
+      if (this._addEntry(kind, keyInput.value.trim(), labelInput.value.trim())) {
+        this.state.addingEntryFor = null;
+        this.render();
+      }
+    });
+    return form;
   },
 
   _buildEntry(kind, key, label) {
@@ -142,41 +243,48 @@ const tmsEnumsManager = {
 
   // ---- In-memory edits (persisted on Save) --------------------------
 
-  _addKind() {
-    const name = (window.prompt("New kind name (snake_case identifier):") || "").trim();
+  _addKind(name, label) {
     if (!name) return;
     if (!ENUM_ID_RE.test(name)) {
       this._showError(`Invalid kind name: ${name}`);
-      return;
+      return false;
     }
     if (name in this.state.vocab) {
       this._showError(`Kind already exists: ${name}`);
-      return;
+      return false;
+    }
+    if (!label) {
+      this._showError("Kind label must not be empty.");
+      return false;
     }
     this.state.vocab[name] = {};
+    this.state.kindLabels[name] = label;
     this.render();
+    return true;
   },
 
   _removeKind(kind) {
     delete this.state.vocab[kind];
+    delete this.state.kindLabels[kind];
     this.render();
   },
 
-  _addEntry(kind) {
-    const key = (window.prompt("New entry key (identifier; dash allowed):") || "").trim();
+  _addEntry(kind, key, label) {
     if (!key) return;
     if (!ENUM_KEY_RE.test(key)) {
       this._showError(`Invalid key: ${key}`);
-      return;
+      return false;
     }
     if (key in this.state.vocab[kind]) {
       this._showError(`Key already exists under ${kind}: ${key}`);
-      return;
+      return false;
     }
-    const label = (window.prompt("Label for this entry:") || "").trim();
-    if (!label) return;
+    if (!label) {
+      this._showError("Entry label must not be empty.");
+      return false;
+    }
     this.state.vocab[kind][key] = label;
-    this.render();
+    return true;
   },
 
   /**
@@ -257,7 +365,28 @@ const tmsEnumsManager = {
         this._showError((j && j.error && j.error.message) || r.statusText);
         return;
       }
+      const labels = {};
+      for (const kind of Object.keys(j)) {
+        labels[kind] = this.state.kindLabels[kind] || kind;
+      }
+      const labelsResponse = await fetch(
+        `/api/enums/${encodeURIComponent(project)}/kind-labels`,
+        {
+          method: "PUT",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(labels),
+        }
+      );
+      const savedLabels = await labelsResponse.json().catch(() => null);
+      if (!labelsResponse.ok) {
+        this._showError(
+          (savedLabels && savedLabels.error && savedLabels.error.message) ||
+            labelsResponse.statusText
+        );
+        return;
+      }
       this.state.vocab = j;
+      this.state.kindLabels = savedLabels;
       this._invalidateEditorCache(project, j);
       this._showSaved();
       this.render();

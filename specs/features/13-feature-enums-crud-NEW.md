@@ -392,3 +392,9 @@ Mirrors the Test-run / Reports tab pattern exactly:
 slices (S1→S5) delivered with 17 feature-13 smokes; full suite 262/262 green.
 As-built recorded in `DONE.md` § Could have; spec-11's deferral notes
 reconciled. This spec is now a historical record of the design + decisions.
+
+**Extended by feature 19 (Aug 17, 2026).** The manager's Add kind/Add entry
+flows are now inline. Display labels for stable kind IDs live in the optional
+`enum-kind-labels.yaml` sidecar; `enums.yaml`, `Feature.enums`, and the
+feature-13 public vocabulary API remain unchanged. See
+`19-feature-enum-kind-label-NEW.md`.

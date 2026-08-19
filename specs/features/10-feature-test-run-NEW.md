@@ -733,9 +733,10 @@ driven by simple per-input listeners (`change` on the
   `<project>/test-run/<group>/` returns 409.
 - Attempting to create a `.feature` file under
   `<project>/test-run/...` returns 409.
-- Renaming, moving, or deleting a `.feature` file whose
-  path appears in a run does **not** mutate the run. The
-  next render of the run shows the now-missing case as
+- Renaming a `.feature` file or its containing generic folder cascades the
+  stored path in every affected run. Moving or deleting a `.feature` file
+  does **not** mutate the run. The next render of a moved/deleted case shows
+  the now-missing case as
   tombstoned with strike-through, the
   `"test case was removed"` override, the hidden-but-
   preserved textarea, and the still-editable result select.

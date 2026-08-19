@@ -46,6 +46,25 @@
   <div id="enums-error" class="hidden text-sm text-red-700 border border-red-200 bg-red-50 rounded px-3 py-2 mb-3"></div>
   <div id="enums-saved" class="hidden text-sm text-emerald-700 mb-3">Saved.</div>
   <div id="enums-kinds" class="space-y-4"></div>
+  <form id="enums-add-kind-form" class="hidden mt-4 border border-slate-200 rounded p-3 bg-slate-50">
+    <div class="grid grid-cols-1 sm:grid-cols-2 gap-3">
+      <label class="block text-sm text-slate-600" for="enums-new-kind-id">
+        Kind ID
+        <input id="enums-new-kind-id" type="text" autocomplete="off"
+               class="mt-1 w-full border border-slate-300 rounded px-2 py-1 text-sm bg-white" />
+      </label>
+      <label class="block text-sm text-slate-600" for="enums-new-kind-label">
+        Kind label
+        <input id="enums-new-kind-label" type="text" autocomplete="off"
+               class="mt-1 w-full border border-slate-300 rounded px-2 py-1 text-sm bg-white" />
+      </label>
+    </div>
+    <p class="mt-1 text-xs text-slate-400">ID is permanent and used by test cases; label is display-only.</p>
+    <div class="mt-3 flex gap-2">
+      <button type="submit" class="px-2 py-1 text-xs bg-slate-800 text-white rounded hover:bg-slate-700">Add kind</button>
+      <button type="button" id="enums-add-kind-cancel" class="px-2 py-1 text-xs border border-slate-300 rounded hover:bg-white">Cancel</button>
+    </div>
+  </form>
   <button type="button" id="enums-add-kind-btn"
           class="mt-4 text-sm text-slate-600 hover:text-slate-900">+ Add kind</button>
   {% endif %}
@@ -54,6 +73,7 @@
     window.TMS_ENUMS = {
       project: {{ project | tojson }},
       vocab: {{ (vocab or {}) | tojson }},
+      kind_labels: {{ (kind_labels or {}) | tojson }},
       missing: {{ missing | tojson }}
     };
     if (typeof tmsEnumsManager !== "undefined") tmsEnumsManager.boot();

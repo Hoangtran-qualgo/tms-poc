@@ -88,25 +88,29 @@ print(
 )
 
 
-# --- UI2: tmsEditor.rename() -----------------------------------------------
-# Multiple `async rename()` methods may exist (file editor vs run editor);
-# select the one whose body references /api/files/<path>/rename.
+# --- UI2: tmsRenameFile() ---------------------------------------------------
 body2 = _extract_block(
-    JS, r"async\s+rename\s*\(\s*\)", contains="/api/files/"
+    JS, r"function\s+tmsRenameFile\s*\(\s*filePath\s*,\s*currentName\s*\)"
+)
+assert "tmsOpenModal" in body2, (
+    "UI2: tmsRenameFile must open the shared inline-error modal"
 )
 assert "/rename" in body2, (
-    "UI2: tmsEditor.rename() body must target the /rename sub-route"
+    "UI2: tmsRenameFile body must target the /rename sub-route"
 )
 assert re.search(r"""method\s*:\s*["']PATCH["']""", body2), (
-    "UI2: tmsEditor.rename() must issue a PATCH request"
+    "UI2: tmsRenameFile must issue a PATCH request"
 )
-assert re.search(r"""/api/files/["']?\s*\+\s*this\.state\.path\s*\+\s*["']/rename""", body2), (
-    "UI2: tmsEditor.rename() must target /api/files/<state.path>/rename"
+assert re.search(r"""/api/files/["']?\s*\+\s*tmsEncodePath\(filePath\)\s*\+\s*["']/rename""", body2), (
+    "UI2: tmsRenameFile must target /api/files/<filePath>/rename"
 )
 assert re.search(r"""file_name\s*:""", body2), (
-    "UI2: tmsEditor.rename() request body must carry {file_name: …}"
+    "UI2: tmsRenameFile request body must carry {file_name: …}"
 )
-print("PASS  UI2: tmsEditor.rename() -> PATCH /api/files/<state.path>/rename {file_name}")
+assert "tmsRefreshFolder" in body2 and "tmsRefreshTreePane" in body2, (
+    "UI2: successful filename rename must refresh its folder and Directory tree"
+)
+print("PASS  UI2: tmsRenameFile -> modal PATCH /api/files/<filePath>/rename + refresh")
 
 
 # --- UI3: tmsEditor.move() -------------------------------------------------
@@ -175,12 +179,11 @@ assert re.search(r"""body\s*:\s*this\.state\.raw""", body5), (
 print("PASS  UI5: tmsEditor.saveRaw() -> PUT /api/files/<state.path>/raw with state.raw")
 
 
-# --- UI button wiring: btn-rename / btn-move / btn-save / btn-save-raw -----
+# --- UI button wiring: btn-move / btn-save / btn-save-raw ------------------
 # Sanity: confirm the topbar buttons are wired to the editor methods so
 # the UI rules above translate into actual user-visible affordances.
 # Look for `getElementById("btn-<id>")` paired with the editor method call.
 for btn, method_re in (
-    ("btn-rename", r"\.rename\s*\("),
     ("btn-move", r"\.move\s*\("),
     ("btn-save", r"\.save\s*\("),
     ("btn-save-raw", r"\.saveRaw\s*\("),
@@ -192,4 +195,5 @@ for btn, method_re in (
         f"UI sanity: topbar button {btn!r} must wire a click handler to a "
         f"method matching {method_re!r}"
     )
-print("PASS  UI sanity: btn-rename / btn-move / btn-save / btn-save-raw wired to editor methods")
+assert "function tmsRenameFile" in JS, "UI sanity: folder action must expose tmsRenameFile"
+print("PASS  UI sanity: folder Rename + editor Move/Save/Save raw wiring exists")

@@ -35,7 +35,7 @@
             <span class="flex-1 truncate cursor-pointer {% if child.depth == 0 %}font-semibold text-slate-800{% elif child.depth == 1 %}font-medium text-slate-700{% else %}text-slate-600{% endif %}"
                   hx-get="/ui/folder/{{ child.path }}"
                   hx-target="#main-pane" hx-push-url="true"
-                  hx-swap="innerHTML">{{ child.name }}</span>
+                  hx-swap="innerHTML">{{ child.name }}{% if child.counts is defined %} ({{ child.counts.total }}-{{ child.counts.auto }}-{{ child.counts.non_auto }}){% endif %}</span>
           </div>
           <div class="tree-children hidden pl-4 border-l border-slate-100 ml-2">
             {{ render_children(child.children) }}

@@ -5,6 +5,7 @@ from __future__ import annotations
 from typing import Any
 
 from ..errors import EnumsParseError, GherkinParseError
+from ..gherkin_io import split_feature_source
 from ._core import (
     MAX_FOLDER_DEPTH,
     RESERVED_DEPTH2_NAMES,
@@ -44,6 +45,47 @@ def _enum_display_rows(
 class ListingMixin:
     """Read-only directory / tree enumeration (no mutations)."""
 
+    @staticmethod
+    def _empty_case_counts() -> dict[str, int]:
+        return {"total": 0, "auto": 0, "non_auto": 0}
+
+    @staticmethod
+    def _merge_case_counts(
+        target: dict[str, int], source: dict[str, int]
+    ) -> None:
+        target["total"] += source["total"]
+        target["auto"] += source["auto"]
+        target["non_auto"] += source["non_auto"]
+
+    @staticmethod
+    def _has_auto_tag(tags: list[str]) -> bool:
+        return any(tag.casefold() == "auto" for tag in tags)
+
+    def _feature_case_counts(self, path) -> dict[str, int]:
+        """Count scenarios in one feature source without enum cross-checks."""
+        try:
+            features = split_feature_source(path.read_text(encoding="utf-8"))
+        except (GherkinParseError, OSError, UnicodeDecodeError):
+            # Keep malformed visible files represented in the tree.
+            return {"total": 1, "auto": 0, "non_auto": 1}
+
+        if not features:
+            # Header-only / zero-scenario sources have no scenario tags to
+            # inspect, but still represent one visible .feature file.
+            return {"total": 1, "auto": 0, "non_auto": 1}
+
+        total = len(features)
+        feature_auto = self._has_auto_tag(features[0].tags)
+        auto = (
+            total
+            if feature_auto
+            else sum(
+                self._has_auto_tag(feature.scenario.tags)
+                for feature in features
+            )
+        )
+        return {"total": total, "auto": auto, "non_auto": total - auto}
+
     def list_root(self) -> list[str]:
         """Return depth-0 folder names (projects), in OS listing order."""
         out: list[str] = []
@@ -59,18 +101,27 @@ class ListingMixin:
 
         Shape matches PLAN.md §16.6: a root wrapper ``{name: "", children:
         [...]}``, folder nodes carrying a ``depth`` field (root's children
-        are depth 0), file nodes typed ``feature`` or ``other``. Orphan
-        atomic-write temp files are filtered out at every level.
+        are depth 0), file nodes typed ``feature`` or ``other``. Every visible
+        folder node carries recursive scenario ``counts``.
+        Orphan atomic-write temp files are filtered out at every level.
         """
+        children, _ = self._tree_children_with_counts(self.root, depth=0)
         return {
             "name": "",
-            "children": self._tree_children(self.root, depth=0),
+            "children": children,
         }
 
     def _tree_children(self, dir_path, depth: int) -> list[dict[str, Any]]:
+        children, _ = self._tree_children_with_counts(dir_path, depth)
+        return children
+
+    def _tree_children_with_counts(
+        self, dir_path, depth: int
+    ) -> tuple[list[dict[str, Any]], dict[str, int]]:
         children: list[dict[str, Any]] = []
+        counts = self._empty_case_counts()
         if not dir_path.exists():
-            return children
+            return children, counts
         for entry in dir_path.iterdir():
             name = entry.name
             if TEMP_FILE_RE.match(name):
@@ -89,15 +140,19 @@ class ListingMixin:
                 continue
             rel = entry.relative_to(self.root).as_posix()
             if entry.is_dir():
-                children.append(
-                    {
-                        "type": "folder",
-                        "name": name,
-                        "depth": depth,
-                        "path": rel,
-                        "children": self._tree_children(entry, depth + 1),
-                    }
+                nested_children, nested_counts = self._tree_children_with_counts(
+                    entry, depth + 1
                 )
+                node = {
+                    "type": "folder",
+                    "name": name,
+                    "depth": depth,
+                    "path": rel,
+                    "children": nested_children,
+                }
+                node["counts"] = nested_counts
+                children.append(node)
+                self._merge_case_counts(counts, nested_counts)
             elif entry.is_file():
                 children.append(
                     {
@@ -106,11 +161,15 @@ class ListingMixin:
                         "path": rel,
                     }
                 )
+                if _is_feature_name(name):
+                    self._merge_case_counts(
+                        counts, self._feature_case_counts(entry)
+                    )
         # Hoist folders above files at every level (folders on top, files on
         # the bottom). Stable, so the intra-group order from iterdir() above is
         # preserved within the folders group and within the files group.
         children.sort(key=lambda c: 0 if c["type"] == "folder" else 1)
-        return children
+        return children, counts
 
     def list_test_run_tree(self) -> dict[str, Any]:
         """Return the aggregated ``test-run/`` subtree of every project.

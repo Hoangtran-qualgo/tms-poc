@@ -95,12 +95,12 @@ for sym in ("tmsDuplicateFile",):
 print("PASS  UG2: no #btn-duplicate in file_editor.html; no /api/files/.../duplicate in app.js; no tmsDuplicateFile symbol")
 
 
-# --- Sanity: positive controls -- the FILE-level rename/move/save buttons --
+# --- Sanity: positive controls -- editor move/save; folder rename action ----
 # must still exist (so the negative assertions above aren't false-negatives
 # from a truncated file or a stale path).
-assert "btn-rename" in TEMPLATE, "UG sanity: #btn-rename must still exist (positive control)"
 assert "btn-move" in TEMPLATE, "UG sanity: #btn-move must still exist (positive control)"
 assert "btn-save" in TEMPLATE, "UG sanity: #btn-save must still exist (positive control)"
+assert "function tmsRenameFile" in JS, "UG sanity: folder Rename action must exist"
 
 # --- Negative invariant survives a live render of the editor too -----------
 # Verify a real /ui/file/<p> response does not contain delete/duplicate UI.

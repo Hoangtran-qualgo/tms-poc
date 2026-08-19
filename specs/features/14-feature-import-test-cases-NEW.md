@@ -200,9 +200,9 @@ insensitive**, mirroring the file-name rule (G7).
      **per-scenario table** (USER request) with columns **Scenario name**
      (truncated to 30 chars + `…`, full name on hover), **Feature tag**
      (shared; top 2 `@`-prefixed + `+N more`), **Scenario tag** (same
-     format), and **File name** — an input the user fills per scenario,
-     **placeholder `file name`, no pre-filled value** (USER request). The
-     modal uses the wider **`xl`** size. If `enums_present`, show a
+     format), and **File name** — an editable input per scenario. Feature 20
+     pre-fills `<destination-folder>_<available-positive-number>.feature`;
+     the modal uses the wider **`xl`** size. If `enums_present`, show a
      **"enums will be dropped" confirmation** the user must acknowledge
      before Confirm (IM-2).
   3. **Confirm** is gated on a chosen folder + every scenario having a
@@ -213,8 +213,11 @@ insensitive**, mirroring the file-name rule (G7).
 
 ## 5. Decisions (resolved Jun 13, 2026)
 
-- **IM-1 — One file per import.** Single `.feature` upload for v1;
-  multi-file / zip / folder batch is a **future enhancement** (§8).
+- **IM-1 — One file per import.** Shipped feature-14 v1 accepted a single
+  `.feature` upload. This decision was superseded for separate multi-file
+  selection by feature 17 (Aug 17, 2026), which preserves this endpoint's
+  legacy `{source}` body while adding a `{sources}` batch body. Archive / zip
+  / folder batch remains a future enhancement (§8).
 - **IM-2 — Drop all enums; keep tags.** Imported `# enum.<kind>: <key>`
   directives are **dropped** (sidesteps the project-vocab cross-check and
   the undefined per-scenario enum association). The UI **asks the user to
@@ -225,8 +228,9 @@ insensitive**, mirroring the file-name rule (G7).
   tags" — gherkin has no notion of one scenario's tags belonging to
   another. Flagged for confirmation.)_
 - **IM-3 — User names each file.** After a successful read + split, the
-  modal lists the scenarios and the user **types a filename for each**
-  (pre-filled with an editable slug suggestion). No silent auto-naming.
+  modal lists the scenarios and the user may edit every filename. Feature 20
+  pre-fills each input from the destination-folder sequence; no generated name
+  is imposed after a manual edit.
 - **IM-4 — All-or-nothing.** Any pre-flight failure aborts the whole
   import with **no writes**; the UI shows the user the blocking reason.
 - **IM-5 — Mandatory preview.** The modal **must** preview the N scenarios
@@ -336,8 +340,8 @@ insensitive**, mirroring the file-name rule (G7).
    file picker (outstanding border style) with client-side type + 3 MB
    gating, dry-run preview rendered as a bordered table
    (**Scenario name** truncated to 30 chars · **Feature tag** · **Scenario
-   tag**, tags as top-2 `@`-prefixed + `+N more` · **File name** input with
-   placeholder `file name`, no pre-fill), enum-drop acknowledgement gate,
+   tag**, tags as top-2 `@`-prefixed + `+N more` · **File name** input,
+   later pre-filled by feature 20), enum-drop acknowledgement gate,
    Confirm gated on a chosen folder + every filename filled + enum ack;
    server `import_validation_error` reasons rendered as a list; success
    refreshes the destination folder + tree. **CHECK (done):**
@@ -353,11 +357,19 @@ insensitive**, mirroring the file-name rule (G7).
 ## 9. Out of scope (v1)
 
 - Non-`.feature` formats (CSV/Excel/etc.).
-- Multi-file / folder / zip upload (IM-1 → future enhancement; the
-  splitter + result shape leave room).
+- Archive / folder / zip upload (separate multi-file selection shipped in
+  feature 17; the splitter + result shape leave room for an archive later).
 - First-class **`Examples:`-level tag** support (see the VERY IMPORTANT
   NOTE at the top): only feature + scenario tags are surfaced; Examples
   tags survive file round-trip but are not a supported tag concept yet.
 - Mapping imported enum directives onto the project vocab (IM-2 drops them).
 - Editing scenarios during import (verbatim split; edit afterward in the
   file editor).
+
+## Feature-20 extension (Aug 19, 2026)
+
+Feature 20 supersedes IM-3's blank filename UX only. Import-preview fields now
+prefill as `<destination-folder>_<available-positive-number>.feature`, in
+flattened source/scenario order, while remaining editable. The existing
+storage-side normalisation, direct-folder validation, and all-or-nothing
+transaction remain unchanged.

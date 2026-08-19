@@ -48,6 +48,18 @@ def put_project_enums(project: str):
     return jsonify(_storage().write_project_enums(project, body))
 
 
+@api.put("/enums/<project>/kind-labels")
+def put_project_enum_kind_labels(project: str):
+    """Replace display labels while keeping every persisted kind ID stable.
+
+    Body is the full ``{kind_id: display_label}`` map for the current
+    vocabulary. It writes additive metadata, never ``Feature.enums`` or
+    enum-ranking reports.
+    """
+    body = _require_json_object()
+    return jsonify(_storage().write_project_enum_kind_labels(project, body))
+
+
 @api.post("/enums/<project>/rename")
 def post_project_enum_rename(project: str):
     """Rename ``kind.old_key`` to ``new_key`` with a cascade across features.

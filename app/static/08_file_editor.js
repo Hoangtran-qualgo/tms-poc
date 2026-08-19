@@ -751,7 +751,6 @@ const tmsEditor = {
   // ---- Header wiring ------------------------------------------------
 
   wireHeaderButtons() {
-    document.getElementById("btn-rename").addEventListener("click", () => this.rename());
     document.getElementById("btn-move").addEventListener("click", () => this.move());
     document.getElementById("btn-reload").addEventListener("click", () => this.reload());
     document.getElementById("btn-save").addEventListener("click", () => this.save());
@@ -1550,42 +1549,9 @@ const tmsEditor = {
     htmx.ajax("GET", "/ui/folder/", { target: "#main-pane", swap: "innerHTML" });
   },
 
-  // ---- Rename -------------------------------------------------------
-
-  async rename() {
-    const current = this.state.file_name;
-    const next = (window.prompt("Rename file to:", current) || "").trim();
-    if (!next || next === current) return;
-    try {
-      const r = await fetch(
-        "/api/files/" + this.state.path + "/rename",
-        {
-          method: "PATCH",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ file_name: next }),
-        }
-      );
-      if (!r.ok) {
-        const j = await r.json().catch(() => null);
-        alert("Rename failed: " + (j?.error?.message || r.statusText));
-        return;
-      }
-      // Reload the editor at the new path; pick up auto-appended .feature ext.
-      const parent = this.state.path.replace(/\/[^/]+$/, "");
-      const newName = next.toLowerCase().endsWith(".feature") ? next : next + ".feature";
-      const newPath = parent ? parent + "/" + newName : newName;
-      htmx.ajax("GET", "/ui/file/" + newPath, {
-        target: "#main-pane",
-        swap: "innerHTML",
-      });
-    } catch (e) {
-      alert("Rename failed: " + e.message);
-    }
-  },
 };
 
 /** Called by the file_editor.html partial after it lands in the DOM. */
 function tmsBootEditor() {
   tmsEditor.boot();
 }
-

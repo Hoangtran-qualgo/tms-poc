@@ -46,7 +46,7 @@ Step 1 audit of the smoke tests against
 | NU2 | A folder and a `.feature` file may coexist at the same logical name because the file leaf always includes the `.feature` extension; their resolved paths differ on any host filesystem. | Invariants → Name uniqueness | `F04_04_name_uniqueness.py` | covered |
 | NV1 | Every segment passes `_validate_segment` at the route layer: no `/ \ : * ? " < > \|` or control characters; empty / `.` / `..` rejected. Failure → HTTP 400 with `code: bad_request`. (Route-layer assertion; storage-half in feature-02 PD2.) | Invariants → Name validation | `F02_01_path_discipline.py` (storage half) + `F04_05_name_validation.py` (route half) | covered |
 | ID1 | `DELETE /api/folders/<p>` returns 204 even if `p` was already missing (storage's `delete_folder` no-ops on missing target). | Invariants → Idempotence | `F04_06_idempotence.py` | covered |
-| UG1 | v1 has no UI button for folder rename or delete; the surfaces are API-only. Testable as the absence of rename/delete-folder buttons in the rendered folder views and as the absence of `tmsRenameFolder` / `tmsDeleteFolder` symbols in `app/static/app.js`. | Invariants → UI gaps | `F04_07_ui_gaps.py` | covered |
+| UG1 | Project/module/sub-folder views expose approved folder rename controls; root exposes none. | Invariants → Rename UI | `F04_07_ui_gaps.py` | covered |
 | AC1 | Creating a folder with a forbidden character returns HTTP 400 with `code: bad_request`. (Strengthens NV1.) | Acceptance criteria | `F04_08_acceptance.py` | covered |
 | AC2 | Creating a folder at depth 11 (or higher) returns HTTP 400 with `code: bad_request`. (Strengthens DR1 boundary.) | Acceptance criteria | `F04_08_acceptance.py` | covered |
 | AC3 | Creating a duplicate folder in the same parent returns HTTP 409 with `code: name_conflict`. (Strengthens NU1.) | Acceptance criteria | `F04_08_acceptance.py` | covered |
@@ -105,15 +105,15 @@ half of those rules.
   `/api/folders` POST URL + `tmsRefreshFolder(<arg>)`
   follow-up call via **regex matching of the static JS
   source text**. Not a Javascript runtime test.
-- **UG1 testable shape (approved — "test all testable
-  scenarios").** Two-pronged negative-invariant test:
+- **UG1 testable shape (updated by feature 18).** Two-pronged
+  rename-only negative-invariant test:
   (a) render `/ui/folder/...` for each depth (root /
   project / module / sub-folder) via Flask test client
   and assert the response HTML does NOT contain
-  "Rename folder" / "Delete folder" button labels or
-  `onclick` handlers, AND
+  "Rename folder" button label or `onclick` handler, AND
   (b) assert `app/static/app.js` does NOT define
-  `tmsRenameFolder` / `tmsDeleteFolder` symbols.
+  `tmsRenameFolder` symbol. Feature-18 positive delete coverage
+  lives in `feature-18/F18_01_folder_delete.py`.
 - **NU2 testable shape.** Create a folder named "X" at
   depth 2, then create a file named "X.feature" in the
   same parent module; assert both coexist (no conflict).

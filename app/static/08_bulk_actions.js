@@ -387,28 +387,77 @@ function tmsBulkBind(root) {
   const rowBoxes = Array.from(root.querySelectorAll('[data-role="select"]'));
   const countEl = root.querySelector('[data-role="count"]');
   const actionBtns = Array.from(root.querySelectorAll("[data-bulk-action]"));
+  const filterInput = root.querySelector('[data-role="scenario-filter"]');
+  const sortBtn = root.querySelector('[data-role="file-sort"]');
+  const sortHeader = root.querySelector('[data-role="file-sort-header"]');
+  const body = root.querySelector("tbody");
   if (!selectAll || !countEl) return;
 
   const selected = () =>
     rowBoxes.filter((b) => b.checked).map((b) => b.getAttribute("data-case-path"));
+  const visibleBoxes = () =>
+    rowBoxes.filter((b) => !b.closest("tr").classList.contains("hidden"));
 
   const update = () => {
     const n = rowBoxes.filter((b) => b.checked).length;
-    countEl.textContent = n + " selected";
+    const visible = visibleBoxes();
+    const visibleSelected = visible.filter((b) => b.checked).length;
+    countEl.textContent = filterInput && filterInput.value.trim()
+      ? visible.length + " shown · " + n + " selected"
+      : n + " selected";
     actionBtns.forEach((b) => {
       b.disabled = n === 0;
     });
-    selectAll.checked = n > 0 && n === rowBoxes.length;
-    selectAll.indeterminate = n > 0 && n < rowBoxes.length;
+    selectAll.checked = visible.length > 0 && visibleSelected === visible.length;
+    selectAll.indeterminate = visibleSelected > 0 && visibleSelected < visible.length;
   };
 
   selectAll.addEventListener("change", () => {
-    rowBoxes.forEach((b) => {
+    visibleBoxes().forEach((b) => {
       b.checked = selectAll.checked;
     });
     update();
   });
   rowBoxes.forEach((b) => b.addEventListener("change", update));
+  if (filterInput) {
+    filterInput.addEventListener("input", () => {
+      const query = filterInput.value.trim().toLowerCase();
+      rowBoxes.forEach((b) => {
+        const row = b.closest("tr");
+        const scenario = (row.getAttribute("data-scenario-name") || "").toLowerCase();
+        row.classList.toggle("hidden", Boolean(query) && !scenario.includes(query));
+      });
+      update();
+    });
+  }
+  if (sortBtn && sortHeader && body) {
+    const sortRows = () => {
+      const direction = sortBtn.getAttribute("data-sort-direction") === "desc" ? -1 : 1;
+      const rows = Array.from(body.querySelectorAll("tr[data-file-name]"));
+      rows.sort((a, b) => {
+        const compared = a.dataset.fileName.toLowerCase().localeCompare(
+          b.dataset.fileName.toLowerCase()
+        );
+        return compared ? compared * direction : Number(a.dataset.sortIndex) - Number(b.dataset.sortIndex);
+      });
+      rows.forEach((row) => body.appendChild(row));
+      const ascending = direction === 1;
+      sortHeader.setAttribute("aria-sort", ascending ? "ascending" : "descending");
+      sortBtn.setAttribute("aria-label", "Sort file name " + (ascending ? "descending" : "ascending"));
+      sortBtn.querySelector('[data-role="file-sort-icon"]').textContent = ascending ? "↑" : "↓";
+    };
+    rowBoxes.forEach((b, index) => {
+      b.closest("tr").dataset.sortIndex = String(index);
+    });
+    sortRows();
+    sortBtn.addEventListener("click", () => {
+      sortBtn.setAttribute(
+        "data-sort-direction",
+        sortBtn.getAttribute("data-sort-direction") === "asc" ? "desc" : "asc"
+      );
+      sortRows();
+    });
+  }
   actionBtns.forEach((btn) =>
     btn.addEventListener("click", () => {
       const action = btn.getAttribute("data-bulk-action");
