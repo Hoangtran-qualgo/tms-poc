@@ -19,7 +19,11 @@ from ..errors import (
     ValidationError,
 )
 from ..models import ENUM_IDENTIFIER_RE, ENUM_KEY_RE, Feature
-from ._core import _ENUMS_DEFAULT_BYTES, _ENUMS_FILE_NAME
+from ._core import (
+    _ENUMS_DEFAULT_BYTES,
+    _ENUMS_FILE_NAME,
+    _ENUM_KIND_LABELS_FILE_NAME,
+)
 
 #: Cap on the number of referencing case paths surfaced in usage results /
 #: in-use error details (enough for a helpful message, bounded cost).
@@ -102,6 +106,66 @@ class EnumsMixin:
         self._invalidate_enums_cache(project)
         return self.read_project_enums(project)
 
+    def read_project_enum_kind_labels(self, project: str) -> dict[str, str]:
+        """Return every current kind's display label, defaulting to its ID.
+
+        Labels live in optional ``enum-kind-labels.yaml`` so existing
+        ``enums.yaml`` bytes and its ``{kind: {key: label}}`` API shape stay
+        backward-compatible. Stale sidecar entries are ignored; a later
+        vocabulary write prunes them.
+        """
+        vocab = self.read_project_enums(project)
+        target = self._resolve([project]) / _ENUM_KIND_LABELS_FILE_NAME
+        try:
+            stored = self._parse_project_enum_kind_labels(target.read_bytes())
+        except FileNotFoundError:
+            stored = {}
+        return {kind: stored.get(kind, kind) for kind in vocab}
+
+    def write_project_enum_kind_labels(
+        self, project: str, labels: dict[str, str]
+    ) -> dict[str, str]:
+        """Replace display labels for the current kinds of ``project``.
+
+        The caller supplies the full current kind -> label map. Labels are
+        presentation metadata only: labels equal to their kind ID are omitted
+        on disk and read back through the stable-ID fallback.
+        """
+        vocab = self.read_project_enums(project)
+        if set(labels) != set(vocab):
+            raise ValidationError(
+                field="kind_labels",
+                message="Kind labels must contain exactly the current kinds.",
+            )
+        stored: dict[str, str] = {}
+        for kind in vocab:
+            label = labels[kind]
+            if not isinstance(label, str) or not label.strip():
+                raise ValidationError(
+                    field=f"kind_labels[{kind}]",
+                    message="Kind label must be a non-empty string.",
+                )
+            if "\n" in label or "\r" in label:
+                raise ValidationError(
+                    field=f"kind_labels[{kind}]",
+                    message="Kind label must be single-line.",
+                )
+            if label != kind:
+                stored[kind] = label
+
+        target = self._resolve([project]) / _ENUM_KIND_LABELS_FILE_NAME
+        key = f"{project}/{_ENUM_KIND_LABELS_FILE_NAME}"
+        with self._lock_for(key):
+            if stored:
+                self._atomic_write_bytes(
+                    target, self._serialize_project_enum_kind_labels(stored)
+                )
+                self._mark_write(target)
+            elif target.exists():
+                target.unlink()
+                self._mark_write(target)
+        return {kind: stored.get(kind, kind) for kind in vocab}
+
     def write_project_enums(
         self, project: str, data: dict[str, dict[str, str]]
     ) -> dict[str, dict[str, str]]:
@@ -151,7 +215,9 @@ class EnumsMixin:
             self._atomic_write_bytes(target, serialized)
             self._mark_write(target)
         self._invalidate_enums_cache(project)
-        return self.read_project_enums(project)
+        result = self.read_project_enums(project)
+        self._prune_project_enum_kind_labels(project, set(result))
+        return result
 
     def _block_in_use_removals(
         self, project: str, data: dict[str, dict[str, str]]
@@ -321,6 +387,86 @@ class EnumsMixin:
                 chunks.append(f"  {line}\n")
         return "".join(chunks).encode("utf-8")
 
+    @staticmethod
+    def _parse_project_enum_kind_labels(raw: bytes) -> dict[str, str]:
+        """Parse optional ``enum-kind-labels.yaml`` display metadata."""
+        try:
+            payload = yaml.safe_load(raw)
+        except yaml.YAMLError as e:
+            mark = getattr(e, "problem_mark", None) or getattr(
+                e, "context_mark", None
+            )
+            line = (mark.line + 1) if mark is not None else 0
+            column = (mark.column + 1) if mark is not None else 0
+            message = getattr(e, "problem", None) or str(e)
+            raise EnumsParseError(
+                line=line, column=column, message=message
+            ) from e
+        if payload is None:
+            return {}
+        if not isinstance(payload, dict):
+            raise EnumsParseError(
+                line=0,
+                column=0,
+                message="enum-kind-labels.yaml root must be a YAML mapping.",
+            )
+        labels: dict[str, str] = {}
+        for kind, label in payload.items():
+            if not isinstance(kind, str) or not ENUM_IDENTIFIER_RE.fullmatch(
+                kind
+            ):
+                raise EnumsParseError(
+                    line=0,
+                    column=0,
+                    message=f"Invalid enum kind label key {kind!r}.",
+                )
+            if not isinstance(label, str) or not label.strip():
+                raise EnumsParseError(
+                    line=0,
+                    column=0,
+                    message=f"Kind label for {kind!r} must be non-empty.",
+                )
+            if "\n" in label or "\r" in label:
+                raise EnumsParseError(
+                    line=0,
+                    column=0,
+                    message=f"Kind label for {kind!r} must be single-line.",
+                )
+            labels[kind] = label
+        return labels
+
+    @staticmethod
+    def _serialize_project_enum_kind_labels(labels: dict[str, str]) -> bytes:
+        """Serialize display-label metadata with insertion order preserved."""
+        return yaml.safe_dump(
+            labels,
+            sort_keys=False,
+            default_flow_style=False,
+            allow_unicode=True,
+        ).encode("utf-8")
+
+    def _prune_project_enum_kind_labels(
+        self, project: str, kinds: set[str]
+    ) -> None:
+        """Drop sidecar labels for kinds removed by a vocabulary write."""
+        target = self._resolve([project]) / _ENUM_KIND_LABELS_FILE_NAME
+        try:
+            labels = self._parse_project_enum_kind_labels(target.read_bytes())
+        except FileNotFoundError:
+            return
+        kept = {kind: label for kind, label in labels.items() if kind in kinds}
+        if kept == labels:
+            return
+        key = f"{project}/{_ENUM_KIND_LABELS_FILE_NAME}"
+        with self._lock_for(key):
+            if kept:
+                self._atomic_write_bytes(
+                    target, self._serialize_project_enum_kind_labels(kept)
+                )
+            elif target.exists():
+                target.unlink()
+            self._mark_write(target)
+
     def has_project_enums(self, project: str) -> bool:
         """Return whether ``<project>/enums.yaml`` exists (vs a legacy project)."""
         return (self._resolve([project]) / _ENUMS_FILE_NAME).is_file()
@@ -372,6 +518,10 @@ class EnumsMixin:
                         )
             self._atomic_write_bytes(target, _ENUMS_DEFAULT_BYTES)
             self._mark_write(target)
+            kind_labels = project_dir / _ENUM_KIND_LABELS_FILE_NAME
+            if kind_labels.exists():
+                kind_labels.unlink()
+                self._mark_write(kind_labels)
         self._invalidate_enums_cache(project)
 
     def _invalidate_enums_cache(self, project: str) -> None:

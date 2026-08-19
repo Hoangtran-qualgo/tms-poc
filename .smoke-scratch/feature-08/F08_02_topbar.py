@@ -7,7 +7,7 @@ present with the documented `id` AND visible label/role:
   - breadcrumb (Projects + crumb anchors)
   - `#dirty-indicator` (initially hidden)
   - `#saved-indicator` (role="status", initially hidden)
-  - `#btn-rename`, `#btn-move`, `#btn-reload`, `#btn-save`
+  - `#btn-move`, `#btn-reload`, `#btn-save`
 
 Cross-credit (cosmetic only): `feature-05/F05_03_ui_gaps.py` already
 confirms that #btn-delete / #btn-duplicate are NOT present. This file
@@ -56,7 +56,6 @@ assert re.search(
 
 # Topbar buttons -- id + visible label.
 for btn_id, label in (
-    ("btn-rename", "Rename"),
     ("btn-move", "Move"),
     ("btn-reload", "Reload"),
     ("btn-save", "Save"),
@@ -78,7 +77,5 @@ for forbidden in ("btn-delete", "btn-duplicate"):
         "(feature-05 owns the absence claim; this is a sanity check)"
     )
 
-print(
-    "PASS  TP1: editor topbar renders breadcrumb + dirty/saved indicators + "
-    "btn-rename / btn-move / btn-reload / btn-save"
-)
+assert 'id="btn-rename"' not in html, "TP1: filename rename belongs in folder details"
+print("PASS  TP1: editor topbar renders breadcrumb + indicators + Move/Reload/Save")

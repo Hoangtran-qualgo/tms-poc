@@ -23,6 +23,12 @@
     <button type="button" data-bulk-action="delete" disabled
             class="px-2.5 py-1 text-sm border border-red-300 text-red-700 rounded hover:bg-red-50 disabled:opacity-40 disabled:cursor-not-allowed">Delete</button>
   </div>
+  <label class="flex items-center gap-2 mb-2 text-sm text-slate-600">
+    <span>Scenario filter</span>
+    <input type="search" data-role="scenario-filter" placeholder="Filter scenario name…"
+           autocomplete="off"
+           class="flex-1 max-w-sm border border-slate-300 rounded px-2 py-1 text-sm">
+  </label>
   <table class="w-full text-sm border border-slate-200 rounded overflow-hidden bg-white table-fixed">
   <thead class="bg-slate-100 text-slate-600">
     <tr>
@@ -30,15 +36,24 @@
         <input type="checkbox" data-role="select-all" aria-label="Select all test cases"
                onclick="event.stopPropagation()">
       </th>
-      <th class="text-left px-3 py-2 font-medium w-1/5">File name</th>
+      <th data-role="file-sort-header" aria-sort="ascending"
+          class="text-left px-3 py-2 font-medium w-1/5">
+        <button type="button" data-role="file-sort" data-sort-direction="asc"
+                aria-label="Sort file name descending"
+                class="font-medium hover:text-slate-900">
+          File name <span data-role="file-sort-icon" aria-hidden="true">↑</span>
+        </button>
+      </th>
       <th class="text-left px-3 py-2 font-medium w-2/5">Scenario name</th>
       <th class="text-left px-3 py-2 font-medium w-1/5">Tags</th>
       <th class="text-left px-3 py-2 font-medium w-1/5">Enums</th>
+      <th class="text-left px-3 py-2 font-medium w-24">Actions</th>
     </tr>
   </thead>
   <tbody>
     {% for f in features %}
     <tr class="border-t border-slate-100 hover:bg-slate-50 cursor-pointer"
+        data-file-name="{{ f.file_name }}" data-scenario-name="{{ f.scenario_name }}"
         hx-get="/ui/file/{{ folder_path }}/{{ f.file_name }}"
         hx-target="#main-pane" hx-push-url="true"
         hx-swap="innerHTML">
@@ -60,6 +75,13 @@
       {# Enums: first 3 `key : label` chips + `+N more…`; full list in title. #}
       <td class="px-3 py-2 truncate" title="{% for e in f.enums %}{{ e.key }}{% if e.label %} : {{ e.label }}{% endif %}{{ ', ' if not loop.last }}{% endfor %}">
         {% if f.enums %}{% for e in f.enums[:3] %}<span class="inline-block px-1.5 py-0.5 mr-1 mb-0.5 text-xs rounded bg-indigo-100 text-indigo-700">{{ e.key }}{% if e.label %} : {{ e.label }}{% endif %}</span>{% endfor %}{% if f.enums|length > 3 %}<span class="text-xs text-slate-400">+{{ f.enums|length - 3 }} more…</span>{% endif %}{% else %}<span class="text-slate-400">—</span>{% endif %}
+      </td>
+      <td class="px-3 py-2 w-24" onclick="event.stopPropagation()">
+        <button type="button"
+                class="px-2 py-1 text-xs border border-slate-300 rounded hover:bg-white"
+                data-file-path="{{ folder_path }}/{{ f.file_name }}"
+                data-file-name="{{ f.file_name }}"
+                onclick="tmsRenameFile(this.dataset.filePath, this.dataset.fileName)">Rename</button>
       </td>
     </tr>
     {% endfor %}

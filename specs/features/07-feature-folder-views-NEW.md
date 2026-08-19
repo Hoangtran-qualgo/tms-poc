@@ -52,7 +52,7 @@ Templates:
   back to root. `+ New module` button (or empty state).
 - `folder_module.html` (depth 2) — sub-folder table (if any) +
   features table. Breadcrumb `Projects / <project> / <module>`.
-  `+ Sub-folder` and `+ Create test case` buttons.
+  `Delete folder`, `+ Sub-folder`, and `+ Create test case` buttons.
 - `folder_subfolder.html` (depth 3..10) — same shape as module
   view but uses a server-built `crumbs` list to render an
   arbitrarily long breadcrumb.
@@ -89,18 +89,19 @@ Server helper:
 - One column: `Sub-folder` with a folder icon (`📁`). Click →
   `/ui/folder/<path>`.
 
-**Buttons by depth**
+**Header controls by depth**
 
-| Depth | Create buttons |
+| Depth | Controls |
 |---|---|
 | 0 (root) | `+ New project` |
-| 1 (project) | `+ New module` |
-| 2 (module) | `+ Sub-folder`, `+ Create test case` |
-| 3..10 (sub-folder) | `+ Sub-folder`, `+ Create test case` |
+| 1 (project) | `Rename project`, `+ New module` |
+| 2 (module) | `Rename folder`, `Delete folder`, `+ Sub-folder`, `+ Create test case` |
+| 3..10 (sub-folder) | `Rename folder`, `Delete folder`, `+ Sub-folder`, `+ Create test case` |
 
-No rename / delete / move buttons at any depth — those operations
-either don't have UI (`04-folder-crud`) or live inside the file
-editor (`05-testcase-crud` rename + move).
+`Delete folder` deletes only the current generic module/branch after the
+feature-18 confirmation modal. Root, project, and typed-area views have no
+delete control. Folder move has no UI. File rename is a per-row folder-detail
+action; file move remains in the editor (`05-testcase-crud`).
 
 **Empty states**
 
@@ -144,10 +145,8 @@ editor (`05-testcase-crud` rename + move).
 
 ## Surface for follow-up
 
-- No per-row actions today (rename / delete / duplicate / move
-  buttons absent on every row). Adding them is a layout decision —
-  inline icons, hover-revealed action menu, or a per-row context
-  menu. The APIs already exist.
+- File rows expose Rename. Delete, duplicate, and move remain absent; adding
+  further row actions is a layout decision.
 - Column sorting / filtering not implemented; the rows render in
   the order `list_folder` returns them (OS listing order, since
   the watcher does not impose any sort).

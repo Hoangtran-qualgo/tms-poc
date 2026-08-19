@@ -77,6 +77,11 @@ RESERVED_DEPTH2_NAMES: frozenset[str] = frozenset({"test-run", "report"})
 #: ``specs/features/11-feature-testcase-component-NEW.md``.
 _ENUMS_FILE_NAME: str = "enums.yaml"
 
+#: Optional display labels for enum kinds. Kept separate from ``enums.yaml``
+#: so its established ``{kind: {key: label}}`` schema and public API remain
+#: unchanged. Missing labels fall back to the stable kind identifier.
+_ENUM_KIND_LABELS_FILE_NAME: str = "enum-kind-labels.yaml"
+
 #: Default bytes written by ``init_project_enums`` and by the depth-1
 #: branch of :meth:`Storage.create_folder`. The file starts with a single
 #: declared kind (``components``) whose value is empty; PyYAML parses this

@@ -9,6 +9,10 @@
     <h2 class="text-xl font-semibold text-slate-800">{{ project }}</h2>
     <div class="flex-1"></div>
     <button type="button"
+            class="px-3 py-1.5 text-sm border border-slate-300 rounded hover:bg-slate-50"
+            data-folder-path="{{ project }}"
+            onclick="tmsRenameFolder(this.dataset.folderPath)">Rename project</button>
+    <button type="button"
             class="px-3 py-1.5 text-sm bg-slate-800 text-white rounded hover:bg-slate-700"
             onclick="tmsCreateModule('{{ project }}')">+ New module</button>
   </div>

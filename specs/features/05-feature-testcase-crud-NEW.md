@@ -3,9 +3,9 @@
 _Retroactive spec: documents the as-shipped behaviour. Source files:_
 _`app/server/routes_files.py` (file routes), `app/storage/_features.py`_
 _(file methods; moves + duplicates in `_folders.py`), `app/static/_
-_03_folder_actions.js` (`tmsCreateFile`) + `08_file_editor.js`_
-_(`tmsEditor.move/rename`), `app/templates/file_editor.html` (topbar_
-_buttons), `app/templates/folder_*.html` (create buttons)._
+_03_folder_actions.js` (`tmsCreateFile`, `tmsRenameFile`) + `08_file_editor.js`_
+_(`tmsEditor.move`), `app/templates/file_editor.html` (topbar buttons),_
+_`app/templates/folder_*.html` (create/rename buttons)._
 
 ## Summary
 
@@ -13,7 +13,7 @@ CRUD lifecycle for `.feature` files: create, read (structured +
 raw), update (structured + raw), rename, move, duplicate, delete.
 The contract is intentionally split into one storage method per
 operation and one HTTP route per operation so the UI can compose
-flows (e.g. "rename then save" in the editor) from primitives.
+flows from primitives.
 
 ## Scope
 
@@ -81,8 +81,9 @@ UI triggers (`app/static/03_folder_actions.js` + `08_file_editor.js`):
   name + description; posts `/api/files`. Hint text declares
   `.feature` is auto-appended. Wired into `+ Create test case`
   buttons in `folder_module.html` / `folder_subfolder.html`.
-- `tmsEditor.rename()` — topbar `Rename…` button in
-  `file_editor.html`; PATCH `/api/files/<p>/rename`.
+- `tmsRenameFile(filePath, currentName)` — folder-table Rename action;
+  `tmsOpenModal` PATCHes `/api/files/<p>/rename`, then refreshes its folder
+  and Directory tree.
 - `tmsEditor.move()` — topbar `Move…` button; opens a tree-based
   folder picker modal then PATCH `/api/files/<p>/move`.
 - `tmsEditor.save()` — PATCH `/api/files/<p>` with the structured
@@ -143,6 +144,9 @@ UI gaps in v1:
 - Every mutation goes through `_atomic_write_bytes` and `_mark_write`
   (covered in `02-storage-core`). The watcher suppresses the
   resulting FS events so the writing tab sees no SSE echo.
+- Rename preflights typed metadata, then cascades exact/slash-bounded run and
+  report paths. A rewrite error reverses the move and prior writes best-effort;
+  malformed metadata blocks before moving. Feature 21 owns this contract.
 
 **Idempotence**
 
@@ -158,9 +162,8 @@ UI gaps in v1:
   SSE `"change"` that causes the tree and the active folder view
   to refresh; the folder view's `features` list reflects the new
   state.
-- `08-file-editor`: rename, move, save, save-raw are invoked from
-  the editor topbar; the editor owns dirty-state + breadcrumb
-  updates around the calls.
+- `08-file-editor`: move, save, and save-raw are invoked from the editor
+  topbar; filename rename belongs to folder details.
 
 ## Depends on
 
@@ -170,21 +173,21 @@ UI gaps in v1:
   locking and atomic-write guarantees.
 - `app/static/03_folder_actions.js` modal primitive (`tmsOpenModal`) for create
   and move pickers.
-- `app/templates/file_editor.html` topbar markup (`#btn-rename`,
-  `#btn-move`, `#btn-save`, `#btn-save-raw`).
+- Folder-detail table action plus `app/static/03_folder_actions.js` modal;
+  file-editor topbar markup (`#btn-move`, `#btn-save`, `#btn-save-raw`).
 
 ## Surface for follow-up
 
-- Add UI surfaces for **delete** and **duplicate** — likely in the
-  editor topbar alongside Rename / Move / Reload, with
+- Add UI surfaces for **delete** and **duplicate** — likely in folder-detail
+  rows or the editor topbar alongside Move / Reload, with
   confirmations on dirty buffers.
 - A future bulk-move or bulk-delete operation would compose the
   per-file storage methods; consider whether to add a transactional
   primitive or keep it as a client-side loop (failure-mode
   trade-off).
 - `10-feature-test-run` (shipped) links to test cases by external
-  `file_path` and chose the **tombstone-on-render** path: rename /
-  move / delete here are NOT auto-coordinated with run files; the
+  `file_path`: rename is now auto-coordinated by feature 21; move /
+  delete retain **tombstone-on-render** behavior. The
   run editor recomputes a `missing: bool` per row on every render
   and strikes through the orphaned link while preserving the
   stored remark verbatim. `create_file` also enforces "no

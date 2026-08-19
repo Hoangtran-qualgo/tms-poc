@@ -27,6 +27,16 @@ here are summaries, not duplications.
 | 10 | `10-feature-test-run-NEW.md` | Typed-area test runs (`<project>/test-run/<group>/<run>.yaml`) with run editor, tombstone rendering, and external-change banner. | Spec'd |
 | 11 | `11-feature-testcase-component-NEW.md` | Test-case project-level enums — generic `Feature.enums` map driven by `enums.yaml` (`<kind>: [- <key>: <label>]` schema; key stored on disk, label is display-only); component is the seeded kind; new kinds ship with zero code change; `# enum.<kind>: <key>` namespaced header-comment encoding (collision-free with regular comments); read-tolerant / write-strict orphan handling. | Spec'd |
 | 12 | `12-feature-quality-report-NEW.md` | Persisted **Reports** (new reserved `<project>/report/<file>.yaml` area + sidebar tab) of one immutable `type`: enum-kind ranking, tag ranking, single-case trend (run-set data source), and static tag-presence inventory (folder data source; merges the `test report` item). Results recompute live from run results joined to current `Feature.enums` / tags; distinct-case counting; ≤ 10 runs. | Spec'd |
+| 13 | `13-feature-enums-crud-NEW.md` | Per-project `enums.yaml` CRUD, usage guards, rename cascade, and Enums sidebar manager. | Shipped |
+| 14 | `14-feature-import-test-cases-NEW.md` | Previewed, all-or-nothing import of multi-scenario `.feature` source into single-scenario cases. | Shipped |
+| 15 | `15-feature-import-test-run-NEW.md` | Previewed, all-or-nothing import of an Allure HTML report into a TMS test run. | Shipped |
+| 16 | `16-feature-tree-case-count-NEW.md` | Recursive scenario `total-auto-non-auto` counts beside project/module/branch directory-tree folders. | Shipped |
+| 17 | `17-feature-multi-file-import-NEW.md` | Atomic, previewed import of up to 20 `.feature` sources (3 MB total) into one destination folder. | Shipped |
+| 18 | `18-feature-folder-delete-NEW.md` | Confirmed recursive folder-delete UI for modules and deeper branches, reusing existing storage/API behaviour. | Shipped |
+| 19 | `19-feature-enum-kind-label-NEW.md` | Inline kind/entry creation plus persistent display labels with stable kind IDs. | Shipped |
+| 20 | `20-feature-import-auto-filenames-NEW.md` | Editable `<destination-folder>_<available-number>.feature` import suggestions. | Shipped |
+| 21 | `21-feature-rename-ui-NEW.md` | Folder/project and test-case filename rename UI with run/report path cascades. | Shipped |
+| 22 | `22-feature-folder-table-sort-filter-NEW.md` | Direct folder-table filename sort and scenario-name filter. | Shipped |
 
 ---
 
@@ -90,13 +100,14 @@ Populated as each batch lands.
 
 - **Affects**: `02-storage-core` (one-line route delegations);
   `06-tree-pane` (every mutation → SSE "change" → tree refresh);
-  `07-folder-views` (host the create buttons and re-render after
-  mutation).
+  `07-folder-views` (host create/rename buttons and re-render after
+  mutation); `10-feature-test-run` / `12-feature-quality-report`
+  (rename keeps stored paths valid).
 - **Depends on**: `02-storage-core`; `app/errors.py` (NameConflictError
   → 409, ValueError → 400); `app/static/03_folder_actions.js` (`tmsOpenModal` for
   sub-folder, `window.prompt` for project/module — legacy v1).
-- **Surface for follow-up**: folder rename and delete UI buttons
-  missing (API already exists); folder *move* not implemented;
+- **Surface for follow-up**: project delete stays API-only because it removes
+  hidden typed data; folder *move* not implemented;
   `10-feature-test-run` (shipped) layered a depth-2 reservation
   (`RESERVED_DEPTH2_NAMES = {"test-run"}`) and the
   "no folders under `<project>/test-run/<group>/`" rule on top
@@ -108,16 +119,17 @@ Populated as each batch lands.
 - **Affects**: `01-gherkin-io` (every read/write parses or serialises
   through it); `02-storage-core` (eight underlying methods + atomic
   writes); `06-tree-pane` and `07-folder-views` (each mutation
-  triggers tree + folder-view refresh); `08-file-editor` (rename /
-  move / save / save-raw are invoked from the editor topbar).
+  triggers tree + folder-view refresh); `08-file-editor` (move / save /
+  save-raw are invoked from the editor topbar); feature 21 (folder-row rename
+  and path cascade).
 - **Depends on**: `01-gherkin-io` (parse/validate/serialize);
   `02-storage-core` (eight file methods + locks);
   `app/static/03_folder_actions.js` (`tmsOpenModal`); editor topbar markup
-  (`#btn-rename`, `#btn-move`, `#btn-save`, `#btn-save-raw`).
+  (`#btn-move`, `#btn-save`, `#btn-save-raw`).
 - **Surface for follow-up**: no UI surface for delete or duplicate
   today (API-only); `10-feature-test-run` (shipped) chose
-  tombstone-on-render instead of run-list mutation, so rename /
-  move / delete here are **not** coordinated with run files —
+  tombstone-on-render for move / delete; feature 21 coordinates rename with
+  run/report paths —
   orphaned rows render struck through on the next run-editor
   render; bulk operations would compose per-file methods;
   `PUT …/raw` is the only path exposing 422 parse_error to end
@@ -153,8 +165,9 @@ Populated as each batch lands.
 - **Depends on**: `02-storage-core` (`list_folder`,
   `_folder_crumbs`); `04-folder-crud`/`05-testcase-crud` JS
   handlers; HTMX 2.x for row navigation; Tailwind CDN.
-- **Surface for follow-up**: no per-row rename / delete / move /
-  duplicate actions today (APIs exist); no column sort / filter;
+- **Surface for follow-up**: module/branch header delete exists, but no
+  per-row rename / delete / move / duplicate actions today (APIs exist); no
+  column sort / filter;
   no multi-select bulk operations; `10-feature-test-run`
   (shipped) extended the dispatcher with a `segments[1] ==
   "test-run"` branch and added two typed-area templates
@@ -165,7 +178,7 @@ Populated as each batch lands.
 ### 08 · file-editor
 
 - **Affects**: `05-testcase-crud` (primary UI surface invoking
-  rename/move/save/save-raw routes; renders their error envelopes
+  move/save/save-raw routes; renders their error envelopes
   inline); `01-gherkin-io` (consumes `Feature.to_dict()` shape;
   raw-save bytes feed server `parse_feature`); `06-tree-pane`
   (shares the page-level SSE connection; other tabs' trees refresh
@@ -176,12 +189,10 @@ Populated as each batch lands.
   `03-watcher-and-sse` (`sse:change` listener for external-change
   detection); `tmsOpenModal` (move folder-picker); HTMX 2.x for
   post-save reroute; Tailwind CDN.
-- **Surface for follow-up**: rename still uses `window.prompt`
-  (should migrate to `tmsOpenModal`); no Delete / Duplicate
-  buttons (APIs exist); external-change banner ignores parse
-  state on disk; `10-feature-test-run` (shipped) opted for
-  tombstone-on-render so this editor's post-rename / post-move
-  hooks do **not** need to coordinate with open runs — the run
+- **Surface for follow-up**: filename rename now lives in folder details;
+  no Delete / Duplicate buttons (APIs exist); external-change banner ignores
+  parse state on disk; `10-feature-test-run` (shipped) retains
+  tombstone-on-render for this editor's post-move hooks — the run
   editor recomputes `missing` per row every render; multi-tab
   editing of same file is permitted with silent last-write-wins.
 
@@ -332,6 +343,110 @@ types (D5), and `tag_inventory` scope is editable via an
   select); non-result trend metrics once runs carry richer
   metadata.
 
+### 13 · enums-crud
+
+- **Affects**: project `enums.yaml`, `Feature.enums`, enum API routes,
+  editor enum controls, and the Enums sidebar; rename and clear guard
+  existing case references.
+- **Depends on**: `11-feature-testcase-component`, storage atomic writes,
+  PyYAML, and existing SSE/sidebar wiring.
+- **Surface for follow-up**: enables safer enum vocabulary maintenance;
+  future enum kinds and bulk case edits can reuse the manager contract.
+
+### 14 · import-test-cases
+
+- **Affects**: pure Gherkin splitting, feature storage writes, import API,
+  and top-bar preview modal; one source scenario becomes one case file.
+- **Depends on**: single-scenario file invariant, feature/scenario tag
+  model, enum-drop decision, and folder-scoped uniqueness rules.
+- **Surface for follow-up**: separate multi-file selection shipped in feature
+  17; archive import remains deferred, while project-wide scenario-name
+  uniqueness is tracked separately.
+
+### 15 · import-test-run
+
+- **Affects**: Allure parser, run storage/API, scenario-name resolver, and
+  top-bar import modal; report input remains transient.
+- **Depends on**: `10-feature-test-run`, `05-testcase-crud` case paths,
+  run result invariants, and project-wide case lookup.
+- **Surface for follow-up**: ambiguous scenario names block import;
+  stronger project-level identity rules are tracked in `IN-PROGRESS.md`.
+
+### 16 · tree-case-count
+
+- **Affects**: `app/storage/_listing.py` folder nodes, `tree.html` labels,
+  existing `/api/tree`, and tree refresh behavior; adds no endpoint.
+- **Depends on**: `01-feature-gherkin-io` tag parsing, `02-storage-core`
+  traversal/filtering, `06-feature-tree-pane` recursive markup, and the
+  feature/scenario tag-surface rule in `README.md`; tolerant multi-scenario
+  extraction must not alter one-scenario write invariants.
+- **Surface for follow-up**: numeric folder metadata can support future
+  scenario/tag counters or percentages; full-tree parsing may need
+  incremental work for very large roots.
+
+### 17 · multi-file-import
+
+- **Affects**: existing feature-import routes and modal gain an ordered
+  source-batch shape; new smokes lock batch behaviour while feature-14
+  smokes keep one-file compatibility covered.
+- **Depends on**: feature 14's split-to-one-case invariant, flat all-or-
+  nothing `Storage.import_feature_cases()` transaction, direct-folder
+  case-insensitive uniqueness, and JSON text transport.
+- **Surface for follow-up**: an ordered source batch can underpin archive
+  import later; its confirmed limits and source-specific errors define the
+  baseline for future import formats.
+
+### 18 · folder-delete
+
+- **Affects**: generic module/branch headers gain a destructive action while
+  preserving the existing recursive DELETE route; historical no-delete smokes
+  now preserve only the remaining rename gap.
+- **Depends on**: feature 04's idempotent recursive storage delete, feature
+  06's explicit sidebar refresh, feature 07's parent navigation, and the
+  shared modal primitive.
+- **Surface for follow-up**: project deletion has hidden typed-data impact;
+  trash/undo, a reliable recursive summary, and reserved-route hardening
+  remain separate decisions.
+
+### 19 · enum-kind-label
+
+- **Affects**: enum-manager creation UI, optional display-label metadata, and
+  label persistence; existing vocabulary/API consumers keep stable IDs.
+- **Depends on**: feature 13's validated enum writes/Clear lifecycle, feature
+  11's persisted kind IDs, and feature 12's report-kind persistence.
+- **Surface for follow-up**: kind-ID rename needs a separate feature/report
+  cascade; display labels remain manager-only until other ID-based views need
+  them.
+
+### 20 · import-auto-filenames
+
+- **Affects**: existing import preview filename inputs and the cached tree
+  data used to find direct-child names; no storage transaction or request
+  shape changes.
+- **Depends on**: feature 14's filename validation and feature 17's stable
+  flattened scenario ordering.
+- **Surface for follow-up**: a concurrent writer can still consume a suggested
+  number before commit; storage remains authoritative and a retry UX would be
+  a separate decision.
+
+### 21 · rename-ui
+
+- **Affects**: project/module/branch header controls, folder-row filename
+  action, and exact/slash-bounded maintenance of run/report references.
+- **Depends on**: features 02/04/05 storage primitives, features 10/12 path
+  formats, and `tmsOpenModal`.
+- **Surface for follow-up**: file move still needs a cascade decision;
+  crash-safe relocation and undo remain separate.
+
+### 22 · folder-table-sort-filter
+
+- **Affects**: module/nested-folder direct test-case table and existing bulk
+  selection semantics; adds no storage or API surface.
+- **Depends on**: feature 07 folder-row rendering, feature 10 visible-row
+  selection precedent, and bulk-action HTMX binding.
+- **Surface for follow-up**: tag/group filtering, recursive search,
+  pagination, and preference persistence remain separate.
+
 ---
 
 ## Workflow relationships
@@ -342,8 +457,8 @@ Resolution target: 5–10 numbered steps each, enough to know which
 3–4 modules a feature spans and in what order — not a full call
 graph.
 
-Twelve workflows populated (W1–W9 cover the file / folder / search /
-SSE features; W10–W12 cover the test-run feature).
+Thirteen workflows populated (W1–W9 cover the file / folder / search /
+SSE features; W10–W12 cover the test-run feature; W13 covers tree counts).
 
 ### W1 · App boot & initial render
 
@@ -397,12 +512,11 @@ SSE features; W10–W12 cover the test-run feature).
 _Common shape: one storage method per operation, one HTTP route per
 operation. Diverges only in which UI surface invokes it._
 
-1. **Rename** — user clicks `#btn-rename` in `file_editor.html`;
-   `tmsEditor.rename()` PATCHes `/api/files/<p>/rename` with
-   `{file_name}`. `Storage.rename_file` acquires src+dst locks in
-   sorted order, checks for name conflicts in the same parent,
-   `os.replace`, `_mark_write` on both sides. Editor re-routes to
-   `/ui/file/<newpath>` on success.
+1. **Rename** — user clicks a folder-detail row's Rename action;
+   `tmsRenameFile()` PATCHes `/api/files/<p>/rename` with `{file_name}`.
+   `Storage.rename_file` acquires src+dst locks, preflights affected typed
+   metadata, moves the file, and atomically cascades exact/slash-bounded
+   run/report paths. The folder pane and Directory tree refresh on success.
 2. **Move** — `#btn-move` opens a tree-picker modal; on Confirm,
    `tmsEditor.move()` PATCHes `/api/files/<p>/move` with
    `{parent}`. `Storage.move_file` validates dest parent depth
@@ -513,16 +627,23 @@ operation. Diverges only in which UI surface invokes it._
    Storage validates each segment, enforces `1..10` depth, takes the
    per-path lock, `target.mkdir(parents=False, exist_ok=False)`,
    `_mark_write(target)`.
-3. **Rename** — API-only in v1. PATCH `/api/folders/<p>` with
-   `{name}`. `Storage.rename_folder` acquires src+dst locks in
-   sorted order, checks parent-scoped name uniqueness,
-   `os.replace`, `_mark_write` on both sides.
-4. **Delete** — API-only in v1. DELETE `/api/folders/<p>`.
-   `Storage.delete_folder` is idempotent on missing target;
-   otherwise `shutil.rmtree(target)` + `_mark_write(target)`.
-5. JS calls `tmsRefreshFolder` after create so the active main
-   pane reflects the new folder.
-6. Watcher suppresses the writing tab's events; other tabs get one
+3. **Rename** — project/module/branch headers call `tmsRenameFolder`, which
+   PATCHes `/api/folders/<p>` with `{name}`. `Storage.rename_folder` acquires
+   src+dst locks, preflights typed metadata, moves the folder, and atomically
+   cascades exact/slash-bounded run/report paths. Project rename fully reloads
+   at its new path; deeper folders refresh their pane and Directory tree.
+4. **Delete** — `DELETE /api/folders/<p>` delegates to
+   `Storage.delete_folder`, idempotent on a missing target; otherwise
+   `shutil.rmtree(target)` + `_mark_write(target)`. Feature 18 exposes it
+   only from generic module/branch headers: `tmsDeleteFolder` opens a
+   permanent-delete modal that names the current folder, then sends DELETE.
+5. On successful deletion, JS closes the modal, calls
+   `tmsRefreshFolder(parent)` to leave the invalid folder view, and explicitly
+   refreshes the Directory tree. Root/project/typed-area views expose no
+   generic delete control.
+6. JS calls `tmsRefreshFolder` after create so the active main pane reflects
+   the new folder.
+7. Watcher suppresses the writing tab's events; other tabs get one
    coalesced `"change"` event → tree refresh.
 
 ### W8 · Search (text and tag)
@@ -723,3 +844,17 @@ swap._
    event for self-writes; multi-process or
    out-of-band edits are required to drive the banner end-to-
    end (same caveat as `08-file-editor` W6).
+
+### W13 · Render recursive tree counts
+
+1. Initial `/` render or `/ui/tree` calls `Storage.list_tree()`.
+2. The recursive storage walk visits visible folders and `.feature` leaves,
+   parsing each feature's feature + scenario tags for `auto` classification.
+3. Each folder aggregates direct files and descendant folder counts into
+   `{total, auto, non_auto}` metadata.
+4. `/api/tree` exposes the same numeric metadata when requested; no new route
+   or watcher payload is introduced.
+5. `tree.html` renders the metadata beside each folder name while preserving
+   `data-path`, caret toggles, HTMX navigation, and folder ordering.
+6. Existing SSE/manual full-tree refresh rebuilds counts, so external file or
+   tag changes appear on the next tree swap.

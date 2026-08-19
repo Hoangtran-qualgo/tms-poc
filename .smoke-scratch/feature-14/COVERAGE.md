@@ -39,7 +39,7 @@ Smoke coverage against
 | DO-4: global `Import test cases` button in the top bar; removed from folder views | `F14_04_import_ui` | render |
 | DO-4: `tmsImportFile()` no-arg launcher; project + destination picker from `/api/tree`, folders shown relative to project | `F14_04_import_ui` | source |
 | DO-4: preview + commit endpoints wired; client gates file type + 3 MB; styled file picker | `F14_04_import_ui` | source |
-| DO-4: bordered preview table (Scenario name 30-char truncate · Feature tag · Scenario tag top-2 `@`+N-more · File name) with placeholder-only filename inputs; `xl` modal | `F14_04_import_ui` | source |
+| DO-4: bordered preview table (Scenario name 30-char truncate · Feature tag · Scenario tag top-2 `@`+N-more · File name) with editable filename inputs; `xl` modal | `F14_04_import_ui` | source |
 | DO-4: enum-drop ack + filename completeness gate Confirm; success refreshes folder + tree; server reasons surfaced | `F14_04_import_ui` | source |
 
 ## Notes

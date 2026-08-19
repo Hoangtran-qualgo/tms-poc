@@ -5,7 +5,7 @@
    (in static/app.js) reads that data and wires up all interactions.
 
    Sections present per PLAN.md §9.4:
-     - header: breadcrumb, file_name, Rename / Save buttons, dirty indicator
+     - header: breadcrumb, Move / Save buttons, dirty indicator
      - banner: empty placeholder, populated by editor on external changes
      - tabs: Structured / Raw
      - structured: description, feature tags, background card, scenario card
@@ -57,8 +57,6 @@
        ~1.5s after a successful PATCH or raw PUT, then hides. Same badge
        serves the structured Save and the Raw Save paths. #}
     <span id="saved-indicator" class="hidden text-xs text-emerald-600" role="status" aria-live="polite">Saved</span>
-    <button type="button" id="btn-rename"
-            class="px-2 py-1 text-sm border border-slate-300 rounded hover:bg-slate-50">Rename&hellip;</button>
     {# Move the file to a different folder. Opens a folder-picker modal.
        Confirms when state.dirty so unsaved edits are not silently lost. #}
     <button type="button" id="btn-move"

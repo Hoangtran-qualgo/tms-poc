@@ -1,10 +1,9 @@
-# enum.knowledge: content-knowledge
-Feature: user can view the version history of page and slide
+Feature: user can view the version history of knowledge suite
 
   Background:
     Given I login desktop app as user
 
-  Scenario Outline: user can view the version history of page and slide
+  Scenario Outline: user can view the version history of knowledge suite
     Given I open the dekstop app
     When I edit 1 <content> in knowledge content
     And I click on History button

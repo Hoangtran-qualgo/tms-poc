@@ -115,12 +115,21 @@ def ui_enums(project: str):
     s = _storage()
     try:
         vocab = s.read_project_enums(project)
+        kind_labels = s.read_project_enum_kind_labels(project)
     except FileNotFoundError:
         return render_template(
-            "enums_manager.html", project=project, vocab=None, missing=True
+            "enums_manager.html",
+            project=project,
+            vocab=None,
+            kind_labels={},
+            missing=True,
         )
     return render_template(
-        "enums_manager.html", project=project, vocab=vocab, missing=False
+        "enums_manager.html",
+        project=project,
+        vocab=vocab,
+        kind_labels=kind_labels,
+        missing=False,
     )
 
 
@@ -226,6 +235,7 @@ def ui_folder(p: str = ""):
         segments=segments,
         crumbs=_folder_crumbs(segments),
         folder_path=folder_path,
+        parent_path="/".join(segments[:-1]),
         folder_name=segments[-1],
         folders=listing["folders"],
         features=listing["features"],

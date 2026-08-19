@@ -64,16 +64,15 @@ assert "/api/files/import" in body, "U5: must call the commit endpoint"
 print("PASS  U5: wires preview (dry-run) and commit endpoints")
 
 
-# --- U6: per-scenario preview table + placeholder-only filename inputs -------
+# --- U6: per-scenario preview table + editable filename inputs ---------------
 for h in ("Scenario name", "Feature tag", "Scenario tag", "File name"):
     assert ">" + h + "<" in body, f"U6: preview table missing the {h!r} column header"
 assert 'data-role="filename"' in body, "U6: must render per-scenario filename inputs"
 assert 'input.placeholder = "file name"' in body, "U6: filename input must use the 'file name' placeholder"
-assert "input.value = tmsSlugifyForFilename" not in body, "U6: filename inputs must NOT be pre-filled"
 assert "full.slice(0, 50)" in body, "U6: scenario name must be truncated to 50 chars with an ellipsis"
 assert "+ more" in body and "t.slice(0, 2)" in body, "U6: tags must show top 2 + N-more, @-prefixed"
 assert 'size: "2xl"' in body, "U6: modal must use the wider '2xl' size (50-char scenario name)"
-print("PASS  U6: bordered preview table (name/feature-tag/scenario-tag/file) with placeholder filenames, wide modal")
+print("PASS  U6: bordered preview table (name/feature-tag/scenario-tag/file) with editable filename inputs, wide modal")
 
 
 # --- U7: client-side file-type + size gating + styled picker -----------------

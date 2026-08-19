@@ -2,8 +2,6 @@
 
 from __future__ import annotations
 
-import os
-
 from ..errors import ImportValidationError, NameConflictError, ValidationError
 from ..gherkin_io import parse_feature, serialize_feature
 from ..models import Feature, Scenario, validate_feature
@@ -362,6 +360,6 @@ class FeaturesMixin:
                     path=dst_key,
                     message=f"A file named {new_leaf!r} already exists.",
                 )
-            os.replace(source, target)
-            self._mark_write(source)
-            self._mark_write(target)
+            self._relocate_with_reference_cascade(
+                source, target, src_key, dst_key, segments[0]
+            )

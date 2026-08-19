@@ -62,7 +62,7 @@ Template (`file_editor.html`):
 
 - Topbar buttons (left → right): breadcrumb, dirty indicator
   (`#dirty-indicator`), Saved badge (`#saved-indicator`),
-  `#btn-rename`, `#btn-move`, `#btn-reload`, `#btn-save`.
+  `#btn-move`, `#btn-reload`, `#btn-save`.
 - Banner slot: `#editor-banner`, empty by default; populated by
   `tmsEditor._showBanner`.
 - Tabs: `#tab-btn-structured`, `#tab-btn-raw`.
@@ -249,8 +249,7 @@ Browser-native confirm fires when `state.dirty == true`.
 
 ## Affects
 
-- `05-testcase-crud`: the editor is the primary UI surface that
-  invokes rename / move / save / save-raw routes. Every error
+- `05-testcase-crud`: the editor invokes move / save / save-raw routes. Every error
   envelope from those routes is rendered inside the editor.
 - `01-gherkin-io`: the structured tab's `state.feature` is the
   canonical `Feature.to_dict()` shape; the raw tab's bytes feed
@@ -276,9 +275,9 @@ Browser-native confirm fires when `state.dirty == true`.
 
 ## Surface for follow-up
 
-- **Rename still uses `window.prompt`** — should migrate to
-  `tmsOpenModal` for consistency with create and move. Pure
-  cosmetic; no contract change.
+- **Rename is intentionally outside the editor.** Feature 21 places its modal
+  in the folder-detail file row, avoiding a rename while an editor buffer is
+  dirty.
 - **No Delete / Duplicate buttons in the editor** — `05-testcase-
   crud` exposes both APIs; adding them here is the obvious next
   step (with dirty-buffer confirms + 204 idempotence handling for
@@ -287,13 +286,9 @@ Browser-native confirm fires when `state.dirty == true`.
   if the disk version becomes unparseable mid-edit, the editor
   silently surfaces the parse error on the next reload attempt
   rather than warning proactively.
-- `10-feature-test-run` (shipped) links runs to test cases by
-  external `file_path` but chose the **tombstone-on-render** path,
-  so the file editor's rename / move / delete handlers need **no**
-  coordination with run files — the run editor recomputes the
-  `missing` flag per row on every render. The flip side: rename a
-  feature file and any open run referencing it goes tombstoned
-  silently until the user notices on the next render.
+- `10-feature-test-run` (shipped) links runs to test cases by external
+  `file_path`. Feature 21 cascades a rename; editor move/delete still use
+  tombstone-on-render and recompute `missing` per row.
 - Multi-tab editing of the same file is technically permitted but
   the conflict policy (last-write-wins) is silent — no banner
   warns the loser.

@@ -1,3 +1,6 @@
+AppApi:
+  - ws: Workspaces
+  - template: Knowledge Templates
 components:
   - AI-chat: AI chat in desktop app
   - ai-agents: AI & Agents in portal
@@ -12,3 +15,9 @@ knowledge:
   - attachments-knowledge: Attachments in Knowledge
   - connector-knowledge: Connectors in Knowledge
   - content-knowledge: Content in Knowledge
+portalAPI:
+  - org: Organizations
+  - ws: Workspaces
+  - bizRole: Business Roles
+  - dept: Departments
+  - conversation: Conversations
