@@ -398,8 +398,11 @@ test.describe("workspace shell", () => {
       await page.goto(`/?tab=reports&project=${encodeURIComponent(project)}`);
       await page.locator("tbody tr").filter({ hasText: "Inventory" }).click();
       await expect(page.locator(".card-header strong").filter({ hasText: /^Inventory tag_inventory$/ })).toBeVisible();
-      await expect(page.getByText("Computed view", { exact: true })).toBeVisible();
+      await expect(page.getByText("Result view", { exact: true })).toBeVisible();
       await expect(page.getByText("not carrying", { exact: true })).toBeVisible();
+      await expect(page.locator(".report-buckets details").first()).toHaveAttribute("open", "");
+      await expect(page.locator(".report-case-groups li")).toHaveText("Case");
+      await expect(page.getByText(`${project}/Checkout/case.feature`, { exact: true })).toHaveCount(0);
       const scope = page.locator("section.report-source-editor input");
       await scope.fill(project);
       await page.getByRole("button", { name: "Save", exact: true }).click();
@@ -426,8 +429,23 @@ test.describe("workspace shell", () => {
       expect((await request.post(`/api/reports/${project}`, { data: { file_name: "buy-trend", title: "Buy trend", type: "case_trend", case_path: scenarioPath, run_paths: [runPath] } })).status()).toBe(201);
       await page.goto(`/?tab=reports&project=${encodeURIComponent(project)}`);
       await page.locator("tbody tr").filter({ hasText: "Buy trend" }).click();
-      await expect(page.locator(".report-source-row").filter({ hasText: runPath })).toBeVisible();
-      await page.locator(".report-source-row").filter({ hasText: runPath }).click();
+      const queuedRuns = page.locator("details.report-source-list");
+      await expect(queuedRuns).not.toHaveAttribute("open", "");
+      await queuedRuns.locator("summary").click();
+      await expect(page.locator(".report-source-row").filter({ hasText: "Nightly" })).toBeVisible();
+      await expect(page.getByText(runPath, { exact: true })).toHaveCount(0);
+      await page.getByRole("button", { name: "Remove Nightly" }).click();
+      const addRun = page.locator("details.report-run-queue");
+      await expect(addRun).not.toHaveAttribute("open", "");
+      await expect(addRun.locator("summary")).toContainText("Add Run");
+      await expect(addRun.locator("summary")).toContainText("1 available test runs");
+      await addRun.locator("summary").click();
+      await page.locator(".report-run-option").filter({ hasText: "Nightly" }).click();
+      await expect(page.getByRole("button", { name: "Save", exact: true })).toBeEnabled();
+      await page.getByRole("button", { name: "Save", exact: true }).click();
+      await expect(page.getByText("Saved", { exact: true })).toBeVisible();
+      await queuedRuns.locator("summary").click();
+      await page.locator(".report-source-row").filter({ hasText: "Nightly" }).click();
       await expect(page).toHaveURL(new RegExp(`tab=runs.*project=${project}.*run=smoke`));
       await expect(page.locator("select.case-status")).toHaveValue("PENDING");
     } finally {

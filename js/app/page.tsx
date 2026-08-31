@@ -386,7 +386,7 @@ function ReportCases({ cases }: { cases: unknown[] }) {
     grouped.set(folder, entries);
   }
   if (!grouped.size) return <span className="muted">No matching cases.</span>;
-  return <div className="report-case-groups">{[...grouped.entries()].map(([folder, entries]) => <div key={folder}><strong>{folder}</strong><ul>{entries.map((entry) => <li key={`${entry.path}:${entry.name}`}><code>{entry.path}</code>{entry.name && <span className="muted"> — {entry.name}</span>}</li>)}</ul></div>)}</div>;
+  return <div className="report-case-groups">{[...grouped.entries()].map(([folder, entries]) => <div key={folder}><strong>{folder}</strong><ul>{entries.map((entry) => <li key={`${entry.path}:${entry.name}`}>{entry.name || "Scenario unavailable"}</li>)}</ul></div>)}</div>;
 }
 
 function ReportComputedView({ view }: { view: Record<string, unknown> }) {
@@ -399,7 +399,7 @@ function ReportComputedView({ view }: { view: Record<string, unknown> }) {
     const path = typeof item.run_path === "string" ? item.run_path : "";
     const interactive = Boolean(reportRunUrl(path));
     return <tr className={interactive ? "clickable-row" : undefined} key={`${String(item.run_path ?? index)}`} tabIndex={interactive ? 0 : undefined} onClick={interactive ? () => openReportRun(path) : undefined} onKeyDown={interactive ? (event) => { if (event.key === "Enter" || event.key === " ") { event.preventDefault(); openReportRun(path); } } : undefined}><td>{String(item.run_name ?? item.run ?? "")}</td><td>{String(item.created_at ?? "")}</td><td><span className={`status status-${result.toLowerCase()}`}>{result}</span></td></tr>;
-  })}</tbody></table></div> : <p className="muted">No runs selected.</p>}</> : buckets.length ? <div className="report-buckets">{buckets.map((bucket) => { const value = String(bucket.value ?? ""); const label = String(bucket.label ?? value); const cases = Array.isArray(bucket.cases) ? bucket.cases : []; return <details key={value}><summary><span>{label}</span><span className="muted">{String(bucket.count ?? cases.length)} ({percent(bucket.pct)})</span></summary><ReportCases cases={cases} /></details>; })}</div> : <p className="muted">No matching data.</p>}</div>;
+  })}</tbody></table></div> : <p className="muted">No runs selected.</p>}</> : buckets.length ? <div className="report-buckets">{buckets.map((bucket) => { const value = String(bucket.value ?? ""); const label = String(bucket.label ?? value); const cases = Array.isArray(bucket.cases) ? bucket.cases : []; return <details key={value} open><summary><span>{label}</span><span className="muted">{String(bucket.count ?? cases.length)} ({percent(bucket.pct)})</span></summary><ReportCases cases={cases} /></details>; })}</div> : <p className="muted">No matching data.</p>}</div>;
 }
 
 function ReportsPanel({ project, initialReport, onError }: { project: string; initialReport: string; onError: (message: string) => void }) {
@@ -410,7 +410,6 @@ function ReportsPanel({ project, initialReport, onError }: { project: string; in
   const [selected, setSelected] = useState<{ summary: ReportSummary; definition: Record<string, unknown>; view: Record<string, unknown> } | null>(null);
   const [reportDraft, setReportDraft] = useState<Record<string, unknown> | null>(null);
   const [availableRuns, setAvailableRuns] = useState<Array<{ path: string; name: string; group: string; created_at: string }>>([]);
-  const [runToAdd, setRunToAdd] = useState("");
   const [reportDirty, setReportDirty] = useState(false);
   const [reportSaved, setReportSaved] = useState(false);
   const [reportLoading, setReportLoading] = useState(false);
@@ -438,7 +437,6 @@ function ReportsPanel({ project, initialReport, onError }: { project: string; in
       setReportDraft(definition);
       setReportDirty(false);
       setReportSaved(false);
-      setRunToAdd("");
       if (["enum_ranking", "tag_ranking", "case_trend"].includes(summary.type)) {
         setAvailableRuns((await api<{ runs: Array<{ path: string; name: string; group: string; created_at: string }> }>(`/api/runs/${encodeURIComponent(owner)}`)).runs);
       } else setAvailableRuns([]);
@@ -455,7 +453,7 @@ function ReportsPanel({ project, initialReport, onError }: { project: string; in
   }, [initialReport, project, reports, selected]);
   function updateDraft(patch: Record<string, unknown>) { setReportDraft((current) => current ? { ...current, ...patch } : current); setReportDirty(true); setReportSaved(false); }
   function runPaths(): string[] { return Array.isArray(reportDraft?.run_paths) ? reportDraft.run_paths.filter((value): value is string => typeof value === "string") : []; }
-  function addRun() { if (!runToAdd || runPaths().includes(runToAdd)) return; if (runPaths().length >= 10) { onError("A report may reference at most 10 runs."); return; } updateDraft({ run_paths: [...runPaths(), runToAdd] }); setRunToAdd(""); onError(""); }
+  function addRun(path: string) { if (!path || runPaths().includes(path)) return; if (runPaths().length >= 10) { onError("A report may reference at most 10 runs."); return; } updateDraft({ run_paths: [...runPaths(), path] }); onError(""); }
   async function saveReport() {
     if (!selected || !reportDraft) return;
     try {
@@ -480,15 +478,19 @@ function ReportsPanel({ project, initialReport, onError }: { project: string; in
     else onError("Select a project before creating a report.");
   }
   const runSet = reportDraft && ["enum_ranking", "tag_ranking", "case_trend"].includes(String(reportDraft.type));
+  const queuedRunPaths = runPaths();
+  const validRuns = availableRuns.filter((run) => run.name && !queuedRunPaths.includes(run.path));
+  const runName = (path: string) => availableRuns.find((run) => run.path === path)?.name || "Unavailable test run";
   const visibleReports = reports.filter((report) => Boolean(project) || !scopeProject || report.project === scopeProject);
   return <div className="split-view">
     {creating && <ReportCreateForm project={project || scopeProject} onCancel={() => setCreating(false)} onCreated={async () => { setCreating(false); await load(); }} onError={onError} />}
     <Card><CardHeader><div><strong>Reports</strong><div className="muted">{project || "All projects"}</div></div><div className="actions">{!project && <select aria-label="Report project scope" value={scopeProject} onChange={(event) => setScopeProject(event.target.value)}><option value="">All projects</option>{projects.map((owner) => <option key={owner}>{owner}</option>)}</select>}<Button variant="primary" onClick={beginCreate}>New report</Button><button className="button" onClick={() => void load()}>Refresh</button></div></CardHeader><CardContent><div className="table-wrap"><Table><thead><tr><th>Report</th><th>Project</th><th>Type</th><th>Source</th><th>Created</th></tr></thead><tbody>{visibleReports.map((report) => <tr className="clickable-row" key={`${report.project ?? ""}/${report.file_name}`} tabIndex={0} aria-label={`Open ${report.title || report.file_name}`} onClick={() => void open(report)} onKeyDown={(event) => { if (event.key === "Enter" || event.key === " ") { event.preventDefault(); void open(report); } }}><td>{report.title || report.file_name}</td><td>{report.project ?? project}</td><td>{report.type || <span className="muted">Malformed</span>}</td><td>{report.source}</td><td>{report.created_at}</td></tr>)}</tbody></Table></div>{!visibleReports.length && <p className="muted">No reports found.</p>}</CardContent></Card>
     {reportLoading && <Card><CardContent><div className="loading-state" role="status"><LoaderCircle className="loading-icon" size={18} aria-hidden="true" /><span>Loading report…</span></div></CardContent></Card>}
-    {selected && reportDraft && <Card><CardHeader><div><strong>{selected.summary.title || selected.summary.file_name}<span className="report-type"> {selected.summary.type}</span></strong>{reportDirty && <span className="dirty-indicator">Unsaved</span>}{reportSaved && !reportDirty && <span className="saved-indicator">Saved</span>}</div><div className="actions"><Button onClick={() => void reloadReport()}>Reload</Button><Button variant="primary" disabled={!reportDirty} onClick={() => void saveReport()}>Save</Button></div></CardHeader><CardContent><section className="editor-section report-source-editor"><div className="editor-section-heading"><strong>Data source</strong><span className="muted">{runSet ? `${runPaths().length}/10 runs` : "Folder scope"}</span></div>{runSet ? <><div className="inline-form"><select aria-label="Run to add" value={runToAdd} onChange={(event) => setRunToAdd(event.target.value)}><option value="">Select a run</option>{availableRuns.filter((run) => !runPaths().includes(run.path)).map((run) => <option key={run.path} value={run.path}>{run.group} / {run.name || run.path} ({run.created_at})</option>)}</select><Button onClick={addRun} disabled={!runToAdd || runPaths().length >= 10}>Add run</Button></div><div className="report-source-list">{runPaths().map((path) => {
+    {selected && reportDraft && <Card><CardHeader><div><strong>{selected.summary.title || selected.summary.file_name}<span className="report-type"> {selected.summary.type}</span></strong>{reportDirty && <span className="dirty-indicator">Unsaved</span>}{reportSaved && !reportDirty && <span className="saved-indicator">Saved</span>}</div><div className="actions"><Button onClick={() => void reloadReport()}>Reload</Button><Button variant="primary" disabled={!reportDirty} onClick={() => void saveReport()}>Save</Button></div></CardHeader><CardContent><section className="editor-section report-source-editor"><div className="editor-section-heading"><strong>Data source</strong><span className="muted">{runSet ? `${queuedRunPaths.length}/10 runs` : "Folder scope"}</span></div>{runSet ? <><details className="report-source-list"><summary><span>Queued test runs</span><span className="muted">{queuedRunPaths.length}</span></summary>{queuedRunPaths.map((path) => {
       const interactive = Boolean(reportRunUrl(path));
-      return <div className={`report-source-row ${interactive ? "clickable-row" : ""}`} key={path} role={interactive ? "link" : undefined} tabIndex={interactive ? 0 : undefined} onClick={interactive ? () => openReportRun(path) : undefined} onKeyDown={interactive ? (event) => { if (event.target !== event.currentTarget || (event.key !== "Enter" && event.key !== " ")) return; event.preventDefault(); openReportRun(path); } : undefined}><code>{path}</code><button className="link-button danger-text" onClick={(event) => { event.stopPropagation(); updateDraft({ run_paths: runPaths().filter((current) => current !== path) }); }}>remove</button></div>;
-    })}{!runPaths().length && <span className="muted">No runs selected. Add a run to populate this report.</span>}</div></> : <label className="editor-field"><span>Scope folder</span><Input value={typeof reportDraft.scope === "string" ? reportDraft.scope : ""} onChange={(event) => updateDraft({ scope: event.target.value })} /></label>}</section><h3>Definition</h3><pre className="json-view">{JSON.stringify(reportDraft, null, 2)}</pre><h3>Computed view</h3><ReportComputedView view={selected.view} /></CardContent></Card>}
+      const name = runName(path);
+      return <div className={`report-source-row ${interactive ? "clickable-row" : ""}`} key={path} role={interactive ? "link" : undefined} tabIndex={interactive ? 0 : undefined} onClick={interactive ? () => openReportRun(path) : undefined} onKeyDown={interactive ? (event) => { if (event.target !== event.currentTarget || (event.key !== "Enter" && event.key !== " ")) return; event.preventDefault(); openReportRun(path); } : undefined}><span title={path}>{name}</span><button className="icon-button danger-icon" aria-label={`Remove ${name}`} title="Remove test run" onClick={(event) => { event.stopPropagation(); updateDraft({ run_paths: queuedRunPaths.filter((current) => current !== path) }); }}><Trash2 size={16} aria-hidden="true" /></button></div>;
+    })}{!queuedRunPaths.length && <span className="muted">No queued test runs.</span>}</details><details className="report-run-queue"><summary><span>Add Run</span><span className="muted">{validRuns.length} available test runs</span></summary><div className="report-run-queue-body"><div className="report-run-options">{validRuns.map((run) => <button className="report-run-option" key={run.path} onClick={() => addRun(run.path)}><strong>{run.name}</strong><span className="muted">{run.group} · {run.created_at}</span></button>)}{!validRuns.length && <span className="muted">No available test runs.</span>}</div><span className="muted">Save applies queued runs to Result view.</span></div></details></> : <label className="editor-field"><span>Scope folder</span><Input value={typeof reportDraft.scope === "string" ? reportDraft.scope : ""} onChange={(event) => updateDraft({ scope: event.target.value })} /></label>}</section><h3>Result view</h3><ReportComputedView view={selected.view} /></CardContent></Card>}
   </div>;
 }
 
