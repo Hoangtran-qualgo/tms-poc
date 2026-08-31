@@ -3,7 +3,6 @@ __pycache__/
 *.pyc
 *.pyo
 .DS_Store
-project/kchatb2b/
 js/.next/
 js/node_modules/
 js/test-results/
