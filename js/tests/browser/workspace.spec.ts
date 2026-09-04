@@ -18,6 +18,27 @@ test.describe("workspace shell", () => {
     await expect(page.getByRole("button", { name: "New project" })).toBeVisible();
   });
 
+  test("collapses, expands, and resizes the directory panel", async ({ page }) => {
+    await page.goto("/");
+    const sidebar = page.locator("aside.sidebar");
+    await expect(page.getByRole("button", { name: "Refresh directory" })).toBeVisible();
+    await expect(page.getByRole("button", { name: "Collapse directory panel" })).toBeVisible();
+    const resize = page.getByRole("separator", { name: "Resize directory panel" });
+    const before = await sidebar.boundingBox();
+    const handle = await resize.boundingBox();
+    expect(before).not.toBeNull();
+    expect(handle).not.toBeNull();
+    await page.mouse.move(handle!.x + handle!.width / 2, handle!.y + handle!.height / 2);
+    await page.mouse.down();
+    await page.mouse.move(handle!.x + 80, handle!.y + handle!.height / 2);
+    await page.mouse.up();
+    await expect.poll(async () => (await sidebar.boundingBox())?.width ?? 0).toBeGreaterThan(before!.width + 60);
+    await page.getByRole("button", { name: "Collapse directory panel" }).click();
+    await expect(sidebar.locator(".tree-list")).toHaveCount(0);
+    await page.getByRole("button", { name: "Expand directory panel" }).click();
+    await expect(sidebar.locator(".tree-list")).toBeVisible();
+  });
+
   test("expands and collapses directory folders without losing state on refresh", async ({ page, request }) => {
     const project = `pw_tree_${Date.now()}`;
     const module = "Checkout";
@@ -85,16 +106,41 @@ test.describe("workspace shell", () => {
     await page.goto("/?tab=directory&project=test-proj01&path=test-proj01%2FmoduleA");
     const row = page.locator("tbody tr").filter({ hasText: "scenario name but different" });
     await expect(row).toBeVisible();
-    await expect(row.locator("td")).toHaveCount(4);
-    await expect(row.locator("td").nth(1).locator(".tag")).toHaveCount(2);
-    await expect(row.locator("td").nth(1).locator(".inline-more")).toHaveText("...");
-    await expect(row.locator("td").nth(2).locator(".tag")).toHaveCount(1);
+    await expect(row.locator("td")).toHaveCount(5);
+    await expect(row.locator("td").nth(2).locator(".tag")).toHaveCount(2);
     await expect(row.locator("td").nth(2).locator(".inline-more")).toHaveText("...");
+    await expect(row.locator("td").nth(3).locator(".tag")).toHaveCount(1);
+    await expect(row.locator("td").nth(3).locator(".inline-more")).toHaveText("...");
     await expect(row.getByText("test_case1.feature", { exact: true })).toHaveCount(0);
     await expect(row.getByRole("button", { name: "Edit test_case1.feature" })).toBeVisible();
+    await expect(row.getByRole("button", { name: "Duplicate test_case1.feature" })).toBeVisible();
     await expect(row.getByRole("button", { name: "Remove test_case1.feature" })).toBeVisible();
     await row.click();
     await expect(page.getByText("test-proj01/moduleA/test_case1.feature", { exact: true })).toBeVisible();
+  });
+
+  test("creates and duplicates scenarios without requesting a file name", async ({ page, request }) => {
+    const project = `pw_scenario_${Date.now()}`;
+    const parent = `${project}/Checkout`;
+    try {
+      expect((await request.post("/api/folders", { data: { parent: "", name: project } })).status()).toBe(201);
+      expect((await request.post("/api/folders", { data: { parent: project, name: "Checkout" } })).status()).toBe(201);
+      await page.goto(`/?tab=directory&project=${encodeURIComponent(project)}&path=${encodeURIComponent(parent)}`);
+      await page.getByRole("button", { name: "+ Scenario", exact: true }).click();
+      await page.getByLabel("Scenario name").fill("Buy item");
+      await page.getByRole("button", { name: "Continue", exact: true }).click();
+      await page.getByLabel("Feature name (optional)").fill("Purchase");
+      await page.getByRole("button", { name: "Create", exact: true }).click();
+      const first = page.locator("tbody tr").filter({ hasText: "Buy item" });
+      await expect(first).toBeVisible();
+      await first.getByRole("button", { name: "Duplicate Checkout_1.feature" }).click();
+      await expect(page.locator("tbody tr").filter({ hasText: "Buy item - Copy" })).toBeVisible();
+      const copied = await request.get(`/api/files/${project}/Checkout/Checkout_2.feature`);
+      expect(copied.status()).toBe(200);
+      await expect(copied.json()).resolves.toMatchObject({ scenario: { name: "Buy item - Copy" } });
+    } finally {
+      await request.delete(`/api/folders/${project}`);
+    }
   });
 
   test("paginates directory scenarios with selectable page sizes", async ({ page, request }) => {
@@ -119,6 +165,135 @@ test.describe("workspace shell", () => {
       await pageSize.selectOption("50");
       await expect(rows).toHaveCount(21);
       await expect(page.locator(".table-pagination")).toContainText("1 - 21 of 21");
+    } finally {
+      await request.delete(`/api/folders/${project}`);
+    }
+  });
+
+  test("moves checked scenarios through the destination folder tree", async ({ page, request }) => {
+    const project = `pw_bulk_move_${Date.now()}`;
+    const source = `${project}/Checkout`;
+    const destination = `${project}/Regression`;
+    try {
+      expect((await request.post("/api/folders", { data: { parent: "", name: project } })).status()).toBe(201);
+      expect((await request.post("/api/folders", { data: { parent: project, name: "Checkout" } })).status()).toBe(201);
+      expect((await request.post("/api/folders", { data: { parent: project, name: "Regression" } })).status()).toBe(201);
+      expect((await request.post("/api/files", { data: { parent: source, file_name: "case-one", scenario_name: "Case one" } })).status()).toBe(201);
+      expect((await request.post("/api/files", { data: { parent: source, file_name: "case-two", scenario_name: "Case two" } })).status()).toBe(201);
+      await page.goto(`/?tab=directory&project=${encodeURIComponent(project)}&path=${encodeURIComponent(source)}`);
+      const move = page.getByRole("button", { name: "Move selected scenarios" });
+      await expect(move).toBeDisabled();
+      await page.getByLabel("Select all scenarios").check();
+      await expect(page.getByLabel("Select case-one.feature")).toBeChecked();
+      await expect(page.getByLabel("Select case-two.feature")).toBeChecked();
+      await page.getByLabel("Select case-two.feature").uncheck();
+      await expect(move).toBeEnabled();
+      await move.click();
+      const dialog = page.getByRole("dialog", { name: "Move selected scenarios" });
+      await dialog.getByRole("button", { name: `Expand ${project}` }).click();
+      await dialog.getByRole("button", { name: "Regression", exact: true }).click();
+      await dialog.getByRole("button", { name: "Move 1 scenario", exact: true }).click();
+      await expect(page.locator(".card-header strong").filter({ hasText: destination })).toBeVisible();
+      expect((await request.get(`/api/files/${project}/Regression/case-one.feature`)).status()).toBe(200);
+      expect((await request.get(`/api/files/${project}/Checkout/case-one.feature`)).status()).toBe(404);
+    } finally {
+      await request.delete(`/api/folders/${project}`);
+    }
+  });
+
+  test("edits selected scenario tags and shared backgrounds", async ({ page, request }) => {
+    const project = `pw_bulk_info_${Date.now()}`;
+    const parent = `${project}/Checkout`;
+    const feature = (name: string, tags: string[], scenarioTags: string[]) => ({ description: "Checkout", tags, background: { steps: [{ keyword: "Given", text: "a cart", data_table: null }] }, scenario: { kind: "scenario", name, tags: scenarioTags, steps: [], examples: [] }, enums: {} });
+    try {
+      expect((await request.post("/api/folders", { data: { parent: "", name: project } })).status()).toBe(201);
+      expect((await request.post("/api/folders", { data: { parent: project, name: "Checkout" } })).status()).toBe(201);
+      expect((await request.post("/api/files", { data: { parent, file_name: "alpha", scenario_name: "Case one" } })).status()).toBe(201);
+      expect((await request.post("/api/files", { data: { parent, file_name: "bravo", scenario_name: "Case two" } })).status()).toBe(201);
+      expect((await request.patch(`/api/files/${project}/Checkout/alpha.feature`, { data: feature("Case one", ["auto"], ["auto", "regression"]) })).status()).toBe(200);
+      expect((await request.patch(`/api/files/${project}/Checkout/bravo.feature`, { data: feature("Case two", ["regression", "auto"], ["auto", "deferred"]) })).status()).toBe(200);
+
+      await page.goto(`/?tab=directory&project=${encodeURIComponent(project)}&path=${encodeURIComponent(parent)}`);
+      await page.getByLabel("Select all scenarios").check();
+      await page.getByRole("button", { name: "Edit selected scenario info" }).click();
+      const dialog = page.getByRole("dialog", { name: "Edit selected scenario info" });
+      await expect(dialog.getByLabel("Tag level")).toHaveValue("scenario");
+      await expect(dialog.locator(".bulk-info-tags .tag-editor")).toContainText("@auto");
+      await expect(dialog.locator(".bulk-info-tags .tag-editor")).toContainText("@regression");
+      await expect(dialog.locator(".bulk-info-tags .tag-editor")).toContainText("@deferred");
+      await expect(dialog.getByLabel("Replace all tags")).toHaveCount(0);
+      await dialog.getByLabel("Current tags").fill("checked");
+      await dialog.getByLabel("Current tags").press("Enter");
+      await dialog.getByRole("button", { name: "Remove tag @deferred" }).click();
+      await dialog.getByLabel("Tag level").selectOption("feature");
+      await expect(dialog.locator(".bulk-info-tags .tag-editor")).toContainText("@auto");
+      await expect(dialog.locator(".bulk-info-tags .tag-editor")).toContainText("@regression");
+      await dialog.getByLabel("Current tags").fill("deferred");
+      await dialog.getByLabel("Current tags").press("Enter");
+      await dialog.getByRole("button", { name: "Remove tag @auto" }).click();
+      await dialog.getByRole("button", { name: "Edit background" }).click();
+      await dialog.getByLabel("Step 1 text").fill("an updated cart");
+      const patchPath = `**/api/files/${project}/Checkout/alpha.feature`;
+      let holdFirstSave = true;
+      let releaseSave!: () => void;
+      let saveStarted!: () => void;
+      const firstSaveStarted = new Promise<void>((resolve) => { saveStarted = resolve; });
+      await page.route(patchPath, async (route) => {
+        if (route.request().method() !== "PATCH" || !holdFirstSave) return route.continue();
+        holdFirstSave = false;
+        saveStarted();
+        await new Promise<void>((resolve) => { releaseSave = resolve; });
+        await route.continue();
+      });
+      await dialog.getByRole("button", { name: "Save changes" }).click();
+      await firstSaveStarted;
+      await expect(dialog.getByRole("status", { name: "Saving changes" })).toBeVisible();
+      await expect(dialog.getByLabel("Current tags")).toBeDisabled();
+      await expect(dialog.getByRole("button", { name: "Cancel" })).toBeDisabled();
+      releaseSave();
+      await expect(dialog).toHaveCount(0);
+
+      const one = await request.get(`/api/files/${project}/Checkout/alpha.feature`);
+      const two = await request.get(`/api/files/${project}/Checkout/bravo.feature`);
+      await expect(one.json()).resolves.toMatchObject({ tags: ["deferred"], background: { steps: [{ text: "an updated cart" }] }, scenario: { tags: ["auto", "regression", "checked"] } });
+      await expect(two.json()).resolves.toMatchObject({ tags: ["regression", "deferred"], background: { steps: [{ text: "an updated cart" }] }, scenario: { tags: ["auto", "checked"] } });
+
+      await page.getByLabel("Select all scenarios").check();
+      await page.getByRole("button", { name: "Edit selected scenario info" }).click();
+      await dialog.getByLabel("Tag level").selectOption("feature");
+      await dialog.getByRole("button", { name: "Remove tag @deferred" }).click();
+      await dialog.getByRole("button", { name: "Remove tag @regression" }).click();
+      await dialog.getByLabel("Current tags").fill("only");
+      await dialog.getByLabel("Current tags").press("Enter");
+      await dialog.getByRole("button", { name: "Save changes" }).click();
+      await expect(dialog).toHaveCount(0);
+      await expect((await request.get(`/api/files/${project}/Checkout/alpha.feature`)).json()).resolves.toMatchObject({ tags: ["only"] });
+      await expect((await request.get(`/api/files/${project}/Checkout/bravo.feature`)).json()).resolves.toMatchObject({ tags: ["only"] });
+    } finally {
+      await request.delete(`/api/folders/${project}`);
+    }
+  });
+
+  test("moves a nested folder through the destination folder tree", async ({ page, request }) => {
+    const project = `pw_folder_move_${Date.now()}`;
+    const source = `${project}/Checkout/Legacy`;
+    const destination = `${project}/Regression`;
+    try {
+      expect((await request.post("/api/folders", { data: { parent: "", name: project } })).status()).toBe(201);
+      expect((await request.post("/api/folders", { data: { parent: project, name: "Checkout" } })).status()).toBe(201);
+      expect((await request.post("/api/folders", { data: { parent: `${project}/Checkout`, name: "Legacy" } })).status()).toBe(201);
+      expect((await request.post("/api/folders", { data: { parent: project, name: "Regression" } })).status()).toBe(201);
+      expect((await request.post("/api/files", { data: { parent: source, file_name: "case", scenario_name: "Case" } })).status()).toBe(201);
+      await page.goto(`/?tab=directory&project=${encodeURIComponent(project)}&path=${encodeURIComponent(source)}`);
+      await page.getByRole("button", { name: "Move folder", exact: true }).click();
+      const dialog = page.getByRole("dialog", { name: "Move folder" });
+      await dialog.getByRole("button", { name: `Expand ${project}` }).click();
+      await dialog.getByRole("button", { name: "Regression", exact: true }).click();
+      await dialog.getByRole("button", { name: "Move folder", exact: true }).click();
+      const moved = `${destination}/Legacy`;
+      await expect(page.locator(".card-header strong").filter({ hasText: moved })).toBeVisible();
+      expect((await request.get(`/api/files/${project}/Regression/Legacy/case.feature`)).status()).toBe(200);
+      expect((await request.get(`/api/files/${project}/Checkout/Legacy/case.feature`)).status()).toBe(404);
     } finally {
       await request.delete(`/api/folders/${project}`);
     }

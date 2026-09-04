@@ -5,7 +5,7 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Table } from "@/components/ui/table";
-import { ArrowLeft, LoaderCircle, Menu, Pencil, Plus, Trash2, Upload, X } from "lucide-react";
+import { ArrowLeft, ArrowRightLeft, ChevronDown, ChevronLeft, ChevronRight, Copy, LoaderCircle, Menu, Pencil, Plus, RefreshCw, Trash2, Upload, X } from "lucide-react";
 import type { FeaturePayload } from "@/src/lib/feature";
 
 type Counts = { total: number; auto: number; non_auto: number };
@@ -110,6 +110,44 @@ function FeatureEditDialog({ request, onCancel, onSubmit }: { request: FeatureEd
   useEffect(() => { const node = dialog.current; if (!node || !request) return; if (!node.open) node.showModal(); return () => { if (node.open) node.close(); }; }, [request]);
   if (!request) return null;
   return <dialog ref={dialog} className="app-dialog" aria-labelledby="edit-feature-title" onCancel={(event) => { event.preventDefault(); onCancel(); }}><form className="dialog-form" onSubmit={(event) => { event.preventDefault(); void onSubmit(scenarioName.trim(), fileName.trim()).then((saved) => { if (saved) onCancel(); }); }}><div className="dialog-header"><h2 id="edit-feature-title">Edit test case</h2></div><label className="editor-field"><span>Scenario name</span><Input autoFocus value={scenarioName} onChange={(event) => setScenarioName(event.target.value)} /></label><label className="editor-field"><span>Feature file name</span><Input value={fileName} onChange={(event) => setFileName(event.target.value)} /></label><div className="actions dialog-actions"><Button type="button" onClick={onCancel}>Cancel</Button><Button variant="primary" type="submit">Save</Button></div></form></dialog>;
+}
+
+function isMoveDestination(path: string, source: string): boolean {
+  const parts = path.split("/").filter(Boolean);
+  return parts.length >= 2 && parts.length <= 10 && path !== source && !["test-run", "report"].includes(parts[1] ?? "");
+}
+
+function MoveDestinationTree({ nodes, source, destination, onSelect, canSelect = isMoveDestination }: { nodes: TreeNode[]; source: string; destination: string; onSelect: (path: string) => void; canSelect?: (path: string, source: string) => boolean }) {
+  const [expanded, setExpanded] = useState<Set<string>>(() => new Set());
+  const toggle = (path: string) => setExpanded((current) => { const next = new Set(current); if (next.has(path)) next.delete(path); else next.add(path); return next; });
+  return <ul className="move-tree">{nodes.filter((node) => node.type === "folder").map((node) => {
+    const childFolders = (node.children ?? []).filter((child) => child.type === "folder");
+    const hasChildren = childFolders.length > 0;
+    const isExpanded = expanded.has(node.path);
+    const selectable = canSelect(node.path, source);
+    return <li key={node.path}><div className="move-tree-row">{hasChildren ? <button className="icon-button" type="button" aria-label={`${isExpanded ? "Collapse" : "Expand"} ${node.name}`} title={isExpanded ? "Collapse" : "Expand"} onClick={() => toggle(node.path)}>{isExpanded ? <ChevronDown size={16} aria-hidden="true" /> : <ChevronRight size={16} aria-hidden="true" />}</button> : <span className="move-tree-spacer" />}<button className={`move-tree-folder ${destination === node.path ? "active" : ""}`} type="button" disabled={!selectable} aria-pressed={destination === node.path} onClick={() => onSelect(node.path)}>{node.name}</button></div>{hasChildren && isExpanded && <div className="move-tree-children"><MoveDestinationTree nodes={childFolders} source={source} destination={destination} onSelect={onSelect} canSelect={canSelect} /></div>}</li>;
+  })}</ul>;
+}
+
+function MoveFeaturesDialog({ open, tree, source, count, destination, onDestinationChange, onMove, onCancel }: { open: boolean; tree: TreeNode[]; source: string; count: number; destination: string; onDestinationChange: (path: string) => void; onMove: () => Promise<boolean>; onCancel: () => void }) {
+  const dialog = useRef<HTMLDialogElement>(null);
+  useEffect(() => { const node = dialog.current; if (!node || !open) return; if (!node.open) node.showModal(); return () => { if (node.open) node.close(); }; }, [open]);
+  if (!open) return null;
+  return <dialog ref={dialog} className="app-dialog move-dialog" aria-labelledby="move-features-title" onCancel={(event) => { event.preventDefault(); onCancel(); }}><form className="dialog-form" onSubmit={(event) => { event.preventDefault(); void onMove().then((moved) => { if (moved) onCancel(); }); }}><div className="dialog-header"><h2 id="move-features-title">Move selected scenarios</h2><p className="muted">{count} scenario{count === 1 ? "" : "s"} selected. Choose a destination folder.</p></div><MoveDestinationTree nodes={tree} source={source} destination={destination} onSelect={onDestinationChange} /><div className="actions dialog-actions"><Button type="button" onClick={onCancel}>Cancel</Button><Button variant="primary" type="submit" disabled={!destination}>Move {count} scenario{count === 1 ? "" : "s"}</Button></div></form></dialog>;
+}
+
+function isFolderMoveDestination(path: string, source: string): boolean {
+  const destination = path.split("/").filter(Boolean);
+  const sourceParts = source.split("/").filter(Boolean);
+  const sourceParent = sourceParts.slice(0, -1).join("/");
+  return destination.length >= 1 && destination.length <= 9 && destination[0] === sourceParts[0] && path !== sourceParent && path !== source && !path.startsWith(`${source}/`) && !["test-run", "report"].includes(destination[1] ?? "");
+}
+
+function MoveFolderDialog({ open, tree, source, destination, onDestinationChange, onMove, onCancel }: { open: boolean; tree: TreeNode[]; source: string; destination: string; onDestinationChange: (path: string) => void; onMove: () => Promise<boolean>; onCancel: () => void }) {
+  const dialog = useRef<HTMLDialogElement>(null);
+  useEffect(() => { const node = dialog.current; if (!node || !open) return; if (!node.open) node.showModal(); return () => { if (node.open) node.close(); }; }, [open]);
+  if (!open) return null;
+  return <dialog ref={dialog} className="app-dialog move-dialog" aria-labelledby="move-folder-title" onCancel={(event) => { event.preventDefault(); onCancel(); }}><form className="dialog-form" onSubmit={(event) => { event.preventDefault(); void onMove().then((moved) => { if (moved) onCancel(); }); }}><div className="dialog-header"><h2 id="move-folder-title">Move folder</h2><p className="muted">Choose the new parent folder.</p></div><MoveDestinationTree nodes={tree} source={source} destination={destination} onSelect={onDestinationChange} canSelect={isFolderMoveDestination} /><div className="actions dialog-actions"><Button type="button" onClick={onCancel}>Cancel</Button><Button variant="primary" type="submit" disabled={!destination}>Move folder</Button></div></form></dialog>;
 }
 
 function FolderLinks({ names, parent, onOpen, emptyMessage }: { names: string[]; parent: string; onOpen: (path: string) => void | Promise<void>; emptyMessage?: string }) {
@@ -526,6 +564,13 @@ function EnumsPanel({ project, onError }: { project: string; onError: (message: 
 
 type StepPayload = FeaturePayload["scenario"]["steps"][number];
 type ExamplePayload = FeaturePayload["scenario"]["examples"][number];
+type BulkInfoSelection = { path: string; feature: FeaturePayload };
+type BulkTagChange = { original: string[]; tags: string[] };
+type BulkScenarioInfoChanges = { featureTags: BulkTagChange; scenarioTags: BulkTagChange; backgroundSteps: StepPayload[] | null };
+
+function combinedBulkTags(selection: BulkInfoSelection[] | null, level: "feature" | "scenario"): string[] {
+  return [...new Set(selection?.flatMap(({ feature }) => level === "feature" ? feature.tags : feature.scenario.tags) ?? [])];
+}
 
 function TagEditor({ tags, onChange, label, placeholder }: { tags: string[]; onChange: (tags: string[]) => void; label: string; placeholder: string }) {
   const [input, setInput] = useState("");
@@ -548,10 +593,30 @@ function parseTable(value: string): string[][] | null {
   return value.split("\n").map((row) => row.split("|").map((cell) => cell.trim()));
 }
 
-function StepEditor({ step, index, onChange, onRemove }: { step: StepPayload; index: number; onChange: (step: StepPayload) => void; onRemove: () => void }) {
+function StepEditor({ step, index, onChange, onRemove, showRemove = true }: { step: StepPayload; index: number; onChange: (step: StepPayload) => void; onRemove: () => void; showRemove?: boolean }) {
   const dataTableHint = "Add data table, 1 row per line, split by |";
   const resizeDataTable = (element: HTMLTextAreaElement | null) => { if (element) { element.style.height = "auto"; element.style.height = `${element.scrollHeight + element.offsetHeight - element.clientHeight}px`; } };
-  return <div className="step-editor"><div className="step-fields"><select aria-label={`Step ${index + 1} keyword`} value={step.keyword} onChange={(event) => onChange({ ...step, keyword: event.target.value })}>{["Given", "When", "Then", "And", "But"].map((keyword) => <option key={keyword}>{keyword}</option>)}</select><input aria-label={`Step ${index + 1} text`} value={step.text} onChange={(event) => onChange({ ...step, text: event.target.value })} placeholder="Step text" />{!step.data_table && <button className="icon-button data-table-add" aria-label={dataTableHint} title={dataTableHint} onClick={() => onChange({ ...step, data_table: [[""]] })}><Plus size={16} aria-hidden="true" /></button>}<button className="icon-button danger-icon" aria-label={`Remove step ${index + 1}`} title="Remove step" onClick={onRemove}><Trash2 size={16} aria-hidden="true" /></button></div>{step.data_table && <textarea className="data-table-editor" ref={resizeDataTable} aria-label={`Step ${index + 1} data table`} value={tableText(step.data_table)} onChange={(event) => onChange({ ...step, data_table: parseTable(event.target.value) })} placeholder="Data table, 1 row per line, split by |" />}</div>;
+  return <div className="step-editor"><div className="step-fields"><select aria-label={`Step ${index + 1} keyword`} value={step.keyword} onChange={(event) => onChange({ ...step, keyword: event.target.value })}>{["Given", "When", "Then", "And", "But"].map((keyword) => <option key={keyword}>{keyword}</option>)}</select><input aria-label={`Step ${index + 1} text`} value={step.text} onChange={(event) => onChange({ ...step, text: event.target.value })} placeholder="Step text" />{!step.data_table && <button type="button" className="icon-button data-table-add" aria-label={dataTableHint} title={dataTableHint} onClick={() => onChange({ ...step, data_table: [[""]] })}><Plus size={16} aria-hidden="true" /></button>}{showRemove && <button type="button" className="icon-button danger-icon" aria-label={`Remove step ${index + 1}`} title="Remove step" onClick={onRemove}><Trash2 size={16} aria-hidden="true" /></button>}</div>{step.data_table && <textarea className="data-table-editor" ref={resizeDataTable} aria-label={`Step ${index + 1} data table`} value={tableText(step.data_table)} onChange={(event) => onChange({ ...step, data_table: parseTable(event.target.value) })} placeholder="Data table, 1 row per line, split by |" />}</div>;
+}
+
+function BulkTagEditor({ level, onLevelChange, change, onChange }: { level: "feature" | "scenario"; onLevelChange: (level: "feature" | "scenario") => void; change: BulkTagChange; onChange: (change: BulkTagChange) => void }) {
+  return <section className="editor-section bulk-info-tags"><div className="editor-section-heading"><strong>Tags</strong><select aria-label="Tag level" value={level} onChange={(event) => onLevelChange(event.target.value as "feature" | "scenario")}><option value="scenario">Scenario tags</option><option value="feature">Feature tags</option></select></div><label className="editor-field"><span>Current tags</span><TagEditor tags={change.tags} onChange={(tags) => onChange({ ...change, tags })} label="Current tags" placeholder="Add tag" /></label></section>;
+}
+
+function BulkScenarioInfoDialog({ open, selection, error, onSubmit, onCancel }: { open: boolean; selection: BulkInfoSelection[] | null; error: string; onSubmit: (changes: BulkScenarioInfoChanges) => Promise<boolean>; onCancel: () => void }) {
+  const dialog = useRef<HTMLDialogElement>(null);
+  const [featureTags, setFeatureTags] = useState<BulkTagChange>({ original: [], tags: [] });
+  const [scenarioTags, setScenarioTags] = useState<BulkTagChange>({ original: [], tags: [] });
+  const [tagLevel, setTagLevel] = useState<"feature" | "scenario">("scenario");
+  const [editBackground, setEditBackground] = useState(false);
+  const [backgroundSteps, setBackgroundSteps] = useState<StepPayload[]>([]);
+  const [isSaving, setIsSaving] = useState(false);
+  const sharedBackground = Boolean(selection?.length) && selection!.every(({ feature }) => JSON.stringify(feature.background.steps) === JSON.stringify(selection![0].feature.background.steps));
+  useEffect(() => { const node = dialog.current; if (!node || !open) return; if (!node.open) node.showModal(); return () => { if (node.open) node.close(); }; }, [open]);
+  useEffect(() => { if (!open) return; const featureTagValues = combinedBulkTags(selection, "feature"); const scenarioTagValues = combinedBulkTags(selection, "scenario"); setFeatureTags({ original: featureTagValues, tags: featureTagValues }); setScenarioTags({ original: scenarioTagValues, tags: scenarioTagValues }); setTagLevel("scenario"); setEditBackground(false); setBackgroundSteps(selection && sharedBackground ? selection[0].feature.background.steps : []); setIsSaving(false); }, [open, selection, sharedBackground]);
+  if (!open) return null;
+  const updateBackgroundStep = (index: number, step: StepPayload) => setBackgroundSteps((steps) => steps.map((current, currentIndex) => currentIndex === index ? step : current));
+  return <dialog ref={dialog} className={`app-dialog bulk-info-dialog ${isSaving ? "is-saving" : ""}`} aria-labelledby="bulk-scenario-info-title" aria-busy={isSaving} onCancel={(event) => { event.preventDefault(); if (!isSaving) onCancel(); }}><form className="dialog-form" onSubmit={(event) => { event.preventDefault(); if (isSaving) return; setIsSaving(true); void onSubmit({ featureTags, scenarioTags, backgroundSteps: editBackground ? backgroundSteps : null }).then((saved) => { if (saved) onCancel(); }).finally(() => setIsSaving(false)); }}><fieldset className="bulk-info-fields" disabled={isSaving}><div className="dialog-header"><h2 id="bulk-scenario-info-title">Edit selected scenario info</h2><p className="muted">{selection ? `${selection.length} scenario${selection.length === 1 ? "" : "s"} selected.` : "Loading selected scenarios…"}</p></div>{error && <div className="notice">{error}</div>}{selection ? <><BulkTagEditor level={tagLevel} onLevelChange={setTagLevel} change={tagLevel === "feature" ? featureTags : scenarioTags} onChange={tagLevel === "feature" ? setFeatureTags : setScenarioTags} /><section className="editor-section"><div className="editor-section-heading"><strong>Background</strong>{!editBackground && <button className="button" type="button" onClick={() => setEditBackground(true)}>{sharedBackground ? "Edit background" : "Replace background"}</button>}</div>{editBackground ? <><span className="muted">Saving replaces all selected background steps. Removing background steps is unchanged.</span>{backgroundSteps.map((step, index) => <StepEditor key={`background-${index}`} step={step} index={index} onChange={(next) => updateBackgroundStep(index, next)} onRemove={() => undefined} showRemove={false} />)}<button className="new-step" type="button" onClick={() => setBackgroundSteps((steps) => [...steps, { keyword: "Given", text: "", data_table: null }])}><Plus size={16} aria-hidden="true" />Add background step</button></> : <span className="muted">{sharedBackground ? "All selected scenarios share this background." : "Selected scenarios have different backgrounds. Add steps to replace all backgrounds."}</span>}</section></> : <div className="loading-state"><LoaderCircle className="loading-icon" size={18} aria-hidden="true" />Loading</div>}</fieldset><div className="actions dialog-actions"><Button type="button" onClick={onCancel} disabled={isSaving}>Cancel</Button><Button variant="primary" type="submit" disabled={!selection || isSaving}>Save changes</Button></div>{isSaving && <div className="dialog-saving-overlay" role="status" aria-label="Saving changes"><LoaderCircle className="loading-icon" size={22} aria-hidden="true" /><span>Saving changes…</span></div>}</form></dialog>;
 }
 
 function StructuredFeatureEditor({ draft, onChange }: { draft: string; onChange: (next: string) => void }) {
@@ -604,6 +669,8 @@ function Workspace() {
   const { prompt, confirm } = useDialog();
   const [tree, setTree] = useState<TreeNode[]>([]);
   const [expandedFolders, setExpandedFolders] = useState<Set<string>>(() => new Set());
+  const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
+  const [sidebarWidth, setSidebarWidth] = useState(288);
   const [selectedPath, setSelectedPath] = useState("");
   const [selectedProject, setSelectedProject] = useState("");
   const [listing, setListing] = useState<Listing | null>(null);
@@ -613,6 +680,14 @@ function Workspace() {
   const [featureDraft, setFeatureDraft] = useState("");
   const [editorMode, setEditorMode] = useState<"structured" | "raw">("structured");
   const [moveTarget, setMoveTarget] = useState("");
+  const [checkedFeatures, setCheckedFeatures] = useState<Set<string>>(() => new Set());
+  const [bulkMoveOpen, setBulkMoveOpen] = useState(false);
+  const [bulkMoveTarget, setBulkMoveTarget] = useState("");
+  const [bulkInfoOpen, setBulkInfoOpen] = useState(false);
+  const [bulkInfoSelection, setBulkInfoSelection] = useState<BulkInfoSelection[] | null>(null);
+  const [bulkInfoError, setBulkInfoError] = useState("");
+  const [folderMoveOpen, setFolderMoveOpen] = useState(false);
+  const [folderMoveTarget, setFolderMoveTarget] = useState("");
   const [editorBanner, setEditorBanner] = useState<EditorBanner | null>(null);
   const [rawError, setRawError] = useState("");
   const [saved, setSaved] = useState(false);
@@ -633,6 +708,7 @@ function Workspace() {
   const [deepLinkRun, setDeepLinkRun] = useState("");
   const [deepLinkReport, setDeepLinkReport] = useState("");
   const editorRef = useRef<{ path: string; feature: Record<string, unknown> | null; raw: string; dirty: boolean }>({ path: "", feature: null, raw: "", dirty: false });
+  const sidebarResize = useRef<{ pointerId: number; startX: number; startWidth: number } | null>(null);
   const searchTimer = useRef<number | null>(null);
   const hydratedUrl = useRef(false);
   const skipUrlSync = useRef(true);
@@ -656,8 +732,24 @@ function Workspace() {
       return next;
     });
   }, []);
+  function clampSidebarWidth(width: number) { return Math.min(480, Math.max(192, width)); }
+  function startSidebarResize(event: React.PointerEvent<HTMLDivElement>) {
+    if (sidebarCollapsed) return;
+    sidebarResize.current = { pointerId: event.pointerId, startX: event.clientX, startWidth: sidebarWidth };
+    event.currentTarget.setPointerCapture(event.pointerId);
+  }
+  function resizeSidebar(event: React.PointerEvent<HTMLDivElement>) {
+    const current = sidebarResize.current;
+    if (!current || current.pointerId !== event.pointerId) return;
+    setSidebarWidth(clampSidebarWidth(current.startWidth + event.clientX - current.startX));
+  }
+  function stopSidebarResize(event: React.PointerEvent<HTMLDivElement>) {
+    if (sidebarResize.current?.pointerId !== event.pointerId) return;
+    sidebarResize.current = null;
+    if (event.currentTarget.hasPointerCapture(event.pointerId)) event.currentTarget.releasePointerCapture(event.pointerId);
+  }
   const folderUrl = (path: string) => `/api/folders/${path ? `${path.split("/").map(encodeURIComponent).join("/")}/` : ""}contents`;
-  const openFolder = useCallback(async (path: string) => { expandFolderPath(path); setSelectedPath(path); setSelectedProject(path.split("/")[0] ?? ""); setFeature(null); setPage(1); try { setListing(await api<Listing>(folderUrl(path))); setError(""); } catch (cause) { setError((cause as Error).message); } }, [expandFolderPath]);
+  const openFolder = useCallback(async (path: string) => { expandFolderPath(path); setSelectedPath(path); setSelectedProject(path.split("/")[0] ?? ""); setFeature(null); setPage(1); setCheckedFeatures(new Set()); setBulkMoveOpen(false); setBulkMoveTarget(""); setBulkInfoOpen(false); setBulkInfoSelection(null); setBulkInfoError(""); setFolderMoveOpen(false); setFolderMoveTarget(""); try { setListing(await api<Listing>(folderUrl(path))); setError(""); } catch (cause) { setError((cause as Error).message); } }, [expandFolderPath]);
   const openFeature = useCallback(async (node: TreeNode | string) => {
     const candidate = typeof node === "string" ? node : node.path;
     const path = candidate;
@@ -734,6 +826,8 @@ function Workspace() {
   useEffect(() => () => { if (searchTimer.current !== null) window.clearTimeout(searchTimer.current); }, []);
 
   const filteredFeatures = useMemo(() => { const rows = (listing?.features ?? []).filter((item) => !filter || item.scenario_name.toLowerCase().includes(filter.toLowerCase())); return [...rows].sort((a, b) => a[sort].localeCompare(b[sort], undefined, { sensitivity: "base" })); }, [listing, filter, sort]);
+  const folderFeaturePaths = useMemo(() => listing?.kind === "search" ? [] : filteredFeatures.map((item) => selectedPath ? `${selectedPath}/${item.file_name}` : item.file_name), [listing, filteredFeatures, selectedPath]);
+  const allFolderFeaturesChecked = folderFeaturePaths.length > 0 && folderFeaturePaths.every((path) => checkedFeatures.has(path));
   const totalPages = Math.max(1, Math.ceil(filteredFeatures.length / pageSize));
   const currentPage = Math.min(page, totalPages);
   const paginatedFeatures = listing?.kind === "search" ? filteredFeatures : filteredFeatures.slice((currentPage - 1) * pageSize, currentPage * pageSize);
@@ -791,13 +885,11 @@ function Workspace() {
     } catch (cause) { setError((cause as Error).message); }
   }
   async function createFeature(parent: string) {
-    const fileName = await prompt({ title: "Create test case", label: "Feature file name", confirmLabel: "Continue" });
-    if (!fileName?.trim()) return;
     const scenarioName = await prompt({ title: "Create test case", label: "Scenario name", confirmLabel: "Continue" });
     if (!scenarioName?.trim()) return;
-    const description = await prompt({ title: "Create test case", label: "Feature description (optional)", confirmLabel: "Create" }) ?? "";
+    const description = await prompt({ title: "Create test case", label: "Feature name (optional)", confirmLabel: "Create" }) ?? "";
     try {
-      await api("/api/files", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ parent, file_name: fileName.trim(), scenario_name: scenarioName.trim(), description }) });
+      await api("/api/files", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ parent, scenario_name: scenarioName.trim(), description }) });
       await refreshTree();
       await openFolder(parent);
     } catch (cause) { setError((cause as Error).message); }
@@ -812,6 +904,61 @@ function Workspace() {
       await refreshTree();
       await openFolder(moveTarget);
     } catch (cause) { setError((cause as Error).message); }
+  }
+  function toggleFeatureCheck(path: string) {
+    setCheckedFeatures((current) => { const next = new Set(current); if (next.has(path)) next.delete(path); else next.add(path); return next; });
+  }
+  function toggleAllFeatureChecks() {
+    setCheckedFeatures((current) => {
+      const next = new Set(current);
+      folderFeaturePaths.forEach((path) => allFolderFeaturesChecked ? next.delete(path) : next.add(path));
+      return next;
+    });
+  }
+  async function openBulkScenarioInfo() {
+    if (!checkedFeatures.size) return;
+    setBulkInfoError("");
+    setBulkInfoSelection(null);
+    setBulkInfoOpen(true);
+    try {
+      setBulkInfoSelection(await Promise.all([...checkedFeatures].map(async (path) => ({ path, feature: await api<FeaturePayload>(pathUrl("/api/files", path)) }))));
+    } catch (cause) { setBulkInfoError((cause as Error).message); }
+  }
+  function applyBulkTags(existing: string[], change: BulkTagChange): string[] {
+    const removed = new Set(change.original.filter((tag) => !change.tags.includes(tag)));
+    const added = change.tags.filter((tag) => !change.original.includes(tag));
+    const source = [...existing, ...added];
+    return [...new Set(source)].filter((tag) => !removed.has(tag));
+  }
+  async function saveBulkScenarioInfo(changes: BulkScenarioInfoChanges): Promise<boolean> {
+    if (!bulkInfoSelection?.length) return false;
+    try {
+      const updates = bulkInfoSelection.map(({ path, feature }) => ({ path, feature: cleanFeatureForSave({ ...feature, tags: applyBulkTags(feature.tags, changes.featureTags), background: changes.backgroundSteps === null ? feature.background : { steps: changes.backgroundSteps }, scenario: { ...feature.scenario, tags: applyBulkTags(feature.scenario.tags, changes.scenarioTags) } }) }));
+      await Promise.all(updates.map(({ path, feature }) => api(pathUrl("/api/files", path), { method: "PATCH", headers: { "content-type": "application/json" }, body: JSON.stringify(feature) })));
+      setBulkInfoError("");
+      await refreshTree();
+      await openFolder(selectedPath);
+      return true;
+    } catch (cause) { setBulkInfoError((cause as Error).message); return false; }
+  }
+  async function moveCheckedFeatures(): Promise<boolean> {
+    if (!bulkMoveTarget || !checkedFeatures.size) return false;
+    try {
+      for (const path of checkedFeatures) await api(pathUrl("/api/files", `${path}/move`), { method: "PATCH", headers: { "content-type": "application/json" }, body: JSON.stringify({ parent: bulkMoveTarget }) });
+      await refreshTree();
+      await openFolder(bulkMoveTarget);
+      return true;
+    } catch (cause) { setError((cause as Error).message); return false; }
+  }
+  async function moveSelectedFolder(): Promise<boolean> {
+    if (!selectedPath || !folderMoveTarget) return false;
+    try {
+      const target = `${folderMoveTarget}/${selectedPath.split("/").at(-1)}`;
+      await api(pathUrl("/api/folders", `${selectedPath}/move`), { method: "PATCH", headers: { "content-type": "application/json" }, body: JSON.stringify({ parent: folderMoveTarget }) });
+      await refreshTree();
+      await openFolder(target);
+      return true;
+    } catch (cause) { setError((cause as Error).message); return false; }
   }
   async function reloadSelectedFeature(discard = false) {
     if (!selectedPath) return;
@@ -885,14 +1032,29 @@ function Workspace() {
     } catch (cause) { setError((cause as Error).message); return false; }
   }
   async function deleteFeature(featurePath = selectedPath) { if (!featurePath || !(await confirm({ title: "Delete test case?", description: `Delete ${featurePath}?`, confirmLabel: "Delete", destructive: true }))) return; try { await api(pathUrl("/api/files", featurePath), { method: "DELETE" }); await refreshTree(); await openFolder(featurePath.split("/").slice(0, -1).join("/")); } catch (cause) { setError((cause as Error).message); } }
+  async function duplicateFeature(featurePath: string) {
+    try {
+      const copy = await api<{ file_name: string }>(pathUrl("/api/files", `${featurePath}/duplicate`), { method: "POST", headers: { "content-type": "application/json" }, body: "{}" });
+      const copyPath = `${featurePath.split("/").slice(0, -1).join("/")}/${copy.file_name}`;
+      try {
+        const copiedFeature = await api<FeaturePayload>(pathUrl("/api/files", copyPath));
+        await api(pathUrl("/api/files", copyPath), { method: "PATCH", headers: { "content-type": "application/json" }, body: JSON.stringify({ ...copiedFeature, scenario: { ...copiedFeature.scenario, name: `${copiedFeature.scenario.name} - Copy` } }) });
+      } catch (cause) {
+        await api(pathUrl("/api/files", copyPath), { method: "DELETE" }).catch(() => undefined);
+        throw cause;
+      }
+      await refreshTree();
+      await openFolder(featurePath.split("/").slice(0, -1).join("/"));
+    } catch (cause) { setError((cause as Error).message); }
+  }
   async function changeTab(next: Tab) { if (dirty && !(await confirm({ title: "Discard changes?", description: "Discard unsaved feature changes?", confirmLabel: "Discard" }))) return; setDirty(false); setDeepLinkRun(""); setDeepLinkReport(""); setTab(next); }
 
   return <><LiveStatus message={error} assertive /><LiveStatus message={editorBanner?.message ?? ""} /><main className="shell">
     <header className="topbar"><span className="brand">TMS</span><WorkspaceMenu tab={tab} onChange={changeTab} /><form onSubmit={search} className="search"><input aria-label="Search" value={query} onChange={(event) => { setQuery(event.target.value); scheduleSearch(event.target.value); }} onKeyDown={(event) => { if (event.key === "Enter") { event.preventDefault(); clearSearchTimer(); void runSearch(event.currentTarget.value); } }} placeholder="Search test cases…" style={{ border: 0, outline: 0, width: "100%" }} /></form><div className="search-options"><select aria-label="Search scope" value={searchScope} onChange={(event) => { const value = event.target.value; setSearchScope(value); if (query.trim()) { clearSearchTimer(); void runSearch(query, { scope: value }); } }}>{searchScopes.map((scope) => <option key={scope.value} value={scope.value}>{scope.label}</option>)}</select><select aria-label="Search match" value={searchMatch} onChange={(event) => { const value = event.target.value as "text" | "tag"; setSearchMatch(value); if (query.trim()) { clearSearchTimer(); void runSearch(query, { match: value }); } }}><option value="text">Description</option><option value="tag">Tag</option></select><label><input type="checkbox" checked={searchCase} onChange={(event) => { const value = event.target.checked; setSearchCase(value); if (query.trim()) { clearSearchTimer(); void runSearch(query, { caseSensitive: value }); } }} /> Case-sensitive</label></div><span className="muted">{selectedProject || "Filesystem workspace"}</span></header>
     
-    {tab === "directory" ? <div className="layout"><aside className="sidebar"><div className="card-header" style={{ padding: "0 0 .75rem" }}><strong>Directory</strong><button className="button" onClick={() => void refreshTree()}>Refresh</button></div><TreeBranch nodes={tree} selected={selectedPath} expanded={expandedFolders} onToggle={toggleFolder} onFolder={(node) => void openFolder(node.path)} onFeature={(node) => void openFeature(node)} /></aside>
-      <section className="content"><div className="stack">{error && <div className="notice">{error}</div>}{listing && <div className="card"><div className="card-header"><div className="breadcrumb-heading">{selectedPath && listing.kind !== "search" && selectedPath.split("/").length >= 2 && <button className="icon-button" aria-label="Back to parent folder" title="Back" onClick={() => void openFolder(selectedPath.split("/").slice(0, -1).join("/"))}><ArrowLeft size={16} aria-hidden="true" /></button>}<div><strong>{listing.kind === "search" ? "Search results" : selectedPath || "Projects"}</strong><div className="muted">{listing.features?.length ?? listing.projects?.length ?? listing.modules?.length ?? 0} items</div></div></div><div className="actions">{listing.kind === "root" && <button className="button primary" onClick={() => void createFolder("", "New project name")}>New project</button>}{selectedPath && listing.kind !== "search" && <>{selectedPath.split("/").length === 1 ? <button className="button primary" onClick={() => void createFolder(selectedPath, "New module name")}>New module</button> : <button className="button primary" onClick={() => void createFolder(selectedPath, "New subfolder name")}>+ Sub-folder</button>}{selectedPath.split("/").length >= 2 && <button className="button primary" onClick={() => void createFeature(selectedPath)}>+ Scenario</button>}<button className="icon-button" aria-label="Rename folder" title="Rename folder" onClick={renameSelected}><Pencil size={16} aria-hidden="true" /></button><button className="icon-button danger-icon" aria-label="Delete folder" title="Delete folder" onClick={deleteSelected}><Trash2 size={16} aria-hidden="true" /></button></>} {selectedPath && listing.kind !== "search" && <button className="icon-button" aria-label="Import files" title="Import files" onClick={() => setImportOpen(true)}><Upload size={16} aria-hidden="true" /></button>}</div></div><div className="card-body">{listing.features ? <><FolderLinks names={listing.folders ?? []} parent={selectedPath} onOpen={openFolder} /><div className="actions" style={{ marginBottom: ".75rem" }}><input className="search" style={{ maxWidth: "none" }} placeholder="Filter scenario name…" value={filter} onChange={(event) => { setFilter(event.target.value); setPage(1); }} /><button className="button" onClick={() => { setSort("file_name"); setPage(1); }}>Sort file</button><button className="button" onClick={() => { setSort("scenario_name"); setPage(1); }}>Sort scenario</button></div><div className="table-wrap"><table className="feature-table"><thead><tr><th>Scenario</th><th>Tags</th><th>Enums</th><th>Actions</th></tr></thead><tbody>{paginatedFeatures.map((item) => <tr className="clickable-row" key={item.file_name} tabIndex={0} title="Open scenario detail" onClick={() => void openFeature(selectedPath ? `${selectedPath}/${item.file_name}` : item.file_name)} onKeyDown={(event) => { if (event.target !== event.currentTarget || (event.key !== "Enter" && event.key !== " ")) return; event.preventDefault(); void openFeature(selectedPath ? `${selectedPath}/${item.file_name}` : item.file_name); }}><td>{item.scenario_name || <span className="muted">Malformed</span>}</td><td><InlinePills values={item.tags} limit={2} prefix="@" /></td><td><InlinePills values={item.enums.map((entry) => entry.label || entry.key)} limit={1} /></td><td><span className="row-actions"><button className="icon-button" aria-label={`Edit ${item.file_name}`} title="Edit file name" onClick={(event) => { event.stopPropagation(); void renameFeature(selectedPath ? `${selectedPath}/${item.file_name}` : item.file_name, item.scenario_name); }}><Pencil size={16} aria-hidden="true" /></button><button className="icon-button danger-icon" aria-label={`Remove ${item.file_name}`} title="Remove file" onClick={(event) => { event.stopPropagation(); void deleteFeature(selectedPath ? `${selectedPath}/${item.file_name}` : item.file_name); }}><Trash2 size={16} aria-hidden="true" /></button></span></td></tr>)}</tbody></table></div>{listing.kind !== "search" && filteredFeatures.length > 0 && <div className="table-pagination"><span>{(currentPage - 1) * pageSize + 1} - {Math.min(currentPage * pageSize, filteredFeatures.length)} of {filteredFeatures.length}</span><label className="page-size"><span>Rows</span><select aria-label="Scenarios per page" value={pageSize} onChange={(event) => { setPageSize(Number(event.target.value) as 20 | 50 | 100); setPage(1); }}><option value={20}>20</option><option value={50}>50</option><option value={100}>100</option></select></label><div className="actions"><button className="button" disabled={currentPage === 1} onClick={() => setPage((current) => Math.max(1, current - 1))}>Previous</button><span>Page {currentPage} of {totalPages}</span><button className="button" disabled={currentPage === totalPages} onClick={() => setPage((current) => Math.min(totalPages, current + 1))}>Next</button></div></div>}{!filteredFeatures.length && <p className="muted">{listing.kind === "search" ? `No matches for ${query}` : "No test cases."}</p>}</> : <FolderLinks names={listing.projects ?? listing.modules ?? listing.folders ?? []} parent={selectedPath} onOpen={openFolder} emptyMessage="No items" />}</div></div>}{editorBanner && <div className={`notice ${editorBanner.tone}`}>{editorBanner.message}{editorBanner.conflict && <span className="actions"><button className="button" onClick={() => void reloadSelectedFeature(true)}>Reload (discard mine)</button><button className="button" onClick={() => setEditorBanner(null)}>Keep editing</button></span>}{editorBanner.removed && <button className="button" onClick={() => void discardRemovedFeature()}>Discard</button>}</div>}{feature && <div className="card"><div className="card-header"><div className="breadcrumb-heading"><button className="icon-button" aria-label="Back to parent folder" title="Back" onClick={() => void openFolder(selectedPath.split("/").slice(0, -1).join("/"))}><ArrowLeft size={16} aria-hidden="true" /></button><div><strong>{selectedPath}</strong>{dirty && <span className="dirty-indicator">Unsaved</span>}{saved && !dirty && <span className="saved-indicator">Saved</span>}</div></div><div className="actions"><button className={`button ${editorMode === "structured" ? "primary" : ""}`} onClick={() => switchEditorMode("structured")}>Structured</button><button className={`button ${editorMode === "raw" ? "primary" : ""}`} onClick={() => switchEditorMode("raw")}>Raw</button><button className="button primary" disabled={!dirty || (editorMode === "structured" && !structuredDescription.trim())} onClick={() => void saveFeature()}>Save</button><button className="button" onClick={() => void reloadSelectedFeature()}>Reload</button>{moveDestinations.length > 0 && <><select aria-label="Move feature destination" value={moveTarget} onChange={(event) => setMoveTarget(event.target.value)}><option value="">Move…</option>{moveDestinations.map((path) => <option key={path} value={path}>{path}</option>)}</select><button className="button" disabled={!moveTarget} onClick={() => void moveSelectedFeature()}>Move</button></>}</div></div><div className="card-body">{editorMode === "raw" ? <div><textarea className="editor" value={featureRaw} onChange={(event) => { setFeatureRaw(event.target.value); setRawError(""); setSaved(false); setDirty(true); }} />{rawError && <div className="raw-error">{rawError}</div>}</div> : <StructuredFeatureEditor draft={featureDraft} onChange={(next) => { setFeatureDraft(next); setSaved(false); setDirty(true); }} />}</div></div>}{!listing && !feature && <div className="card empty"><p className="muted">Select a project, folder, or feature from the directory.</p></div>}</div></section></div> : <section className="content"><div className="stack">{error && <div className="notice">{error}</div>}{tab === "runs" && <RunsPanel project={selectedProject} initialRun={deepLinkRun} onError={reportError} />}{tab === "reports" && <ReportsPanel project={selectedProject} initialReport={deepLinkReport} onError={reportError} />}{tab === "enums" && <EnumsPanel project={selectedProject} onError={reportError} />}</div></section>}
-  </main><FeatureImportDialog open={importOpen} files={files} onFiles={setFiles} onImport={() => void importBatch()} onCancel={() => { setFiles([]); setImportOpen(false); }} /><FeatureEditDialog request={featureEdit} onCancel={() => setFeatureEdit(null)} onSubmit={saveFeatureEdit} /></>;
+    {tab === "directory" ? <div className={`layout directory-layout ${sidebarCollapsed ? "directory-collapsed" : ""}`} style={{ gridTemplateColumns: sidebarCollapsed ? "3.5rem minmax(0, 1fr)" : `${sidebarWidth}px minmax(0, 1fr)` }}><aside className="sidebar"><div className="sidebar-header">{sidebarCollapsed ? <button className="icon-button" aria-label="Expand directory panel" title="Expand directory panel" aria-expanded={false} onClick={() => setSidebarCollapsed(false)}><ChevronRight size={16} aria-hidden="true" /></button> : <><strong>Directory</strong><div className="actions"><button className="icon-button" aria-label="Refresh directory" title="Refresh directory" onClick={() => void refreshTree()}><RefreshCw size={16} aria-hidden="true" /></button><button className="icon-button" aria-label="Collapse directory panel" title="Collapse directory panel" aria-expanded={true} onClick={() => setSidebarCollapsed(true)}><ChevronLeft size={16} aria-hidden="true" /></button></div></>}</div>{!sidebarCollapsed && <><TreeBranch nodes={tree} selected={selectedPath} expanded={expandedFolders} onToggle={toggleFolder} onFolder={(node) => void openFolder(node.path)} onFeature={(node) => void openFeature(node)} /><div className="sidebar-resize-handle" role="separator" aria-label="Resize directory panel" aria-orientation="vertical" aria-valuemin={192} aria-valuemax={480} aria-valuenow={sidebarWidth} tabIndex={0} onPointerDown={startSidebarResize} onPointerMove={resizeSidebar} onPointerUp={stopSidebarResize} onPointerCancel={stopSidebarResize} onKeyDown={(event) => { if (event.key === "ArrowLeft" || event.key === "ArrowRight") { event.preventDefault(); setSidebarWidth((current) => clampSidebarWidth(current + (event.key === "ArrowLeft" ? -16 : 16))); } }} /></>}</aside>
+      <section className="content"><div className="stack">{error && <div className="notice">{error}</div>}{listing && <div className="card"><div className="card-header"><div className="breadcrumb-heading">{selectedPath && listing.kind !== "search" && selectedPath.split("/").length >= 2 && <button className="icon-button" aria-label="Back to parent folder" title="Back" onClick={() => void openFolder(selectedPath.split("/").slice(0, -1).join("/"))}><ArrowLeft size={16} aria-hidden="true" /></button>}<div><strong>{listing.kind === "search" ? "Search results" : selectedPath || "Projects"}</strong><div className="muted">{listing.features?.length ?? listing.projects?.length ?? listing.modules?.length ?? 0} items</div></div></div><div className="actions">{listing.kind === "root" && <button className="button primary" onClick={() => void createFolder("", "New project name")}>New project</button>}{selectedPath && listing.kind !== "search" && <>{selectedPath.split("/").length === 1 ? <button className="button primary" onClick={() => void createFolder(selectedPath, "New module name")}>New module</button> : <button className="button primary" onClick={() => void createFolder(selectedPath, "New subfolder name")}>+ Sub-folder</button>}{selectedPath.split("/").length >= 2 && <button className="button primary" onClick={() => void createFeature(selectedPath)}>+ Scenario</button>}<button className="icon-button" aria-label="Rename folder" title="Rename folder" onClick={renameSelected}><Pencil size={16} aria-hidden="true" /></button>{selectedPath.split("/").length >= 3 && <button className="icon-button" aria-label="Move folder" title="Move folder" onClick={() => setFolderMoveOpen(true)}><ArrowRightLeft size={16} aria-hidden="true" /></button>}<button className="icon-button danger-icon" aria-label="Delete folder" title="Delete folder" onClick={deleteSelected}><Trash2 size={16} aria-hidden="true" /></button></>} {selectedPath && listing.kind !== "search" && <button className="icon-button" aria-label="Import files" title="Import files" onClick={() => setImportOpen(true)}><Upload size={16} aria-hidden="true" /></button>}</div></div><div className="card-body">{listing.features ? <><FolderLinks names={listing.folders ?? []} parent={selectedPath} onOpen={openFolder} /><div className="actions" style={{ marginBottom: ".75rem" }}><input className="search" style={{ maxWidth: "none" }} placeholder="Filter scenario name…" value={filter} onChange={(event) => { setFilter(event.target.value); setPage(1); }} /><button className="button" onClick={() => { setSort("file_name"); setPage(1); }}>Sort file</button><button className="button" onClick={() => { setSort("scenario_name"); setPage(1); }}>Sort scenario</button>{listing.kind !== "search" && <button className="icon-button" aria-label="Move selected scenarios" title="Move selected scenarios" disabled={!checkedFeatures.size} onClick={() => setBulkMoveOpen(true)}><ArrowRightLeft size={16} aria-hidden="true" /></button>}{listing.kind !== "search" && <button className="icon-button" aria-label="Edit selected scenario info" title="Edit selected scenario info" disabled={!checkedFeatures.size} onClick={() => void openBulkScenarioInfo()}><Pencil size={16} aria-hidden="true" /></button>}</div><div className="table-wrap"><table className={`feature-table ${listing.kind !== "search" ? "with-selection" : ""}`}><thead><tr>{listing.kind !== "search" && <th className="feature-select-column"><input type="checkbox" aria-label="Select all scenarios" checked={allFolderFeaturesChecked} disabled={!folderFeaturePaths.length} onChange={toggleAllFeatureChecks} /></th>}<th>Scenario</th><th>Tags</th><th>Enums</th><th>Actions</th></tr></thead><tbody>{paginatedFeatures.map((item) => { const itemPath = selectedPath ? `${selectedPath}/${item.file_name}` : item.file_name; return <tr className="clickable-row" key={item.file_name} tabIndex={0} title="Open scenario detail" onClick={() => void openFeature(selectedPath ? `${selectedPath}/${item.file_name}` : item.file_name)} onKeyDown={(event) => { if (event.target !== event.currentTarget || (event.key !== "Enter" && event.key !== " ")) return; event.preventDefault(); void openFeature(selectedPath ? `${selectedPath}/${item.file_name}` : item.file_name); }}>{listing.kind !== "search" && <td className="feature-select-cell"><input type="checkbox" aria-label={`Select ${item.file_name}`} checked={checkedFeatures.has(itemPath)} onClick={(event) => event.stopPropagation()} onChange={() => toggleFeatureCheck(itemPath)} /></td>}<td>{item.scenario_name || <span className="muted">Malformed</span>}</td><td><InlinePills values={item.tags} limit={2} prefix="@" /></td><td><InlinePills values={item.enums.map((entry) => entry.label || entry.key)} limit={1} /></td><td><span className="row-actions"><button className="icon-button" aria-label={`Edit ${item.file_name}`} title="Edit file name" onClick={(event) => { event.stopPropagation(); void renameFeature(selectedPath ? `${selectedPath}/${item.file_name}` : item.file_name, item.scenario_name); }}><Pencil size={16} aria-hidden="true" /></button><button className="icon-button" aria-label={`Duplicate ${item.file_name}`} title="Duplicate scenario" onClick={(event) => { event.stopPropagation(); void duplicateFeature(selectedPath ? `${selectedPath}/${item.file_name}` : item.file_name); }}><Copy size={16} aria-hidden="true" /></button><button className="icon-button danger-icon" aria-label={`Remove ${item.file_name}`} title="Remove file" onClick={(event) => { event.stopPropagation(); void deleteFeature(selectedPath ? `${selectedPath}/${item.file_name}` : item.file_name); }}><Trash2 size={16} aria-hidden="true" /></button></span></td></tr>; })}</tbody></table></div>{listing.kind !== "search" && filteredFeatures.length > 0 && <div className="table-pagination"><span>{(currentPage - 1) * pageSize + 1} - {Math.min(currentPage * pageSize, filteredFeatures.length)} of {filteredFeatures.length}</span><label className="page-size"><span>Rows</span><select aria-label="Scenarios per page" value={pageSize} onChange={(event) => { setPageSize(Number(event.target.value) as 20 | 50 | 100); setPage(1); }}><option value={20}>20</option><option value={50}>50</option><option value={100}>100</option></select></label><div className="actions"><button className="button" disabled={currentPage === 1} onClick={() => setPage((current) => Math.max(1, current - 1))}>Previous</button><span>Page {currentPage} of {totalPages}</span><button className="button" disabled={currentPage === totalPages} onClick={() => setPage((current) => Math.min(totalPages, current + 1))}>Next</button></div></div>}{!filteredFeatures.length && <p className="muted">{listing.kind === "search" ? `No matches for ${query}` : "No test cases."}</p>}</> : <FolderLinks names={listing.projects ?? listing.modules ?? listing.folders ?? []} parent={selectedPath} onOpen={openFolder} emptyMessage="No items" />}</div></div>}{editorBanner && <div className={`notice ${editorBanner.tone}`}>{editorBanner.message}{editorBanner.conflict && <span className="actions"><button className="button" onClick={() => void reloadSelectedFeature(true)}>Reload (discard mine)</button><button className="button" onClick={() => setEditorBanner(null)}>Keep editing</button></span>}{editorBanner.removed && <button className="button" onClick={() => void discardRemovedFeature()}>Discard</button>}</div>}{feature && <div className="card"><div className="card-header"><div className="breadcrumb-heading"><button className="icon-button" aria-label="Back to parent folder" title="Back" onClick={() => void openFolder(selectedPath.split("/").slice(0, -1).join("/"))}><ArrowLeft size={16} aria-hidden="true" /></button><div><strong>{selectedPath}</strong>{dirty && <span className="dirty-indicator">Unsaved</span>}{saved && !dirty && <span className="saved-indicator">Saved</span>}</div></div><div className="actions"><button className={`button ${editorMode === "structured" ? "primary" : ""}`} onClick={() => switchEditorMode("structured")}>Structured</button><button className={`button ${editorMode === "raw" ? "primary" : ""}`} onClick={() => switchEditorMode("raw")}>Raw</button><button className="button primary" disabled={!dirty || (editorMode === "structured" && !structuredDescription.trim())} onClick={() => void saveFeature()}>Save</button><button className="button" onClick={() => void reloadSelectedFeature()}>Reload</button>{moveDestinations.length > 0 && <><select aria-label="Move feature destination" value={moveTarget} onChange={(event) => setMoveTarget(event.target.value)}><option value="">Move…</option>{moveDestinations.map((path) => <option key={path} value={path}>{path}</option>)}</select><button className="button" disabled={!moveTarget} onClick={() => void moveSelectedFeature()}>Move</button></>}</div></div><div className="card-body">{editorMode === "raw" ? <div><textarea className="editor" value={featureRaw} onChange={(event) => { setFeatureRaw(event.target.value); setRawError(""); setSaved(false); setDirty(true); }} />{rawError && <div className="raw-error">{rawError}</div>}</div> : <StructuredFeatureEditor draft={featureDraft} onChange={(next) => { setFeatureDraft(next); setSaved(false); setDirty(true); }} />}</div></div>}{!listing && !feature && <div className="card empty"><p className="muted">Select a project, folder, or feature from the directory.</p></div>}</div></section></div> : <section className="content"><div className="stack">{error && <div className="notice">{error}</div>}{tab === "runs" && <RunsPanel project={selectedProject} initialRun={deepLinkRun} onError={reportError} />}{tab === "reports" && <ReportsPanel project={selectedProject} initialReport={deepLinkReport} onError={reportError} />}{tab === "enums" && <EnumsPanel project={selectedProject} onError={reportError} />}</div></section>}
+  </main><FeatureImportDialog open={importOpen} files={files} onFiles={setFiles} onImport={() => void importBatch()} onCancel={() => { setFiles([]); setImportOpen(false); }} /><FeatureEditDialog request={featureEdit} onCancel={() => setFeatureEdit(null)} onSubmit={saveFeatureEdit} /><BulkScenarioInfoDialog open={bulkInfoOpen} selection={bulkInfoSelection} error={bulkInfoError} onSubmit={saveBulkScenarioInfo} onCancel={() => { setBulkInfoOpen(false); setBulkInfoSelection(null); setBulkInfoError(""); }} /><MoveFeaturesDialog open={bulkMoveOpen} tree={tree} source={selectedPath} count={checkedFeatures.size} destination={bulkMoveTarget} onDestinationChange={setBulkMoveTarget} onMove={moveCheckedFeatures} onCancel={() => { setBulkMoveOpen(false); setBulkMoveTarget(""); }} /><MoveFolderDialog open={folderMoveOpen} tree={tree} source={selectedPath} destination={folderMoveTarget} onDestinationChange={setFolderMoveTarget} onMove={moveSelectedFolder} onCancel={() => { setFolderMoveOpen(false); setFolderMoveTarget(""); }} /></>;
 }
 
 export default function Home() {
