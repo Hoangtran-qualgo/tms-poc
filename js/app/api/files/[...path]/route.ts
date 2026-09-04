@@ -106,9 +106,9 @@ export async function POST(request: Request, context: { params: Promise<{ path: 
   if (path.at(-1) !== "duplicate") return unsupported(path.join("/"));
   try {
     const body = await request.json() as { file_name?: unknown };
-    if (typeof body.file_name !== "string" || !body.file_name) return NextResponse.json({ error: { code: "bad_request", message: "Body field 'file_name' must be a non-empty string." } }, { status: 400 });
-    await duplicateFeature(path.slice(0, -1), body.file_name);
-    return NextResponse.json({ ok: true }, { status: 201 });
+    if (body.file_name !== undefined && (typeof body.file_name !== "string" || !body.file_name)) return NextResponse.json({ error: { code: "bad_request", message: "Body field 'file_name' must be a non-empty string." } }, { status: 400 });
+    const fileName = await duplicateFeature(path.slice(0, -1), body.file_name);
+    return NextResponse.json(body.file_name === undefined ? { ok: true, file_name: fileName } : { ok: true }, { status: 201 });
   } catch (error: unknown) {
     if (error instanceof MutationConflictError) return NextResponse.json({ error: { code: "name_conflict", message: error.message } }, { status: 409 });
     if (error instanceof PathValidationError) return NextResponse.json({ error: { code: "bad_request", message: error.message } }, { status: 400 });

@@ -2,7 +2,7 @@ import { NextResponse } from "next/server";
 
 import { resolveDataRoot } from "../../../../src/lib/data-root";
 import { FolderNotFoundError, FolderPathError, listFolder } from "../../../../src/lib/folder";
-import { deleteFolder, MutationConflictError, renameFolder } from "../../../../src/lib/relocate";
+import { deleteFolder, moveFolder, MutationConflictError, renameFolder } from "../../../../src/lib/relocate";
 import { PathValidationError } from "../../../../src/lib/path";
 import { defaultNotFound, defaultMethodNotAllowed } from "../../../../src/lib/http-errors";
 
@@ -33,9 +33,14 @@ export async function PATCH(request: Request, context: { params: Promise<{ path:
   const path = (await context.params).path;
   try {
     if (path.at(-1) === "contents" || !path.length) return NextResponse.json({ error: { code: "bad_request", message: "A folder path is required." } }, { status: 400 });
-    const body = await request.json() as { name?: unknown };
-    if (typeof body?.name !== "string" || !body.name) return NextResponse.json({ error: { code: "bad_request", message: "Body field 'name' must be a non-empty string." } }, { status: 400 });
-    await renameFolder(path, body.name);
+    const body = await request.json() as { name?: unknown; parent?: unknown };
+    if (path.at(-1) === "move") {
+      if (typeof body?.parent !== "string" || !body.parent) return NextResponse.json({ error: { code: "bad_request", message: "Body field 'parent' must be a non-empty string." } }, { status: 400 });
+      await moveFolder(path.slice(0, -1), body.parent.split("/").filter(Boolean));
+    } else {
+      if (typeof body?.name !== "string" || !body.name) return NextResponse.json({ error: { code: "bad_request", message: "Body field 'name' must be a non-empty string." } }, { status: 400 });
+      await renameFolder(path, body.name);
+    }
     return NextResponse.json({ ok: true });
   } catch (error: unknown) {
     if (error instanceof MutationConflictError) return NextResponse.json({ error: { code: "name_conflict", message: error.message } }, { status: 409 });

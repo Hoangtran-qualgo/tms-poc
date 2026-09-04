@@ -76,6 +76,26 @@ export async function renameFolder(parts: string[], newName: string): Promise<vo
   catch (error) { await rename(target, source).catch(() => undefined); for (const rewrite of written) await atomicWriteUtf8(rewrite.original, rewrite.before).catch(() => undefined); throw error; }
 }
 
+export async function moveFolder(parts: string[], destination: string[]): Promise<void> {
+  assertGenericPathAllowed(parts); assertGenericPathAllowed(destination);
+  if (parts.length < 3) throw new Error("Only nested folders can be moved.");
+  if (destination.length < 1 || destination.length > 9) throw new Error("Destination folder must be a project or folder up to depth 9.");
+  if (destination[0] !== parts[0]) throw new Error("Destination folder must be in the same project.");
+  const sourceParent = parts.slice(0, -1);
+  if (sourceParent.join("/") === destination.join("/")) throw new Error("Destination folder is the same as the source parent.");
+  const sourceKey = logicalPath(parts), destinationKey = logicalPath(destination);
+  if (destinationKey === sourceKey || destinationKey.startsWith(`${sourceKey}/`)) throw new Error("A folder cannot be moved into itself or a descendant.");
+  const root = resolveDataRoot(), source = resolve(root, ...parts), target = resolve(root, ...destination, parts.at(-1)!);
+  if (!(await stat(source).catch(() => null))?.isDirectory()) throw new Error(`Folder not found: ${source}`);
+  if (!(await stat(resolve(root, ...destination)).catch(() => null))?.isDirectory()) throw new Error("Destination folder does not exist.");
+  if (await stat(target).then(() => true).catch(() => false)) throw new MutationConflictError(`A folder named '${parts.at(-1)}' already exists at '${destinationKey}'.`);
+  const newKey = logicalPath([...destination, parts.at(-1)!]), rewrites = await planRewrites(source, target, sourceKey, newKey, parts[0]);
+  await rename(source, target); markWrite(source); markWrite(target);
+  const written: Rewrite[] = [];
+  try { for (const rewrite of rewrites) { await atomicWriteUtf8(rewrite.target, rewrite.content); written.push(rewrite); } }
+  catch (error) { await rename(target, source).catch(() => undefined); for (const rewrite of written) await atomicWriteUtf8(rewrite.original, rewrite.before).catch(() => undefined); throw error; }
+}
+
 export async function deleteFolder(parts: string[]): Promise<void> {
   if (!parts.length) throw new Error("Cannot delete the data root.");
   assertGenericPathAllowed(parts);
@@ -102,9 +122,21 @@ export async function moveFeature(parts: string[], destination: string[]): Promi
   const target = resolve(root, ...destination, parts.at(-1)!); if (await stat(target).then(() => true).catch(() => false)) throw new MutationConflictError(`A file named '${parts.at(-1)}' already exists at '${destination.join("/")}'.`); await rename(source, target); markWrite(source); markWrite(target);
 }
 
-export async function duplicateFeature(parts: string[], newName: string): Promise<void> {
-  assertGenericPathAllowed(parts); const source = resolve(resolveDataRoot(), ...parts); if (!(await stat(source).catch(() => null))?.isFile()) throw new Error(`File not found: ${source}`);
-  const leaf = newName.toLowerCase().endsWith(".feature") ? newName : newName.includes(".") ? (() => { throw new Error(`File name must end with '.feature'; got '${newName}'.`); })() : `${newName}.feature`; validateLogicalSegments([leaf]); const target = resolve(resolveDataRoot(), ...parts.slice(0, -1), leaf); if (await stat(target).then(() => true).catch(() => false)) throw new MutationConflictError(`A file named '${leaf}' already exists.`); await atomicCreateUtf8(target, await readUtf8File(source));
+export async function duplicateFeature(parts: string[], newName?: string): Promise<string> {
+  assertGenericPathAllowed(parts); const root = resolveDataRoot(), source = resolve(root, ...parts); if (!(await stat(source).catch(() => null))?.isFile()) throw new Error(`File not found: ${source}`);
+  const contents = await readUtf8File(source);
+  if (newName) {
+    const leaf = newName.toLowerCase().endsWith(".feature") ? newName : newName.includes(".") ? (() => { throw new Error(`File name must end with '.feature'; got '${newName}'.`); })() : `${newName}.feature`; validateLogicalSegments([leaf]); const target = resolve(root, ...parts.slice(0, -1), leaf); if (await stat(target).then(() => true).catch(() => false)) throw new MutationConflictError(`A file named '${leaf}' already exists.`); await atomicCreateUtf8(target, contents); return leaf;
+  }
+  const parent = parts.slice(0, -1), stem = parent.at(-1)!;
+  const usedNames = new Set((await readdir(resolve(root, ...parent))).map((entry) => entry.toLowerCase()));
+  for (let number = 1; ; number += 1) {
+    const leaf = `${stem}_${number}.feature`;
+    if (usedNames.has(leaf.toLowerCase())) continue;
+    validateLogicalSegments([leaf]);
+    try { await atomicCreateUtf8(resolve(root, ...parent, leaf), contents); return leaf; }
+    catch (error) { if ((error as NodeJS.ErrnoException).code !== "EEXIST") throw error; usedNames.add(leaf.toLowerCase()); }
+  }
 }
 
 export async function deleteFeature(parts: string[]): Promise<void> {
