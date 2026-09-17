@@ -416,7 +416,7 @@ test.describe("workspace shell", () => {
 
   test("rehydrates and executes a bookmarked search", async ({ page }) => {
     await page.goto("/?q=scenario%20name&scope=project%3Atest-proj01");
-    await expect(page.getByText("test-proj01/moduleC/test case 3.feature", { exact: true })).toBeVisible();
+    await expect(page.getByRole("button", { name: "Edit test-proj01/moduleC/test case 3.feature" })).toBeVisible();
     await expect(page.getByText("Search results", { exact: true })).toBeVisible();
   });
 
@@ -424,11 +424,11 @@ test.describe("workspace shell", () => {
     await page.goto("/ui/run/test-proj01/test-run/tr1.yaml");
     await page.getByRole("button", { name: "Open workspace menu" }).click();
     await expect(page.getByRole("navigation", { name: "Workspace sections" }).getByRole("button", { name: "Runs" })).toHaveClass(/active/);
-    await expect(page.getByRole("button", { name: "tr1", exact: true })).toBeVisible();
+    await expect(page.locator("tbody tr").filter({ hasText: "tr1" }).first()).toBeVisible();
     await page.goto("/ui/report/test-proj01/report-01.yaml");
     await page.getByRole("button", { name: "Open workspace menu" }).click();
     await expect(page.getByRole("navigation", { name: "Workspace sections" }).getByRole("button", { name: "Reports" })).toHaveClass(/active/);
-    await expect(page.getByRole("button", { name: "report 01", exact: true })).toBeVisible();
+    await expect(page.locator("tbody tr").filter({ hasText: "report 01" }).first()).toBeVisible();
   });
 
   test("protects a dirty feature editor from tab switching", async ({ page }) => {
@@ -501,7 +501,7 @@ test.describe("workspace shell", () => {
       expect((await request.post(`/api/runs/${project}/groups`, { data: { name: "smoke" } })).status()).toBe(201);
       expect((await request.post("/api/runs", { data: { project, group: "smoke", file_name: "run", name: "Browser run", case_paths: [] } })).status()).toBe(201);
       await page.goto(`/?tab=runs&project=${encodeURIComponent(project)}`);
-      await page.getByRole("button", { name: "Browser run", exact: true }).click();
+      await page.locator(".run-table tbody tr").filter({ hasText: "Browser run" }).click();
       await page.locator("textarea").first().fill("edited in browser");
       await page.getByRole("button", { name: "Save", exact: true }).click();
       await expect(page.getByText("Saved", { exact: true })).toBeVisible();

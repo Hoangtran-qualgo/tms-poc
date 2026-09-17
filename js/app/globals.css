@@ -234,8 +234,9 @@ th button { border: 0; background: transparent; cursor: pointer; color: inherit;
 .step-fields > select { width: max-content; }
 .step-editor textarea, .example-editor textarea { min-height: 3.5rem; resize: vertical; }
 .step-editor textarea.data-table-editor { min-height: 2.5rem; overflow: hidden; resize: none; }
-.scenario-kind-toggle { border: 0; padding: 0; background: transparent; color: var(--ink); cursor: pointer; font: inherit; font-size: .8rem; font-weight: 700; }
-.scenario-kind-toggle:hover { color: var(--accent-text); text-decoration: underline; text-underline-offset: 3px; }
+.scenario-kind-toggle { min-height: 2rem; border: 1px solid var(--border-strong); border-radius: var(--radius-sm); padding: .3rem .55rem; background: var(--surface); color: var(--ink); cursor: pointer; font: inherit; font-size: .8rem; font-weight: 700; }
+.scenario-kind-toggle:hover { border-color: var(--focus); background: var(--accent-soft); color: var(--accent-text); }
+.scenario-kind-toggle:focus-visible { outline: 2px solid var(--focus); outline-offset: 2px; }
 .new-step { display: flex; align-items: center; justify-content: center; gap: .35rem; min-height: 2.5rem; border: 1px dashed var(--border-strong); border-radius: var(--radius-sm); background: transparent; color: var(--accent-text); cursor: pointer; font: inherit; font-size: .84rem; font-weight: 600; }
 .new-step:hover { border-color: var(--focus); background: #f0f9ff; }
 .example-editor { background: var(--surface); }
