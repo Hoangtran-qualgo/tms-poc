@@ -4,6 +4,17 @@ Items fixed during v1 manual verification.
 
 ## Must have
 
+- **Legacy Python retirement (shipped Sep 4, 2026).** The standalone Next.js
+  application is now the only runtime. Removed the Python application,
+  requirements, one-time Python backfill scripts, virtual environment, and
+  legacy Python smoke suite; removed the JavaScript tests that required the
+  retired Python reference. Shared `project/` data, the Next.js application,
+  specs, and historical migration/design docs remain. Root `README.md` now
+  documents Node.js setup and start commands. Checks: `npm test` (53/53) and
+  `npm run build` pass. Browser checks confirmed the core workspace flows;
+  a pre-existing run-description workflow still leaves **Save** disabled and
+  is not changed by this removal.
+
 - **Folder table filename sort + scenario filter — `feature-22` (shipped Aug
   19, 2026).** Spec:
   `specs/features/22-feature-folder-table-sort-filter-NEW.md`. Module and
