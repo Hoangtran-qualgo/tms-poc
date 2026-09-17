@@ -1,90 +1,53 @@
 # TMS — test case management tools
 
-A local Flask web app for managing test cases: editing Gherkin
-`.feature` files, organising test runs, and generating quality reports —
-all stored as files under `./project/<project>/...`.
-
-> [!IMPORTANT]
-> **VERY IMPORTANT NOTE (as of feature 14): the tool supports only
-> _feature-level_ and _scenario-level_ tags — `Examples:`-level tags are
-> NOT supported yet.** Tag surfaces (e.g. the import preview, tag
-> search/filter) operate on feature + scenario tags only. Examples tags are
-> preserved verbatim on file round-trip but are not a first-class, surfaced
-> tag concept anywhere; treat that as a future enhancement.
+TMS is a local Next.js application for managing Gherkin `.feature` files,
+test runs, and quality reports. Application data stays in
+`./project/<project>/...`.
 
 ## Prerequisites
 
-- Python 3.11+
+- Node.js 24.19.0 LTS
 
 ## Setup
 
-**macOS / Linux:**
+```bash
+cd js
+npm ci
+```
+
+## Run locally
 
 ```bash
-python3 -m venv .venv
-source .venv/bin/activate
-pip install -r requirements.txt
+cd js
+npm run dev
 ```
 
-**Windows (PowerShell):**
+Open <http://127.0.0.1:3000>.
 
-```powershell
-py -3 -m venv .venv
-.venv\Scripts\Activate.ps1
-pip install -r requirements.txt
-```
-
-**Windows (cmd.exe):**
-
-```bat
-py -3 -m venv .venv
-.venv\Scripts\activate.bat
-pip install -r requirements.txt
-```
-
-## Run
-
-With the virtual environment activated (see above), the same command
-works on every platform:
+## Production build
 
 ```bash
-python -m app
+cd js
+npm run build
+npm start
 ```
-
-If you prefer not to activate the venv, call the interpreter directly:
-
-- macOS / Linux: `.venv/bin/python -m app`
-- Windows: `.venv\Scripts\python.exe -m app`
-
-Then open <http://127.0.0.1:5000>.
 
 ## Tests
 
-The suite is a set of standalone "smoke" scripts under `.smoke-scratch/`.
-Always run them with the venv interpreter (a bare `python` may lack the
-pinned dependencies such as PyYAML):
-
 ```bash
-.venv/bin/python .smoke-scratch/run.py
-```
-
-Filter to one feature's smokes:
-
-```bash
-.venv/bin/python .smoke-scratch/run.py --filter feature-12
+cd js
+npm test
+npm run test:browser
 ```
 
 ## Data
 
-Test cases live as `.feature` files under `./project/`. The folder
-hierarchy is project → module → optional sub-folders → file.
+Test cases live as `.feature` files under `./project/`. The hierarchy is
+project → module → optional sub-folders → file.
 
 ## Docs
 
-- `PLAN.md` — architecture and design decisions.
-- `IN-PROGRESS.md` — current backlog (MoSCoW).
-- `DONE.md` — completed items / change log.
-- `specs/` — feature specs (`specs/features/`), technical-initiative
-  specs (`specs/tech/`), and cross-cutting tech / business rules
-  (`specs/rules/`). See `specs/README.md`.
-- `AGENTS.md` — engineering principles for contributors and AI agents.
+- `IN-PROGRESS.md` — current backlog.
+- `DONE.md` — completed work / change log.
+- `specs/` — feature specs, technical specs, and rules. See `specs/README.md`.
+- `AGENTS.md` — contributor and agent guidelines.
