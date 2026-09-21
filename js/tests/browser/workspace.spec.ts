@@ -201,6 +201,31 @@ test.describe("workspace shell", () => {
     }
   });
 
+  test("deletes selected scenarios from the current folder", async ({ page, request }) => {
+    const project = `pw_bulk_delete_${Date.now()}`;
+    const parent = `${project}/Checkout`;
+    try {
+      expect((await request.post("/api/folders", { data: { parent: "", name: project } })).status()).toBe(201);
+      expect((await request.post("/api/folders", { data: { parent: project, name: "Checkout" } })).status()).toBe(201);
+      expect((await request.post("/api/files", { data: { parent, file_name: "case-one", scenario_name: "Case one" } })).status()).toBe(201);
+      expect((await request.post("/api/files", { data: { parent, file_name: "case-two", scenario_name: "Case two" } })).status()).toBe(201);
+      await page.goto(`/?tab=directory&project=${encodeURIComponent(project)}&path=${encodeURIComponent(parent)}`);
+      const remove = page.getByRole("button", { name: "Delete selected scenarios" });
+      await expect(remove).toBeDisabled();
+      await page.getByLabel("Select all scenarios").check();
+      await expect(remove).toBeEnabled();
+      await remove.click();
+      const dialog = page.getByRole("dialog", { name: "Delete selected scenarios?" });
+      await expect(dialog).toContainText("Delete 2 selected scenarios from this folder?");
+      await dialog.getByRole("button", { name: "Delete", exact: true }).click();
+      await expect.poll(async () => (await request.get(`/api/files/${project}/Checkout/case-one.feature`)).status()).toBe(404);
+      expect((await request.get(`/api/files/${project}/Checkout/case-two.feature`)).status()).toBe(404);
+      await expect(page.getByText("No test cases.")).toBeVisible();
+    } finally {
+      await request.delete(`/api/folders/${project}`);
+    }
+  });
+
   test("edits selected scenario tags and shared backgrounds", async ({ page, request }) => {
     const project = `pw_bulk_info_${Date.now()}`;
     const parent = `${project}/Checkout`;
@@ -399,10 +424,10 @@ test.describe("workspace shell", () => {
     const editor = page.locator(".structured-editor");
     const scenario = editor.locator(".editor-section").nth(1);
     await expect(editor.getByLabel("Scenario kind")).toHaveCount(0);
-    const scenarioType = scenario.getByRole("button", { name: "Scenario", exact: true });
+    const scenarioType = scenario.getByRole("button", { name: "ScenarioSwitch type", exact: true });
     await expect(scenarioType).toBeVisible();
     await scenarioType.click();
-    await expect(scenario.getByRole("button", { name: "Scenario Outline", exact: true })).toBeVisible();
+    await expect(scenario.getByRole("button", { name: "Scenario OutlineSwitch type", exact: true })).toBeVisible();
     const steps = scenario.locator(".step-editor");
     const before = await steps.count();
     await scenario.getByRole("button", { name: "New step", exact: true }).click();
